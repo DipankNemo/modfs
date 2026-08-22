@@ -1,0 +1,16 @@
+# Artefacts are regenerable and large. Never commit them.
+*.sqsh
+*.img
+*.qcow2
+*.tar.zst
+build/
+logs/
+out/
+
+# Editor / OS noise
+.vscode/
+*.swp
+*~
+.DS_Store
+__pycache__/
+*.pyc
