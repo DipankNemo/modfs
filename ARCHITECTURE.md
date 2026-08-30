@@ -136,7 +136,21 @@ is NP-complete (Di Cosmo et al., EDOS/Mancoosi). apt resolves once at build
 time when the problem is small; composition afterwards is linear checking.
 
 Modules therefore need **explicit version numbers**, not implicit
-`(snapshot, parent)` identity.
+`(snapshot, parent)` identity. `01`/`02` take `--version` and forward it.
+
+The example above is the hand-written half. `06_extract_metadata.sh` writes the
+generated half into the same file: `snapshot`, `suite`, `arch`, `built`,
+`artifact` (`.sqsh` size + sha256), `requested`, `removed`, and a `packages`
+map carrying each package's version plus all six dpkg relations — `Depends`,
+`Pre-Depends`, `Conflicts`, `Breaks`, `Replaces`, `Provides` — as raw dpkg
+strings. Only the module's **contribution** is stored (packages whose version
+differs from the parent's); consumers rebuild the merged view as
+`base.packages ∪ m.packages − m.removed`. Re-running the extractor preserves
+hand-written `requires`/`conflicts`/`provides`.
+
+This is what decouples tier 1 from the build tree: `base.sqsh` + `base.json`
+is everything a consistency check needs, so the chroots become disposable
+scratch and `05_check.sh` no longer requires root.
 
 ---
 
@@ -194,7 +208,8 @@ Verified to reject synthetic version skew and declared conflicts.
 | `02_build_delta.sh` | Overlay parent, install into merged view, squash upperdir |
 | `03_analyse_overlap.sh` | Byte-compare files shared by two deltas (research tool, run once) |
 | `04_compose.sh` | Stack modules; demonstrate defect; write reconciled state layer |
-| `05_check.sh` | Metadata-only consistency check → ACCEPT/REJECT |
+| `05_check.sh` | Metadata-only consistency check over `module.json` → ACCEPT/REJECT |
+| `06_extract_metadata.sh` | Write `<name>.json` beside each artefact: identity, requested packages, full dpkg relations for every contributed package |
 
 `config.sh` holds snapshot ID, suite, paths, compression.
 `lib.sh` holds logging, mount tracking with guaranteed teardown, chroot helpers.

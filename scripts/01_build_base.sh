@@ -3,9 +3,10 @@
 # Build the BASE module: a minimal Ubuntu rootfs from the pinned snapshot.
 # Every other module is a delta on top of this one.
 #
-#   sudo ./scripts/01_build_base.sh [extra packages...]
+#   sudo ./scripts/01_build_base.sh [--version V] [extra packages...]
 #
 # Output: $MOD_DIR/base.sqsh   (the artefact)
+#         $MOD_DIR/base.json   (metadata manifest, written by stage 06)
 #         $MOD_DIR/base.dir/   (kept, needed as lowerdir for delta builds)
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -14,8 +15,31 @@ source "${HERE}/scripts/lib.sh"
 need_root
 
 NAME="base"
-EXTRA_PKGS=("$@")
+
+# --version is forwarded to the metadata extractor. ARCHITECTURE section 5:
+# modules need explicit version numbers rather than implicit (snapshot,
+# parent) identity, otherwise the module-level dependency layer has nothing
+# to constrain. Omitting it is allowed but warns.
+MOD_VERSION=""
+EXTRA_PKGS=()
+while [ $# -gt 0 ]; do
+    case "$1" in
+        --version)
+            [ $# -ge 2 ] || die "--version needs a value"
+            MOD_VERSION="$2"; shift 2 ;;
+        *)
+            EXTRA_PKGS+=("$1"); shift ;;
+    esac
+done
 [ ${#EXTRA_PKGS[@]} -eq 0 ] && EXTRA_PKGS=(systemd systemd-sysv sudo ca-certificates)
+
+# Base has no parent, so every installed package is its own contribution.
+extract_metadata() {
+    local args=("$NAME" --parent none --requested "${EXTRA_PKGS[*]}")
+    [ -n "$MOD_VERSION" ] && args+=(--version "$MOD_VERSION")
+    "${HERE}/scripts/06_extract_metadata.sh" "${args[@]}" \
+        || die "metadata extraction failed"
+}
 
 ROOTFS="${MOD_DIR}/${NAME}.dir"
 SQSH="${MOD_DIR}/${NAME}.sqsh"
@@ -27,7 +51,14 @@ mkdir -p "$MOD_DIR" "$BUILD_DIR" "$LOG_DIR"
 # debootstrap creates it in the first seconds, so an interrupted run looks
 # complete. That was the source of the half-built chroot problem.
 if [ -f "$STAMP" ] && [ -f "$SQSH" ]; then
-    log "base already built (remove $ROOTFS to rebuild)"; exit 0
+    log "base already built (remove $ROOTFS to rebuild)"
+    # A base built before stage 06 existed has no manifest. Generate one
+    # rather than forcing a 15-minute rebuild just to get it.
+    if [ ! -f "${MOD_DIR}/${NAME}.json" ]; then
+        log "no manifest yet -- extracting metadata"
+        extract_metadata
+    fi
+    exit 0
 fi
 
 log "removing any partial build"
@@ -92,6 +123,12 @@ mksquashfs "$ROOTFS" "$SQSH" \
     > "${LOG_DIR}/base-mksquashfs.log" 2>&1 || die "mksquashfs failed"
 
 touch "$STAMP"
+
+# ---- metadata manifest ----------------------------------------------------
+# Written next to the artefact so 05_check.sh never has to open this rootfs
+# again. Must come after mksquashfs: it records the .sqsh size and sha256.
+log "extracting metadata -> ${MOD_DIR}/${NAME}.json"
+extract_metadata
 
 DIR_SZ=$(du -sb "$ROOTFS" | cut -f1)
 SQ_SZ=$(stat -c %s "$SQSH")

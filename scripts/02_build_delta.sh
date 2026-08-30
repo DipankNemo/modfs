@@ -3,7 +3,7 @@
 # Build a DELTA module: install packages on top of an existing parent module
 # and keep ONLY the difference.
 #
-#   sudo ./scripts/02_build_delta.sh <name> <pkg> [pkg...]
+#   sudo ./scripts/02_build_delta.sh [--version V] <name> <pkg> [pkg...]
 #   sudo ./scripts/02_build_delta.sh webserver nginx
 #
 # How it works:
@@ -14,6 +14,7 @@
 #   4. squash the UPPERDIR alone -> the delta
 #
 # Output: $MOD_DIR/<name>.sqsh       delta artefact (small)
+#         $MOD_DIR/<name>.json       metadata manifest, written by stage 06
 #         $MOD_DIR/<name>.upper/     raw upperdir, kept for inspection
 #
 # Also builds a MONOLITHIC comparison build when --compare is passed, so the
@@ -26,16 +27,22 @@ need_root
 
 PARENT="base"
 COMPARE=0
+# Forwarded to the metadata extractor. ARCHITECTURE section 5: modules need
+# explicit version numbers, not implicit (snapshot, parent) identity.
+MOD_VERSION=""
 ARGS=()
 while [ $# -gt 0 ]; do
     case "$1" in
-        --parent) PARENT="$2"; shift 2 ;;
+        --parent) [ $# -ge 2 ] || die "--parent needs a value"
+                  PARENT="$2"; shift 2 ;;
+        --version) [ $# -ge 2 ] || die "--version needs a value"
+                  MOD_VERSION="$2"; shift 2 ;;
         --compare) COMPARE=1; shift ;;
         *) ARGS+=("$1"); shift ;;
     esac
 done
 
-[ ${#ARGS[@]} -ge 2 ] || die "usage: $0 [--parent NAME] [--compare] <name> <pkg> [pkg...]"
+[ ${#ARGS[@]} -ge 2 ] || die "usage: $0 [--parent NAME] [--version V] [--compare] <name> <pkg> [pkg...]"
 NAME="${ARGS[0]}"
 PKGS=("${ARGS[@]:1}")
 
@@ -110,6 +117,18 @@ log "  upperdir raw : $(human "$UP_SZ")"
 log "  delta .sqsh  : $(human "$SQ_SZ")"
 log "  parent .sqsh : $(human "$P_SZ")"
 
+# ---- metadata manifest ----------------------------------------------------
+# Written next to the artefact so 05_check.sh never has to open this upperdir
+# again -- that is what makes tier-1 checking cheap enough to run over every
+# module pair. Must come after mksquashfs: it records .sqsh size and sha256.
+# Any hand-written module-level requires/conflicts/provides already in the
+# manifest are carried over, not overwritten.
+log "extracting metadata -> ${MOD_DIR}/${NAME}.json"
+META_ARGS=("$NAME" --parent "$PARENT" --requested "${PKGS[*]}")
+[ -n "$MOD_VERSION" ] && META_ARGS+=(--version "$MOD_VERSION")
+"${HERE}/scripts/06_extract_metadata.sh" "${META_ARGS[@]}" \
+    || die "metadata extraction failed"
+
 # ---- optional: monolithic build for comparison ---------------------------
 if [ "$COMPARE" -eq 1 ]; then
     MONO="${MOD_DIR}/${NAME}-monolithic.dir"
@@ -134,7 +153,8 @@ if [ "$COMPARE" -eq 1 ]; then
     unmount_all
     # shellcheck disable=SC2086
     mksquashfs "$MONO" "$MONO_SQSH" -comp "$SQUASH_COMP" \
-        -Xcompression-level "$SQUASH_LEVEL" -noappend -no-progress \
+        -Xcompression-level "$SQUASH_LEVEL" \
+        -noappend -no-progress \
         -e $SQUASH_EXCLUDES > /dev/null 2>&1
     M_SZ=$(stat -c %s "$MONO_SQSH")
     log ""
