@@ -93,16 +93,40 @@ base build (moved 61 packages). Checker now reports 0 upgrades.
 Of ~5 000 files across two deltas: **28** appear in both, **17** byte-identical
 (391 KB duplicated, harmless), **11** differ.
 
-| Files | Treatment | Status |
-|---|---|---|
-| `/var/lib/dpkg/status` | union | **done** |
-| `/var/lib/apt/extended_states` | union | todo |
-| `/etc/ld.so.cache`, `/var/cache/ldconfig/aux-cache` | regenerate (`ldconfig`) | todo |
-| `/var/lib/dpkg/alternatives/*`, `/etc/alternatives/*` | union | todo |
-| `/var/lib/dpkg/diversions` | union | todo |
-| `debconf/config.dat`, `templates.dat` | union or documented limitation | open |
-| `/var/lib/dpkg/status-old` | drop (backup) | todo |
-| 4 × `/var/log/*` | concatenate or drop | todo |
+Those eleven are not one problem but four, and only the last needs to
+understand what it is merging:
+
+| # | Files | Treatment | Status |
+|---|---|---|---|
+| 5 | `/var/log/dpkg.log`, `/var/log/apt/history.log`, `/var/log/apt/term.log`, `/var/log/apt/eipp.log.xz`, `/var/cache/ldconfig/aux-cache` | **exclude** — build byproducts, never module content | **done** |
+| 1 | `/etc/ld.so.cache` | **regenerate** with `ldconfig` at compose time | todo |
+| 1 | `/var/lib/dpkg/status-old` | **drop** — a backup dpkg rewrites on every run | todo |
+| 4 | `/var/lib/dpkg/status`, `/var/lib/apt/extended_states`, `/var/lib/dpkg/alternatives/*`, `/var/lib/dpkg/diversions` | **semantic union** — must parse the file to merge it | 1 of 4 done (`status`) |
+
+`aux-cache` is ldconfig's scratch index and stores each library's *inode
+number*, so it differs between two builds whose libraries are byte-identical.
+A real double build of `webserver` confirmed it was the single remaining
+source of non-determinism once the logs were gone. ldconfig regenerates it, so
+it does not need to ship. `/etc/ld.so.cache` is a different matter and stays:
+the composed system needs it, so it is regenerated at compose time instead.
+
+**Result: 11 → 4.** Seven of the eleven are mechanical: a path is excluded,
+regenerated, or dropped, and nothing has to know what is inside it. Only four
+are registry files whose union must actually be computed, and one of those is
+already implemented. This is the real shape of class 5 — not "modules corrupt
+shared state", but "four registries need a merge function". It is also why the
+class is reconcilable at all: the count that matters is 4, not 5 000.
+
+The exclusion does not change the numbers above: `03_analyse_overlap.sh`
+measures the raw `.upper` trees, where the logs still exist. What changes is
+composition — `04_compose.sh` stacks `.sqsh` files, so those four can no longer
+collide, because they are no longer shipped. `/var/log/apt` and `/var/log/nginx`
+survive as directories; nginx needs the latter at runtime. Three of the four
+logs also record wall-clock timestamps, which is why shipping them made
+artefacts impossible to reproduce byte-for-byte (section 8).
+
+`debconf/config.dat` and `templates.dat` sit outside this count and remain
+open — union, or documented limitation.
 
 Failed prediction, worth recording: `/etc/passwd` and `/etc/group` were expected
 to collide. They did not — base already provides `www-data`.
@@ -194,6 +218,22 @@ reconciled: 178 listed / 178 real   → 0 invisible; nginx INSTALLED
 
 Reconciliation also makes composition **order-independent**.
 
+**Artefacts are byte-reproducible.** Two full builds of each module, on one
+host, produce identical `sha256`:
+
+| Module | sha256 (first 16) |
+|---|---|
+| `base.sqsh` | `06e105365b3c48d1` |
+| `webserver.sqsh` | `f918ba2c892ea642` |
+| `pytools.sqsh` | `eff7dbd83fe9710d` |
+
+`webserver.sqsh` is additionally unchanged across a full base rebuild, so a
+delta no longer depends on the lower filesystem's identity. Getting there took
+four distinct fixes, none of them about package content: pinned `mkfs`/file
+timestamps, excluded build logs and `aux-cache`, stripped overlayfs
+`uuid`/`origin` xattrs, and an emptied `/etc/machine-id`. Cross-host
+reproducibility is now plausible but **untested**.
+
 Checker on the current set: `0 errors, 0 warnings — ACCEPT`.
 Verified to reject synthetic version skew and declared conflicts.
 
@@ -217,7 +257,17 @@ Verified to reject synthetic version skew and declared conflicts.
 Build-time hygiene, all learned the hard way: `--variant=minbase`; bind all four
 of `/proc`, `/sys`, `/dev`, `/dev/pts`; `policy-rc.d` to stop daemons starting in
 chroot; stamp file written **last** so interrupted builds aren't mistaken for
-complete; zstd not xz.
+complete; zstd not xz; `-mkfs-time`/`-all-time` pinned to `SOURCE_EPOCH`
+(derived in `config.sh` from `SNAPSHOT_ID`), the apt/dpkg logs and
+`aux-cache` excluded, overlayfs's own `trusted.overlay.uuid`/`origin` stripped
+via `-xattrs-exclude`, and `/etc/machine-id` emptied at the end of the base
+build, so artefact bytes do not move with the wall clock or the host.
+
+Emptying `/etc/machine-id` is not only a reproducibility fix. `systemd-machine-id-setup`
+writes a random id at install time, and a baked-in id would give every node
+flashed from the image the same identity. An empty file is systemd's
+documented first-boot signal: each node generates its own. Reproducibility and
+correct node identity happen to require the same thing.
 
 ---
 

@@ -105,7 +105,9 @@ else info "no opaque xattr (kernel may use a different marker; functional test d
 
 # The round trip.
 mksquashfs "$T/upper" "$T/delta.sqsh" \
-    -comp "$SQUASH_COMP" -noappend -no-progress >/dev/null 2>&1 \
+    -comp "$SQUASH_COMP" -mkfs-time "$SOURCE_EPOCH" -all-time "$SOURCE_EPOCH" \
+    -xattrs-exclude "$SQUASH_XATTR_EXCLUDE" \
+    -noappend -no-progress >/dev/null 2>&1 \
     && ok "delta squashed" || bad "mksquashfs failed"
 
 mount -o loop,ro "$T/delta.sqsh" "$T/mnt_delta" \

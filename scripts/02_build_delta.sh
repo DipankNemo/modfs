@@ -104,6 +104,8 @@ rm -f "$SQSH"
 # shellcheck disable=SC2086
 mksquashfs "$UPPER" "$SQSH" \
     -comp "$SQUASH_COMP" -Xcompression-level "$SQUASH_LEVEL" \
+    -mkfs-time "$SOURCE_EPOCH" -all-time "$SOURCE_EPOCH" \
+    -xattrs-exclude "$SQUASH_XATTR_EXCLUDE" \
     -noappend -no-progress -e $SQUASH_EXCLUDES \
     > "${LOG_DIR}/${NAME}-mksquashfs.log" 2>&1 || die "mksquashfs failed"
 
@@ -154,6 +156,8 @@ if [ "$COMPARE" -eq 1 ]; then
     # shellcheck disable=SC2086
     mksquashfs "$MONO" "$MONO_SQSH" -comp "$SQUASH_COMP" \
         -Xcompression-level "$SQUASH_LEVEL" \
+        -mkfs-time "$SOURCE_EPOCH" -all-time "$SOURCE_EPOCH" \
+        -xattrs-exclude "$SQUASH_XATTR_EXCLUDE" \
         -noappend -no-progress \
         -e $SQUASH_EXCLUDES > /dev/null 2>&1
     M_SZ=$(stat -c %s "$MONO_SQSH")

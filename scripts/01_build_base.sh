@@ -111,6 +111,20 @@ rm -rf "${ROOTFS}/var/lib/apt/lists"/* "${ROOTFS}/var/cache/apt/archives"/*.deb
 remove_chroot_policy "$ROOTFS"
 unmount_all
 
+# ---- first-boot reset -----------------------------------------------------
+# systemd-machine-id-setup writes a RANDOM /etc/machine-id when systemd is
+# installed. That is wrong for us twice over: it makes base.sqsh
+# unreproducible, and every node flashed from this image would share one
+# identity (journal ids, DHCP client id, systemd instance id).
+# An EMPTY /etc/machine-id is systemd's documented "first boot" signal -- it
+# generates a fresh id on the node's first boot. Emptied, not deleted:
+# systemd handles a missing file differently when /etc is read-only, and an
+# existing empty file is what the image convention expects.
+if [ -f "${ROOTFS}/etc/machine-id" ]; then
+    : > "${ROOTFS}/etc/machine-id"
+    log "machine-id emptied -- regenerated on first boot"
+fi
+
 PKG_COUNT=$(chroot "$ROOTFS" dpkg-query -f '${binary:Package}\n' -W 2>/dev/null | wc -l)
 log "base contains ${PKG_COUNT} packages"
 
@@ -119,6 +133,8 @@ rm -f "$SQSH"
 # shellcheck disable=SC2086
 mksquashfs "$ROOTFS" "$SQSH" \
     -comp "$SQUASH_COMP" -Xcompression-level "$SQUASH_LEVEL" \
+    -mkfs-time "$SOURCE_EPOCH" -all-time "$SOURCE_EPOCH" \
+    -xattrs-exclude "$SQUASH_XATTR_EXCLUDE" \
     -noappend -no-progress -e $SQUASH_EXCLUDES \
     > "${LOG_DIR}/base-mksquashfs.log" 2>&1 || die "mksquashfs failed"
 
