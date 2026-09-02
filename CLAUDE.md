@@ -25,3 +25,9 @@ becomes the Implementation and Evaluation chapters.
 - Ubuntu 22.04 (jammy), APT/dpkg, x86-64 only.
 - Code lives in `~/modfs` (git). Artefacts live in `/srv/modfs` (not git).
 - Everything must be reproducible by re-running scripts from `~/modfs`.
+
+
+## Privilege boundary
+You cannot run builds — they need root (overlay, chroot) and network (apt).
+Test logic on fixtures under `unshare -r` or synthetic trees, then hand me the
+exact commands to run. I'll paste the output back.

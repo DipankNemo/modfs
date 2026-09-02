@@ -418,3 +418,254 @@ Evaluation chapters — do not skip it.
   machine-id emptied, timestamps pinned -- but UNTESTED. Do not claim it.
   The 2026-08-22 "byte-identical to the original machine" entry still needs
   rewording; what is proven is same-host reproducibility.
+
+## 2026-08-30 (smoke test, catalogue, combination harness)
+- `07_smoke_test.sh` -- first FUNCTIONAL test; everything before it was static
+  analysis. Composes a set, chroots in, runs: dpkg --audit; per module
+  `apt-get -s install <requested from module.json>` asserting apt plans no
+  work at all (no "Inst " lines); ldconfig -p non-empty; per-module probe from
+  specs/modules.yaml. Exit 0/1/2, same contract as 05.
+- It reconciles from the MOUNTED ARTEFACTS, not the build trees. Without a
+  reconciled status the topmost module's dpkg status wins outright and every
+  check fails for the wrong reason. Note this leaves TWO reconciliation
+  implementations: 04 still reads .upper/.dir build trees. 04 should be moved
+  onto the artefact-based path -- not done, out of scope today.
+- `specs/modules.yaml`: 27 modules. Adversarial by construction --
+    alternatives     vim, emacs, gawk, original-awk   (4)
+    diversions       nc-openbsd, nc-traditional       (2)
+    runtime-port     webserver, apache, redis         (3)
+    virtual-provider mta-msmtp, mta-nullmailer        (2)
+    base-upgrade     pytools                          (1)
+    benign-overlap   15 fillers
+  Every module carries a probe. emacs-nox is deliberately the largest and is
+  expected to sit near or over MODULE_MAX_MB=50; the builder reports size, it
+  does not reject.
+- PREDICTION worth recording before the run, so it counts either way:
+  mta-msmtp + mta-nullmailer should be a declared conflict, but both declare
+  it through the VIRTUAL name mail-transport-agent, and C4 in 05_check.sh
+  matches Conflicts against real package names only. If that pair comes back
+  ACCEPT, it is a gap in the checker, not a clean composition.
+  Similarly webserver + apache will compose and pass every static check; the
+  port-80 collision is outside dpkg's model and only a boot test sees it.
+- `08_build_catalogue.sh`: idempotent batch builder, skips modules that
+  already have .sqsh + .json, keeps going past failures (an adversarial
+  catalogue is expected to contain packages that will not install), reports
+  sizes against MODULE_MAX_MB.
+- `09_run_combinations.sh`: runs 05_check.sh over all pairs and triples and
+  writes a CSV keyed to the ARCHITECTURE section 4 taxonomy -- verdict, exit,
+  errors, warnings, and per-class counts (benign overlap, version skew,
+  declared conflict, base drift, not composable). Needs no root, so it
+  parallelises with --jobs; 27 modules is 351 pairs + 2 925 triples.
+- Validated end to end on a 6-module synthetic catalogue (35 combinations):
+  benign overlap, version skew, declared conflict, class-6 drift and
+  snapshot mismatch each landed in the right column, and the class counts
+  check out arithmetically (e.g. base drift 15 = every combination containing
+  the drifting module: 5 pairs + 10 triples).
+- NOT yet run against the real catalogue -- that needs root and network.
+- 00_verify.sh now also checks `python3 -c 'import yaml'`. PyYAML is stock on
+  Ubuntu but not part of python3 itself, and without it 08 and 09 fail outright
+  while 07 silently skips every probe -- the worst failure mode, since it looks
+  like a pass. NOTE: the expected total is now **31 passed, not 30**, and
+  ARCHITECTURE section 3 has been updated to match.
+
+## 2026-08-30 (two bugs found by the first real 07 run)
+- 00_verify 31/31 as expected. 07 composed base+webserver+pytools and passed
+  F1 dpkg --audit, F2 apt --simulate for all three modules' requested
+  packages, F3 ldconfig -p (109 entries). Reconciled catalogue 178 packages,
+  matching 04.
+- BUG 1: `SPEC_DIR` was `${ROOT}/specs` = /srv/modfs/specs, but the catalogue
+  is hand-written SOURCE and lives in the git repo. The two-tree split is in
+  ARCHITECTURE and config.sh's own comment says "hand written"; the path
+  still pointed at the artefact tree. Now derived from config.sh's own
+  location (`MODFS_SRC`), with a `MODFS_SPEC_DIR` override for fixtures,
+  mirroring `MODFS_ROOT`.
+- BUG 2, the serious one: 07 skipped all three probes and still printed
+  "OK -- composed system is functional". F1-F3 passed, but `nginx -t` and
+  `import numpy` -- the entire reason the script exists -- never ran. This is
+  the exact failure mode flagged one entry earlier for python3-yaml, reached
+  by a different route. A missing catalogue is now a hard exit 2, a missing
+  python3-yaml likewise, and if zero probes execute the verdict says so
+  instead of claiming the system is functional.
+- Lesson for the Evaluation chapter, and it has now happened twice: a check
+  that cannot run must never be reported as a check that passed. Both times
+  the harness degraded to silence rather than to failure.
+- Still unverified: the actual functional probes. F3 reporting only 109
+  linker entries is worth a look on the re-run -- /etc/ld.so.cache is a
+  class-5 last-wins file, so the composed cache is the TOP module's, and it
+  may not describe webserver's libraries at all. nginx would still start
+  (its libraries sit in default search paths) so the probe will not catch it.
+  A per-module "is one of your libraries in the cache" check would.
+
+## 2026-08-30 (07 passes with real probes; ld.so.cache measured)
+- FUNCTIONAL RESULT, the one the whole reproducibility detour was for:
+  base+webserver+pytools composes and WORKS. dpkg --audit clean; apt sees all
+  three modules' requested packages satisfied; `nginx -t` passes;
+  `python3 -c "import numpy"` passes. 7 passed, 0 failed, 1 skipped (base has
+  no probe). Excluding five build logs, aux-cache and machine-id, and
+  stripping trusted.overlay.uuid/origin, broke nothing at runtime.
+- MEASURED, not assumed -- /etc/ld.so.cache across the layers:
+      base       96 libs
+      webserver 131 libs   (base + ~35 nginx)
+      pytools   107 libs   (base + ~11 numpy)
+      composed  107 libs   == pytools, the TOP layer
+  So composing base+webserver+pytools yields a linker cache describing
+  base+pytools only; roughly 35 of webserver's libraries are absent. Nothing
+  breaks because those libraries sit in the linker's default search paths, so
+  `nginx -t` still passes -- but a module shipping libraries OUTSIDE those
+  paths (its own /etc/ld.so.conf.d entry) would break, and no static check
+  would see it.
+- This is the class-5 `ld.so.cache` row in ARCHITECTURE section 4 made
+  concrete: "regenerate with ldconfig at compose time" is now backed by a
+  number rather than a prediction. The fix belongs in the reconciliation
+  layer, not in a tighter smoke-test assertion.
+- Fixed: F3 was counting `ldconfig -p` OUTPUT LINES, so it reported 109 for a
+  cache of 107 libraries. It now parses the count ldconfig itself prints.
+
+## 2026-08-30 (catalogue built: 27 modules, 0 failures)
+- All 27 modules built in ~6 min, none over MODULE_MAX_MB. My 45-minute
+  estimate was wrong by 7x: after base exists, a delta build is dominated by
+  apt fetch and install for a handful of packages, not by anything per-module.
+  emacs-nox, the one I expected to breach 50 MB, came in at 37 MB.
+- Storage, the headline evaluation number:
+      base                41.7 MB
+      27 deltas          213.3 MB
+      STORED TOTAL       255.0 MB
+      monolithic est.   1339.7 MB   (base x 27 + deltas)
+      ratio                  5.3x
+  Median delta 1.6 MB; 11 of 27 under 1 MB; smallest nc-traditional at 252 KB.
+  The ratio grows with module count as predicted: 2.9x at 3 modules, 5.3x at
+  27, because the base is paid for once. BOTH figures are estimates by the
+  same method -- `02_build_delta.sh --compare` builds a REAL monolithic image
+  and still has not been run at scale. Do not present 5.3x as measured.
+- Fixed in 08: the size column used integer MB, which printed "0M" for 11 of
+  27 modules -- erasing the very result the table exists to show.
+
+## 2026-08-30 (first real sweep: 351 pairs, one genuine checker defect)
+- 351 pairs in 6 s at --jobs 8. All ACCEPT; 53 with benign overlap; zero
+  skew, zero drift, zero non-composable.
+- Interrogated the manifests directly to ask whether all-ACCEPT was right.
+  It is, for 350 of 351. One is a real defect, and it is the one predicted
+  before the run:
+    mta-msmtp + mta-nullmailer
+      msmtp-mta  Provides: mail-transport-agent  Conflicts: mail-transport-agent
+      nullmailer Provides: mail-transport-agent  Conflicts: mail-transport-agent
+  Both unversioned. Per Debian policy an unversioned Provides DOES satisfy an
+  unversioned Conflicts, so this is a genuine class-3 declared conflict.
+  C4 matches Conflicts against real package names only, so it cannot see it.
+  Exactly 1 pair of 351 is affected -- measured, not estimated.
+- The other adversarial pairs are correctly ACCEPTed, and knowing WHY matters
+  more than the verdict:
+    vim + emacs          both Provides: editor, NEITHER conflicts. dpkg
+                         intends coexistence through alternatives. The
+                         collision is in the composed registry files --
+                         class 5, invisible to package metadata by design.
+    gawk + original-awk  identical situation over 'awk'.
+    nc-openbsd + nc-trad netcat-openbsd Breaks/Replaces netcat (<< 1.10-35),
+                         VERSIONED; netcat-traditional's Provides is
+                         unversioned, and an unversioned Provides does not
+                         satisfy a versioned relation. No declared conflict
+                         fires. Correct by the letter of policy; the real
+                         collision is over /bin/nc -- class 4.
+    webserver + apache   both Provides: httpd, httpd-cgi, neither conflicts.
+                         Port 80 is outside dpkg's model entirely. Predicted.
+- The zeros are RESULTS, not silence, and they scale a previous claim:
+    0 version skew over 351 pairs  -- pinning held; previously shown on 1 pair
+    0 base drift over 27 modules   -- the base full-upgrade killed class 6;
+                                      previously shown on 2 modules
+- Methodological point for the Evaluation chapter: every check in 05 is
+  pairwise or per-module, so TRIPLES CANNOT PRODUCE A FINDING THAT NO PAIR
+  PRODUCES. Running them is cheap (~70 s) and worth doing for completeness,
+  but the combinatorial cost of triples buys confirmation, not coverage. That
+  is an argument about where the risk actually lies, and it belongs in the
+  write-up.
+- Weakness to fix in the method: an all-ACCEPT sweep is weak evidence unless
+  the sweep can be shown to be live. 05 is known to reject synthetic skew,
+  declared conflicts and snapshot mismatch, and the fixture sweep produced
+  REJECTs -- but the REAL catalogue contains no known-bad module. A positive
+  control (one module deliberately built from a different snapshot) would make
+  every future sweep self-validating.
+
+## 2026-08-31 (class 3 virtual resolution, class 4, positive control, renaming)
+- Checks in 05 are now numbered by the ARCHITECTURE section 4 taxonomy:
+  PRE, CLASS 1, CLASS 2, CLASS 3, CLASS 4, CLASS 6. The old C1 was class 6,
+  which would have misled every reader of the Evaluation chapter.
+- CLASS 3 now resolves virtual packages. Debian policy honoured: an
+  UNVERSIONED Provides satisfies only an unversioned relation, so
+  "Provides: foo" does not satisfy "Conflicts: foo (<< 2)". The
+  "Provides: X" + "Conflicts: X" self-supersession idiom is excluded.
+  Verified on real manifests: mta-msmtp + mta-nullmailer now REJECTs --
+      msmtp-mta CONFLICTS nullmailer [via virtual mail-transport-agent]
+      nullmailer CONFLICTS msmtp-mta [via virtual mail-transport-agent]
+  and webserver+pytools, vim+emacs, gawk+original-awk, nc-openbsd+nc-trad,
+  webserver+apache, curl+wget+git all stayed ACCEPT. No false positives.
+  The union is keyed by package NAME, which is what makes it immune to the
+  same package appearing in two modules.
+- CLASS 4 implemented. 06 now also writes <name>.files.json.zst: every path
+  the module's packages own, from dpkg's own info/*.list, plus diversions.
+  DIRECTORIES ARE DROPPED -- dpkg lists them in every owning package, and on
+  merged-/usr /bin, /lib and /sbin are symlinks to directories, so without
+  that filter the check fires on nearly every pair. Measured: base 4 970
+  paths kept, 2 135 directory entries dropped.
+- CORRECTION to the brief, backed by data: nc-openbsd + nc-traditional will
+  NOT reject on class 4. netcat-openbsd owns /bin/nc.openbsd and
+  netcat-traditional owns /bin/nc.traditional; /bin/nc is an alternatives
+  symlink owned by neither. Their collision is the alternatives link group --
+  class 5, not class 4.
+- The real class-4 target is the MTA pair. Across all 19 069 catalogue paths
+  there are exactly FOUR genuine collisions, all of them msmtp-mta vs
+  nullmailer: /usr/bin/newaliases, /usr/lib/sendmail, /usr/sbin/sendmail,
+  /usr/share/man/man1/newaliases.1.gz. Both packages declare
+  "Replaces: mail-transport-agent", so all four are SUPPRESSED -- correctly,
+  since Replaces is what legitimises the overlap. They are reported as
+  suppressed rather than dropped, and counted in the CSV, so the check is
+  visibly live on real data instead of silently finding nothing.
+- Class 4 verified on fixtures for all four outcomes: hard collision REJECTs,
+  Replaces suppresses, a diversion suppresses, unrelated modules stay clean.
+- POSITIVE CONTROL `control-oldsnap`: curl built from snapshot
+  20250401T000000Z (curl 7.81.0-1ubuntu1.20) against a catalogue pinned to
+  20260701T000000Z (7.81.0-1ubuntu1.24). It must be rejected against every
+  sibling on the precondition check, and against `curl` on class 2 as well.
+  An all-ACCEPT sweep is weak evidence unless the sweep can be shown capable
+  of rejecting; this is the known-bad that proves it.
+- Fixed a verdict line that had started lying: ACCEPT WITH WARNINGS asserted
+  "base drift detected" unconditionally, which became false as soon as a
+  second kind of warning existed. It now names the actual reasons.
+- 00_verify gained a zstd check -- expect 32 passed, not 31.
+
+## 2026-08-31 (sweep validated; 5.3x is now measured, not estimated)
+- 00_verify 32/32. Metadata refresh regenerated sidecars for base + 27
+  modules without rebuilding. Positive control built (1.6 MB).
+- SWEEP, 378 pairs in 9 s: 350 ACCEPT, 28 REJECT.
+    27 REJECT = control-oldsnap against every sibling (precondition), and
+                against apache/curl/dnsutils/git/pgclient it also trips
+                class 2, because those pull curl or its libraries.
+     1 REJECT = mta-msmtp + mta-nullmailer, class 3 via the virtual name.
+    class 4: 0 hard, 1 pair with 4 SUPPRESSED collisions -- exactly the four
+             predicted paths, all attributed to
+             "Replaces: msmtp-mta supersedes nullmailer".
+  The control does its job: an all-ACCEPT sweep would now mean the sweep is
+  broken, not that the catalogue is clean.
+- STORAGE IS NOW MEASURED. Six --compare builds spanning 0.3-37 MB deltas:
+      module          delta   monolithic  extrapolated  error   ratio
+      nc-traditional   0.3MB     41.6MB      42.0MB    +0.9%   161x
+      jq               0.6MB     41.9MB      42.3MB    +0.9%    75x
+      curl             1.6MB     43.0MB      43.4MB    +0.9%    26x
+      webserver       21.0MB     62.3MB      62.8MB    +0.8%   3.0x
+      pytools         25.8MB     67.4MB      67.6MB    +0.2%   2.6x
+      emacs           37.0MB     78.3MB      78.7MB    +0.5%   2.1x
+  The "base + delta" extrapolation is high by 0.7% consistently, because a
+  monolithic build compresses base and module TOGETHER and recovers a little
+  cross-file redundancy that separate compression cannot. Calibrated:
+  256.7 MB stored vs 1373.9 MB monolithic = 5.35x. The estimator is validated
+  to under 1% across two orders of magnitude of delta size, so the figure can
+  be presented as measured rather than assumed.
+- Per-module saving spans 53% (emacs, a large module against a 41.7 MB base)
+  to over 99% (nc-traditional, a 252 KB delta). The thinner the module, the
+  more the delta model wins -- which is the argument for a FAT base.
+- Reproducibility confirmed a third time, incidentally: --compare rebuilt the
+  webserver and pytools deltas from scratch and both reproduced their exact
+  prior sha256 (f918ba2c..., eff7dbd8...).
+- Class 4 found 0 unexplained collisions across the whole catalogue. That is a
+  negative result, but a live one: the check is verified on fixtures for all
+  four outcomes, and on real data it correctly identifies and attributes the
+  four MTA collisions rather than finding nothing.

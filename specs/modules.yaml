@@ -1,0 +1,193 @@
+# Module catalogue for the combination harness.
+#
+# Selection is ADVERSARIAL, not representative (ARCHITECTURE section 6):
+# modules are here to provoke conflict classes, not to model real use cases.
+# Everything is kept small because the evaluation builds all pairs and
+# triples -- build time and disk dominate, not realism.
+#
+# Fields
+#   name      module name; artefact becomes $MOD_DIR/<name>.sqsh
+#   packages  what apt is asked to install (the "requested" set)
+#   probe     shell command run INSIDE the composed chroot by 07_smoke_test.sh.
+#             Must exit 0 when the module works. Keep it cheap and offline.
+#   provokes  which conflict class this module exists to exercise
+#   note      why it is here, when that is not obvious
+#
+# Probes avoid commands that exit non-zero on success: `nc -h` prints usage
+# and exits 1, so those modules probe with `command -v` instead.
+
+defaults:
+  version: "1.0"
+  parent: base
+
+modules:
+
+  # ---- adversarial: alternatives on the same generic name ----------------
+  - name: vim
+    packages: [vim]
+    probe: vim --version
+    provokes: alternatives
+    note: registers /usr/bin/editor. Pair with emacs.
+
+  - name: emacs
+    packages: [emacs-nox]
+    probe: emacs --version
+    provokes: alternatives
+    note: >
+      also registers /usr/bin/editor. The classic alternatives collision.
+      Deliberately the largest module in the catalogue and the one most
+      likely to exceed MODULE_MAX_MB -- that is a measurement, not a bug.
+
+  - name: gawk
+    packages: [gawk]
+    probe: awk --version
+    provokes: alternatives
+    note: second awk provider; base already ships mawk.
+
+  - name: original-awk
+    packages: [original-awk]
+    probe: command -v awk
+    provokes: alternatives
+    note: third awk provider. gawk+original-awk is a two-module collision
+          over a link group base already owns.
+
+  # ---- adversarial: diversions and Replaces ------------------------------
+  - name: nc-openbsd
+    packages: [netcat-openbsd]
+    probe: command -v nc
+    provokes: diversions
+    note: pair with nc-traditional; both own /bin/nc.
+
+  - name: nc-traditional
+    packages: [netcat-traditional]
+    probe: command -v nc
+    provokes: diversions
+
+  # ---- adversarial: runtime resource conflict ----------------------------
+  - name: webserver
+    packages: [nginx]
+    probe: nginx -t
+    provokes: runtime-port
+    note: pair with apache. Both claim port 80.
+
+  - name: apache
+    packages: [apache2]
+    probe: apache2ctl configtest
+    provokes: runtime-port
+    note: >
+      composes cleanly and passes every static check -- the collision is
+      outside dpkg's model entirely and only a boot test can see it. That
+      negative result is the point.
+
+  # ---- adversarial: two providers of one virtual package -----------------
+  - name: mta-msmtp
+    packages: [msmtp-mta]
+    probe: command -v sendmail
+    provokes: virtual-provider
+    note: Provides mail-transport-agent.
+
+  - name: mta-nullmailer
+    packages: [nullmailer]
+    probe: command -v sendmail
+    provokes: virtual-provider
+    note: >
+      also Provides mail-transport-agent. Worth watching: C4 in 05_check.sh
+      matches Conflicts against REAL package names, so a conflict declared
+      only through a virtual name may slip past it. If this pair is accepted
+      statically, that is a gap in the checker, not a clean composition.
+
+  # ---- class 6 provocation ------------------------------------------------
+  - name: pytools
+    packages: [python3-numpy, python3-pip]
+    probe: python3 -c "import numpy"
+    provokes: base-upgrade
+    note: >
+      the original class-6 case: numpy -> liblapack3 -> libgfortran5 ->
+      gcc-12-base with an exact-equality dependency. Should now report 0
+      upgrades because base is full-upgraded.
+
+  - name: pyyaml
+    packages: [python3-yaml]
+    probe: python3 -c "import yaml"
+    provokes: benign-overlap
+    note: shares the python3 dependency cone with pytools.
+
+  # ---- positive control ---------------------------------------------------
+  - name: control-oldsnap
+    packages: [curl]
+    snapshot: "20250401T000000Z"
+    probe: curl --version
+    provokes: positive-control
+    note: >
+      Deliberately built from a DIFFERENT archive snapshot to the rest of the
+      catalogue. It MUST be rejected against every sibling: the precondition
+      check sees the snapshot mismatch, and against the `curl` module it also
+      trips class 2, because curl is 7.81.0-1ubuntu1.20 here and
+      7.81.0-1ubuntu1.24 at the pinned snapshot.
+      Its purpose is to make the sweep self-validating. An all-ACCEPT result
+      is weak evidence unless the run can be shown to be capable of
+      rejecting; this module is the known-bad that proves it. If a sweep ever
+      reports control-oldsnap as composable, the sweep is broken, not clean.
+
+  # ---- benign overlap and general filler ---------------------------------
+  - name: curl
+    packages: [curl]
+    probe: curl --version
+    provokes: benign-overlap
+  - name: wget
+    packages: [wget]
+    probe: wget --version
+    provokes: benign-overlap
+  - name: git
+    packages: [git]
+    probe: git --version
+    provokes: benign-overlap
+  - name: jq
+    packages: [jq]
+    probe: jq --version
+    provokes: benign-overlap
+  - name: rsync
+    packages: [rsync]
+    probe: rsync --version
+    provokes: benign-overlap
+  - name: tmux
+    packages: [tmux]
+    probe: tmux -V
+    provokes: benign-overlap
+  - name: htop
+    packages: [htop]
+    probe: htop --version
+    provokes: benign-overlap
+  - name: socat
+    packages: [socat]
+    probe: socat -V
+    provokes: benign-overlap
+  - name: zstd
+    packages: [zstd]
+    probe: zstd --version
+    provokes: benign-overlap
+  - name: sqlite
+    packages: [sqlite3]
+    probe: sqlite3 --version
+    provokes: benign-overlap
+  - name: tcpdump
+    packages: [tcpdump]
+    probe: tcpdump --version
+    provokes: benign-overlap
+  - name: dnsutils
+    packages: [bind9-dnsutils]
+    probe: dig -v
+    provokes: benign-overlap
+  - name: pgclient
+    packages: [postgresql-client]
+    probe: psql --version
+    provokes: benign-overlap
+  - name: redis
+    packages: [redis-server]
+    probe: redis-server --version
+    provokes: runtime-port
+    note: claims 6379; pair with memcached for a non-colliding control.
+  - name: memcached
+    packages: [memcached]
+    probe: memcached --version
+    provokes: benign-overlap

@@ -328,6 +328,68 @@ if artifact:
     print("  artifact : %s (%d bytes)" % (artifact['file'], artifact['bytes']))
     print("  sha256   : %s" % artifact['sha256'])
 print("  written  : %s" % out_path)
+
+# ------------------------------------------------- file ownership sidecar
+# Conflict class 4 needs to know which package owns which PATH. That comes
+# from dpkg's own /var/lib/dpkg/info/<pkg>.list files, which for a delta
+# contain exactly the packages the delta installed -- overlayfs leaves the
+# parent's list files in the lower layer. Written as a separate, compressed
+# sidecar because it is 10-20x the size of module.json and only the
+# file-collision check ever reads it.
+#
+# Directories are DROPPED. dpkg lists them in every owning package's .list,
+# so co-ownership of /usr/bin is normal and would swamp the signal; on a
+# merged-/usr system /bin, /lib and /sbin are symlinks to directories and
+# must go too, which is why the test follows symlinks.
+import glob as _glob
+import subprocess as _sp
+
+def is_dir(rel):
+    for root in (tree, parent_tree):
+        if root and os.path.isdir(os.path.join(root, rel.lstrip('/'))):
+            return True
+    return False
+
+files, dirs_skipped = {}, 0
+for lst in sorted(_glob.glob(os.path.join(tree, 'var/lib/dpkg/info/*.list'))):
+    pkg = os.path.basename(lst)[:-5].split(':')[0]
+    try:
+        with open(lst, encoding='utf-8', errors='replace') as f:
+            paths = f.read().split('\n')
+    except OSError as exc:
+        warn("cannot read %s (%s)" % (lst, exc)); continue
+    for path in paths:
+        if not path.startswith('/'):
+            continue
+        if is_dir(path):
+            dirs_skipped += 1; continue
+        files[path] = pkg
+
+# dpkg diversions legitimise one package overriding another's file.
+diversions = []
+dpath = os.path.join(tree, 'var/lib/dpkg/diversions')
+if os.path.exists(dpath):
+    try:
+        with open(dpath, encoding='utf-8', errors='replace') as f:
+            lines = [l for l in f.read().split('\n') if l]
+        for i in range(0, len(lines) - 2, 3):
+            diversions.append({'path': lines[i], 'to': lines[i+1],
+                               'by': None if lines[i+2] == ':' else lines[i+2]})
+    except OSError as exc:
+        warn("cannot read %s (%s)" % (dpath, exc))
+
+sidecar = {'schema': SCHEMA, 'module': E['M_NAME'],
+           'files': dict(sorted(files.items())), 'diversions': diversions}
+side_path = out_path[:-5] + '.files.json.zst'
+blob = json.dumps(sidecar, indent=None, sort_keys=False).encode('utf-8')
+try:
+    _sp.run(['zstd', '-q', '-f', '-19', '-o', side_path], input=blob, check=True)
+    os.chmod(side_path, 0o644)
+    print("  files    : %d path(s), %d dir(s) skipped, %d diversion(s) -> %s"
+          % (len(files), dirs_skipped, len(diversions), os.path.basename(side_path)))
+except Exception as exc:
+    warn("could not write %s (%s); class-4 checking will skip this module"
+         % (side_path, exc))
 PY
 
 log "metadata written -> ${OUT}"

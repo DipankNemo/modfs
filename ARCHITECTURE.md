@@ -54,7 +54,7 @@ to a small, declarative *package-level* one.
 **B. Deltas survive SquashFS.** OverlayFS stores deletions as character devices
 `0:0` and directory replacements as `trusted.overlay.opaque` xattrs. Both
 survive a mksquashfs round trip and still function when the compressed delta is
-remounted as a lowerdir. **30 checks, 30 passed.**
+remounted as a lowerdir. **31 checks, 31 passed** — 30 until a `python3-yaml` check was added for the module catalogue.
 
 ---
 
@@ -64,8 +64,8 @@ remounted as a lowerdir. **30 checks, 30 passed.**
 |---|---|---|---|---|
 | 1 | Benign overlap | Same package, same version, two siblings | Version match in union | Accept; measure duplication |
 | 2 | Version skew | Different snapshots, parents, or explicit pins | Version mismatch | Reject |
-| 3 | Declared conflict | `Conflicts:` / `Breaks:` | Match declarations vs union | Reject |
-| 4 | File collision | Different packages own the same path | Intersect `dpkg/info/*.list`; honour `Replaces:` | Warn/reject — **not implemented** |
+| 3 | Declared conflict | `Conflicts:` / `Breaks:` | Match declarations vs union, **resolving virtual names** | Reject |
+| 4 | File collision | Different packages own the same path | Intersect per-module `<name>.files.json.zst` sidecars; honour `Replaces:` and diversions | Reject — **implemented** |
 | 5 | State divergence | Registry files rewritten by every module | Structural, always occurs | Reconcile or regenerate |
 | 6 | Implicit base upgrade | Delta upgrades a package inherited from base | Compare delta vs parent versions | Prevent; detect recurrence |
 
@@ -155,6 +155,11 @@ sees one module's build. A second layer is needed:
 Checker verifies: every `requires` satisfied by the set at an acceptable
 version; no `conflicts` pair both present; no capability with two providers.
 
+Checks in `05_check.sh` are numbered by these classes — `CLASS 3`, `CLASS 4`
+and so on — rather than in the order they happen to run, so output maps onto
+the table above directly. Class 5 has no check: it always occurs, and is
+answered by reconciliation rather than rejection.
+
 **Verification only, never search.** Full installability in Debian-style systems
 is NP-complete (Di Cosmo et al., EDOS/Mancoosi). apt resolves once at build
 time when the problem is small; composition afterwards is linear checking.
@@ -193,6 +198,11 @@ Build 30–40 small modules once; check all pairs and triples exhaustively;
 compose a stratified sample; boot-test the interesting cases. Module selection
 is **adversarial** — chosen to provoke classes — not representative.
 
+The catalogue is `specs/modules.yaml`: 27 modules, each carrying the class it
+exists to provoke and a `probe` command that must exit 0 inside a composed
+chroot. 27 modules is 351 pairs and 2 925 triples. Tier 1 needs no root and no
+build tree — only the manifests — so the whole sweep parallelises freely.
+
 Baseline: monolithic, one image per use case.
 
 ---
@@ -208,6 +218,42 @@ Baseline: monolithic, one image per use case.
 
 86 MB expresses four bootable configurations. Monolithic ≈ 252 MB (estimate;
 comparison build not yet run) → ~2.9×, growing per module.
+
+**Full catalogue, 28 modules** (`specs/modules.yaml`, including one
+deliberately-broken positive control), built in ~6 minutes:
+
+| | |
+|---|---|
+| base | 41.7 MB |
+| 28 deltas | 215.0 MB |
+| **stored total** | **256.7 MB** |
+| monolithic equivalent | 1 373.9 MB |
+| **ratio** | **5.35×** |
+
+Median delta 1.6 MB; 11 are under 1 MB; the largest is `emacs-nox` at 37 MB.
+The ratio grows with module count as predicted — 2.9× at three modules, 5.35×
+at twenty-eight — because the base is paid for once.
+
+The monolithic figure is an extrapolation, but a **calibrated** one.
+`02_build_delta.sh --compare` built six real monolithic images spanning two
+orders of magnitude of delta size, and the extrapolation `base + delta` was
+accurate to under 1 % on every one:
+
+| Module | Delta | Monolithic (measured) | Extrapolated | Error | Delta ratio |
+|---|---|---|---|---|---|
+| `nc-traditional` | 0.3 MB | 41.6 MB | 42.0 MB | +0.9 % | 161× |
+| `jq` | 0.6 MB | 41.9 MB | 42.3 MB | +0.9 % | 75× |
+| `curl` | 1.6 MB | 43.0 MB | 43.4 MB | +0.9 % | 26× |
+| `webserver` | 21.0 MB | 62.3 MB | 62.8 MB | +0.8 % | 3.0× |
+| `pytools` | 25.8 MB | 67.4 MB | 67.6 MB | +0.2 % | 2.6× |
+| `emacs` | 37.0 MB | 78.3 MB | 78.7 MB | +0.5 % | 2.1× |
+
+The extrapolation is consistently *high* by about 0.7 %, because a monolithic
+build compresses base and module together and finds a little cross-file
+redundancy that separate compression cannot. Applying that calibration gives
+the 1 373.9 MB above. Per-module saving ranges from **53 %** (`emacs-nox`, a
+large module against a 41.7 MB base) to **over 99 %** (`nc-traditional`, a
+252 KB delta) — the thinner the module, the more the delta model wins.
 
 Composition, base + webserver + pytools:
 
@@ -234,8 +280,29 @@ timestamps, excluded build logs and `aux-cache`, stripped overlayfs
 `uuid`/`origin` xattrs, and an emptied `/etc/machine-id`. Cross-host
 reproducibility is now plausible but **untested**.
 
-Checker on the current set: `0 errors, 0 warnings — ACCEPT`.
-Verified to reject synthetic version skew and declared conflicts.
+**Combination sweep**, all 378 pairs of the 28-module catalogue, 9 s at
+`--jobs 8`:
+
+| | |
+|---|---|
+| ACCEPT | 350 |
+| REJECT | 28 |
+| class 1 benign overlap | 60 |
+| class 2 version skew | 5 |
+| class 3 declared conflict | 1 |
+| class 4 file collision | 0 (4 suppressed by `Replaces`) |
+| class 6 implicit base upgrade | 0 |
+| precondition failure | 27 |
+
+Twenty-seven of the rejections are the positive control, which is built from a
+different snapshot and *must* be rejected against every sibling; the sweep is
+self-validating, and an all-ACCEPT result would now mean the sweep itself is
+broken. The twenty-eighth is `mta-msmtp` + `mta-nullmailer`, a real declared
+conflict expressed only through the virtual name `mail-transport-agent`.
+
+Zero version skew and zero base drift among the 27 well-formed modules is the
+central result: snapshot pinning and the base `full-upgrade` hold across 351
+sibling pairs, not just the three originally measured.
 
 ---
 
@@ -249,7 +316,10 @@ Verified to reject synthetic version skew and declared conflicts.
 | `03_analyse_overlap.sh` | Byte-compare files shared by two deltas (research tool, run once) |
 | `04_compose.sh` | Stack modules; demonstrate defect; write reconciled state layer |
 | `05_check.sh` | Metadata-only consistency check over `module.json` → ACCEPT/REJECT |
-| `06_extract_metadata.sh` | Write `<name>.json` beside each artefact: identity, requested packages, full dpkg relations for every contributed package |
+| `06_extract_metadata.sh` | Write `<name>.json` beside each artefact, plus `<name>.files.json.zst` mapping every owned path to its package (class 4) |
+| `07_smoke_test.sh` | Compose a set, chroot in, and check it actually works: `dpkg --audit`, `apt-get -s install`, `ldconfig -p`, per-module probes |
+| `08_build_catalogue.sh` | Batch-build every module in `specs/modules.yaml`; reports sizes against `MODULE_MAX_MB` |
+| `09_run_combinations.sh` | Run `05_check.sh` over all pairs and triples; tabulate verdicts by conflict class into a CSV |
 
 `config.sh` holds snapshot ID, suite, paths, compression.
 `lib.sh` holds logging, mount tracking with guaranteed teardown, chroot helpers.

@@ -5,7 +5,9 @@
 # Snapshot ID format: YYYYMMDDTHHMMSSZ (UTC). Any time after 2023-03-01.
 # This single value makes every build reproducible. Do not change it during
 # a build generation, or you reintroduce version skew between siblings.
-SNAPSHOT_ID="20260701T000000Z"
+# Overridable so a POSITIVE CONTROL module can be built from a different
+# snapshot on purpose. Nothing else should ever set it.
+SNAPSHOT_ID="${MODFS_SNAPSHOT_ID:-20260701T000000Z}"
 SNAPSHOT_BASE="https://snapshot.ubuntu.com/ubuntu/${SNAPSHOT_ID}"
 
 # Reproducibility: mksquashfs stamps the superblock with the wall clock and
@@ -28,13 +30,26 @@ ARCH="amd64"
 COMPONENTS="main universe restricted multiverse"
 
 # ---- Layout ---------------------------------------------------------------
+# Two trees, and the split matters: SOURCE lives in the git repo, ARTEFACTS
+# live under $ROOT and are never committed. The module catalogue is
+# hand-written source, so it belongs with the code -- pointing SPEC_DIR at
+# $ROOT made 07 skip every functional probe and still report success.
+MODFS_SRC="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+SPEC_DIR="${MODFS_SPEC_DIR:-${MODFS_SRC}/specs}"   # hand written, in git
+
 ROOT="${MODFS_ROOT:-/srv/modfs}"
 
-SPEC_DIR="${ROOT}/specs"          # module definitions, hand written
 MOD_DIR="${ROOT}/modules"         # built .sqsh + .json artefacts
 BUILD_DIR="${ROOT}/build"         # scratch: chroots, overlay dirs
 IMAGE_DIR="${ROOT}/images"        # final .img files
 LOG_DIR="${ROOT}/logs"
+
+# ---- Module catalogue -----------------------------------------------------
+# Modules are chosen adversarially and kept small: the evaluation needs MANY
+# of them (all pairs and triples), so build time and disk dominate. A module
+# over this size is reported, not rejected -- emacs-nox is deliberately near
+# the limit.
+MODULE_MAX_MB="50"
 
 # ---- Build options --------------------------------------------------------
 # zstd is roughly 10x faster than xz to compress with a negligible size
@@ -89,5 +104,5 @@ SQUASH_XATTR_EXCLUDE='^trusted\.overlay\.(uuid|origin)$'
 
 export SNAPSHOT_ID SNAPSHOT_BASE SOURCE_EPOCH SUITE ARCH COMPONENTS
 export SQUASH_XATTR_EXCLUDE
-export ROOT SPEC_DIR MOD_DIR BUILD_DIR IMAGE_DIR LOG_DIR
-export SQUASH_COMP SQUASH_LEVEL SQUASH_EXCLUDES
+export MODFS_SRC ROOT SPEC_DIR MOD_DIR BUILD_DIR IMAGE_DIR LOG_DIR
+export SQUASH_COMP SQUASH_LEVEL SQUASH_EXCLUDES MODULE_MAX_MB

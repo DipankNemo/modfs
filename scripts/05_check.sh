@@ -4,13 +4,16 @@
 #
 #   ./scripts/05_check.sh webserver pytools
 #
-# Checks performed:
-#   C0  composability -- do the modules share parent, snapshot, suite, arch?
-#   C1  base drift    -- does a delta UPGRADE a package inherited from base?
-#                        (implicit base upgrade) + WHY, traced through deps
-#   C2  version skew  -- do two siblings disagree on a package version?
-#   C3  benign overlap-- same package, same version, in two siblings
-#   C4  declared conflicts -- Conflicts:/Breaks: between modules
+# Checks are numbered by the CONFLICT TAXONOMY in ARCHITECTURE section 4, so
+# output maps onto the table without a decoder ring:
+#   PRE      composability -- same parent, snapshot, suite, arch (section 2)
+#   CLASS 1  benign overlap -- same package, same version, two siblings
+#   CLASS 2  version skew   -- two siblings disagree on a package version
+#   CLASS 3  declared conflict -- Conflicts:/Breaks:, virtual names resolved
+#   CLASS 4  file collision -- two packages own one path, Replaces honoured
+#   CLASS 6  implicit base upgrade -- a delta replaces an inherited package
+# Class 5 (state divergence) is deliberately absent: it ALWAYS occurs, and is
+# handled by reconciliation at compose time rather than by rejection.
 #
 # Exit status -- the batch harness has to tell a real conflict apart from a
 # broken checker, so these are a contract, not a detail:
@@ -188,19 +191,20 @@ for m in modules:
           % (m, d.get('version'), added, upg, rem))
 
 ERRORS = WARNINGS = 0
+WARN_REASONS = []
 
-# ------------------------------------------------- C0: composability
+# ------------------------------------------------- PRE: composability
 # ARCHITECTURE section 2: modules are composable only with siblings sharing
 # the same base AND the same snapshot. That constraint was documented but
 # never enforced -- the manifest is what finally makes it checkable.
 print("\n" + "=" * 72)
-print(" C0. COMPOSABILITY PRECONDITIONS  (same parent, snapshot, suite, arch)")
+print(" PRE. COMPOSABILITY PRECONDITIONS  (same parent, snapshot, suite, arch)")
 print("=" * 72 + "\n")
 
 for m in modules:
     d = docs[m]
     if d.get('schema') != SCHEMA:
-        WARNINGS += 1
+        WARNINGS += 1; WARN_REASONS.append("manifest schema mismatch")
         print("    %s: manifest schema %s, checker expects %d  [WARNING]"
               % (m, d.get('schema'), SCHEMA))
     for key, want in (('parent',   'base'),
@@ -213,7 +217,7 @@ for m in modules:
             print("    %s: %s = %r, expected %r  *** NOT COMPOSABLE ***"
                   % (m, key, got, want))
     if not d.get('version') or d.get('version') == '0':
-        WARNINGS += 1
+        WARNINGS += 1; WARN_REASONS.append("module without an explicit version")
         print("    %s: no explicit module version  [WARNING]"
               " -- rebuild with --version" % m)
 
@@ -221,9 +225,9 @@ if not ERRORS and not WARNINGS:
     print("    all modules share parent 'base', snapshot %s, %s/%s  [OK]"
           % (base_doc.get('snapshot'), base_doc.get('suite'), base_doc.get('arch')))
 
-# ------------------------------------------------- C1: base drift + chain
+# ------------------------------------------------- CLASS 6: base drift
 print("\n" + "=" * 72)
-print(" C1. IMPLICIT BASE UPGRADE  (delta replaces a package inherited")
+print(" CLASS 6. IMPLICIT BASE UPGRADE  (delta replaces a package inherited")
 print("     from its parent -- siblings may not expect the new version)")
 print("=" * 72)
 
@@ -235,7 +239,7 @@ for m in modules:
     if not upgraded:
         print("      no base packages upgraded  [OK]")
         continue
-    WARNINGS += len(upgraded)
+    WARNINGS += len(upgraded); WARN_REASONS.append("base drift (class 6)")
     print("      %d base package(s) upgraded  [WARNING]\n" % len(upgraded))
 
     # reverse dependency graph over this module's effective package set
@@ -291,9 +295,9 @@ for m in modules:
             print("          chain   : " + " -> ".join(reversed(chain)))
         print()
 
-# ------------------------------------------------- C2/C3: sibling compare
+# ------------------------------------------------- CLASS 1/2: siblings
 print("=" * 72)
-print(" C2/C3. SIBLING COMPARISON  (version skew vs benign overlap)")
+print(" CLASS 1 / CLASS 2. SIBLING COMPARISON  (benign overlap vs version skew)")
 print("=" * 72)
 
 pairs = [(a, b) for i, a in enumerate(modules) for b in modules[i+1:]]
@@ -314,9 +318,9 @@ for a, b in pairs:
     if shared and not skew:
         print("      no version skew -- snapshot pinning held  [OK]")
 
-# ------------------------------------------------- C4: declared conflicts
+# ------------------------------------------------- CLASS 3: declared
 print("\n" + "=" * 72)
-print(" C4. DECLARED CONFLICTS / BREAKS")
+print(" CLASS 3. DECLARED CONFLICTS / BREAKS  (virtual names resolved)")
 print("=" * 72)
 
 # The composed system: base, minus anything a module removes, with every
@@ -327,25 +331,128 @@ for m in modules:
         union.pop(r, None)
     union.update(contrib[m])
 
-found = 0
+# A Conflicts may name a VIRTUAL package. Two mail-transport-agents each
+# declaring "Provides: mail-transport-agent" AND "Conflicts:
+# mail-transport-agent" is a genuine declared conflict that matching on real
+# package names alone cannot see -- measured at exactly 1 pair of 351 in the
+# current catalogue.
+#
+# Debian policy: an UNVERSIONED Provides satisfies only an unversioned
+# relation, so "Provides: foo" does not satisfy "Conflicts: foo (<< 2)".
+provides_map = defaultdict(list)          # virtual name -> [(pkg, version|None)]
+for p, d in union.items():
+    for grp in d['provides']:
+        for (n, op, v) in grp:
+            provides_map[n].append((p, v if op == '=' else None))
+
+found, seen_hits = 0, set()
 for p, d in union.items():
     for kind in ('conflicts', 'breaks'):
         for grp in d[kind]:
             for (n, op, v) in grp:
-                if n == p or n not in union: continue
-                ov = union[n]['version']
-                hit = True if not op else (vcmp(ov, op, v) is True)
-                if hit:
+                targets = []
+                if n in union and n != p:
+                    targets.append((n, union[n]['version'], None))
+                for (prov, pver) in provides_map.get(n, ()):
+                    # "Provides: X" together with "Conflicts: X" on the SAME
+                    # package is the standard "I supersede standalone X"
+                    # idiom, not a conflict.
+                    if prov == p: continue
+                    targets.append((prov, pver, n))
+                for (tname, tver, via) in targets:
+                    if op:
+                        # versioned relation: an unversioned Provides cannot
+                        # satisfy it
+                        if via is not None and tver is None: continue
+                        hit = vcmp(tver, op, v) is True
+                    else:
+                        hit = True
+                    if not hit: continue
+                    key = (p, kind, tname)
+                    if key in seen_hits: continue
+                    seen_hits.add(key)
                     found += 1; ERRORS += 1
                     cons = " (%s %s)" % (op, v) if op else ""
-                    print("    %s %s %s%s -- present at %s"
-                          % (p, kind.upper(), n, cons, ov))
+                    shown = tver if tver else union[tname]['version']
+                    tail = "  [via virtual %s]" % via if via else ""
+                    print("    %s %s %s%s -- present at %s%s"
+                          % (p, kind.upper(), tname, cons, shown, tail))
 if not found:
     print("\n    none  [OK]")
 
-# Note: Replaces and Provides are now carried in the manifest but not yet
-# checked. They are what conflict class 4 (file collision) and virtual
-# package resolution will need.
+# ------------------------------------------------- CLASS 4: file collisions
+print("\n" + "=" * 72)
+print(" CLASS 4. FILE COLLISIONS  (two packages owning one path)")
+print("=" * 72)
+
+def load_sidecar(m):
+    """<name>.files.json.zst -- path -> owning package, plus diversions."""
+    path = os.path.join(mod_dir, m + '.files.json.zst')
+    if not os.path.exists(path):
+        return None
+    try:
+        blob = subprocess.run(['zstd', '-dcq', path],
+                              capture_output=True, check=True).stdout
+        return json.loads(blob)
+    except Exception as exc:
+        print("    cannot read %s: %s" % (path, exc))
+        return None
+
+sidecars = {m: load_sidecar(m) for m in ['base'] + modules}
+absent = sorted(m for m, sc in sidecars.items() if sc is None)
+if absent:
+    # A check that cannot run must never be reported as a check that passed.
+    WARNINGS += 1; WARN_REASONS.append("class 4 not checked (no file sidecar)")
+    print("\n    SKIPPED -- no file sidecar for: %s" % ', '.join(absent))
+    print("    regenerate with 06_extract_metadata.sh; class 4 was NOT checked")
+else:
+    def replaces_pkg(a, b):
+        """Does package a declare a Replaces that package b satisfies?"""
+        da, db = union.get(a), union.get(b)
+        if not da or not db: return False
+        bnames = set([b]) | set(n for grp in db['provides'] for (n, _, _) in grp)
+        for grp in da['replaces']:
+            for (n, op, v) in grp:
+                if n not in bnames: continue
+                if not op: return True
+                if vcmp(db['version'], op, v) is True: return True
+        return False
+
+    owner, diverted = defaultdict(list), set()
+    for m, sc in sidecars.items():
+        for path, pkg in (sc.get('files') or {}).items():
+            owner[path].append((m, pkg))
+        for dv in (sc.get('diversions') or []):
+            diverted.add(dv.get('path'))
+
+    hard, soft = [], []
+    for path, owners in sorted(owner.items()):
+        if len(set(pkg for _, pkg in owners)) < 2: continue
+        if len(set(m for m, _ in owners)) < 2: continue   # one module: dpkg vetted it
+        why = 'diversion' if path in diverted else None
+        if not why:
+            for (_, p1) in owners:
+                for (_, p2) in owners:
+                    if p1 != p2 and replaces_pkg(p1, p2):
+                        why = 'Replaces: %s supersedes %s' % (p1, p2); break
+                if why: break
+        (soft if why else hard).append((path, owners, why))
+
+    for path, owners, _ in hard[:20]:
+        ERRORS += 1
+        print("    FILE COLLISION %s -- %s"
+              % (path, ', '.join('%s/%s' % o for o in owners)))
+    if len(hard) > 20:
+        ERRORS += len(hard) - 20
+        print("    ... and %d more" % (len(hard) - 20))
+    if soft:
+        print("\n    %d collision(s) SUPPRESSED as legitimate:" % len(soft))
+        for path, owners, why in soft[:10]:
+            print("      %s  [%s]" % (path, why))
+        if len(soft) > 10:
+            print("      ... and %d more" % (len(soft) - 10))
+    if not hard:
+        print("\n    no unexplained file collisions  [OK]")
 
 # ------------------------------------------------- verdict
 print("\n" + "=" * 72)
@@ -353,8 +460,13 @@ print(" VERDICT: %d error(s), %d warning(s)" % (ERRORS, WARNINGS))
 if ERRORS:
     print(" REJECT -- module set is not consistently composable")
 elif WARNINGS:
-    print(" ACCEPT WITH WARNINGS -- composable, but base drift detected;")
-    print(" siblings run against package versions they were not built with")
+    # Say what actually warned. This line used to assert base drift
+    # unconditionally, which became untrue the moment a second kind of
+    # warning existed.
+    seen = []
+    for r in WARN_REASONS:
+        if r not in seen: seen.append(r)
+    print(" ACCEPT WITH WARNINGS -- composable, but: %s" % '; '.join(seen))
 else:
     print(" ACCEPT -- module set is consistent")
 print("=" * 72)

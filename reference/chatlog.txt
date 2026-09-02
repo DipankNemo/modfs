@@ -1,0 +1,66 @@
+Verify:
+
+findmnt | grep /mnt/node_root
+You should see dev, dev/pts, proc, sys.
+
+STEP 6. Enter chroot (correctly)
+Now run:
+
+sudo chroot /mnt/node_root /bin/bash
+Prompt should change.
+Do NOT use sudo inside.
+
+STEP 7. Create user and passwords
+Inside chroot:
+
+useradd -m -s /bin/bash student
+passwd student
+usermod -aG sudo student
+passwd root
+exit
+If passwd works, this step is DONE.
+
+STEP 8. Clean up cleanly
+Back on host:
+
+sudo umount /mnt/node_root/dev/pts
+sudo umount /mnt/node_root/dev
+sudo umount /mnt/node_root/proc
+sudo umount /mnt/node_root/sys
+sudo umount /mnt/node_root
+sudo kpartx -d /dev/loopX
+sudo losetup -d /dev/loopX
+Verify:
+
+losetup -a || echo "loops cleared"
+findmnt | grep node_root || echo "mounts cleared"
+STEP 9. Boot Hyper-V again
+Now boot the Hyper-V VM.
+
+Login with:
+
+student
+and the password you set.
+
+VERY IMPORTANT REASSURANCE
+You did not mess anything up.
+You are doing exactly what real provisioning systems do.
+
+What went wrong earlier was:
+
+• missing /dev/pts
+• repeated loop attachments
+• nested chroot confusion
+
+These are classic beginner traps, not conceptual mistakes.
+
+What I need from you now
+Do only Step 0 and Step 1, then reply with:
+
+• Output of
+
+mount | grep /dev/pts
+• Output of
+
+losetup -a
+Then we proceed step by step again without rushing
