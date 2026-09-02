@@ -669,3 +669,103 @@ Evaluation chapters — do not skip it.
   negative result, but a live one: the check is verified on fixtures for all
   four outcomes, and on real data it correctly identifies and attributes the
   four MTA collisions rather than finding nothing.
+
+## 2026-09-02 (triples, and class 5 reconciliation)
+- NOTE: this is the code-freeze date. Treated as in scope because
+  ARCHITECTURE section 9 lists "finish reconciliation" under week 1 and the
+  class-5 rows in section 4 were already `todo`; this completes planned work
+  rather than adding scope. No new features after today.
+- FULL SWEEP, 3 654 combinations (378 pairs + 3 276 triples) in 102 s:
+      n=2   350 ACCEPT   28 REJECT
+      n=3  2900 ACCEPT  376 REJECT
+- The triples confirmed the prediction ARITHMETICALLY, which is the useful
+  part. Every triple rejection is accounted for by a rejecting pair inside it:
+      not composable  378 = 27 pairs + C(27,2)=351 triples containing control
+      declared confl.  27 = 1 pair + C(26,1)=26 triples containing both MTAs
+      REJECT triples  376 = 351 + 26 - 1 (the triple that is both)
+  Zero findings that no pair produced. Every check in 05 is pairwise or
+  per-module, so exhaustive triple testing buys confirmation, not coverage --
+  worth stating in the Evaluation chapter, because it says where the risk is
+  NOT.
+- Class 5: `scripts/reconcile.py` now merges all four registry files and is
+  SHARED by 04 and 07. That removes the two divergent implementations -- 04
+  was still reading .upper/.dir build trees, which quietly made composition
+  depend on scratch directories that are meant to be disposable. Both now
+  read mounted artefacts only.
+- Deliberately NOT reimplemented: /etc/alternatives/* and /etc/ld.so.cache.
+  Neither is owned by a package; both are a FUNCTION of the merged registry.
+  update-alternatives --auto and ldconfig are the authorities on computing
+  them, and they run inside the merged chroot. Writing our own priority and
+  slave-resolution rules would have been the wrong kind of work.
+- The alternatives file format, established by reading real files rather than
+  assuming: status, link, (slave name, slave link)* , blank, then candidates
+  PACKED WITH NO SEPARATOR as path, priority, and exactly one line per slave.
+  A missing slave path is an EMPTY LINE -- original-awk provides only 1 of the
+  3 awk slaves and its record ends with two empty lines before the terminator.
+  Merging registries with different slave lists therefore has to re-map every
+  candidate onto the merged slave order, not concatenate.
+- Verified without root, on real registries: merging base+vim+emacs gives
+  editor = vim.basic(30) + emacs(0) with emacs filling 1 of 8 slaves;
+  base+gawk+original-awk gives awk = gawk(10) + mawk(5) + original-awk(0);
+  nc = nc.openbsd(50) + nc.traditional(10). The real update-alternatives
+  parses the merged files and resolves Link/Status/Best correctly.
+- Trap worth recording: `update-alternatives --list` FILTERS OUT candidates
+  whose target file does not exist on the current root. Testing the merged
+  registry from the host showed 1 candidate, not 2, purely because
+  /usr/bin/emacs is not installed on the host. The listing is only meaningful
+  INSIDE the merged chroot. An earlier version of this journal entry would
+  have recorded that as a merge failure.
+- NOT YET VERIFIED END TO END: 04 and 07 need root to mount and chroot. The
+  demonstration run is the remaining check.
+
+## 2026-09-02 (class 5 reconciliation demonstrated; one bash trap)
+- 04 on all three adversarial pairs, exactly the predicted numbers:
+      base+vim+emacs            editor  1 -> 2   packages 126 -> 140/140
+      base+gawk+original-awk    awk     2 -> 3   packages 114 -> 119/119
+      base+nc-openbsd+nc-trad   nc      1 -> 2   packages 114 -> 117/117
+  awk is 2 -> 3, not 1 -> 3, because original-awk's own registry already
+  inherited mawk from base -- the naive view was not as broken as the others.
+  In every case the package the naive overlay reported as NOT INSTALLED
+  (vim, gawk, netcat-openbsd) is INSTALLED after reconciliation.
+- Linker cache: vim+emacs 108 -> 117 libs. gawk+original-awk and the netcat
+  pair stayed flat (100, 98) because those modules ship no libraries -- so
+  regeneration correctly changes nothing rather than inventing entries.
+- Diversions and extended_states now merged too: 4 and 32 for vim+emacs
+  (base contributes 2 diversions; each module adds its own auto-installed
+  markers).
+- BUG, and a good one for the write-up: 07 crashed with
+  `FileNotFoundError: ''` from reconcile.py. Cause was not in the reconciler.
+  The variable was named `GROUPS`, which BASH OWNS -- it holds the caller's
+  group ids. The assignment was silently discarded and "$GROUPS" expanded to
+  1000, the primary gid, so --groups-out received "1000". `set -u` cannot
+  catch this: the variable is always set. 04 was unaffected only because it
+  happened to use GROUPS_BEFORE/GROUPS_AFTER.
+  Renamed to ALT_GROUPS; grepped every script for assignments to bash special
+  variables and this was the only one. reconcile.py's write() now also
+  tolerates a bare filename instead of raising.
+- Verified after the fix: reconcile.py exits 0 and writes 7 link groups for
+  base+webserver+pytools, including the libblas/liblapack alternatives that
+  numpy registers.
+
+## 2026-09-02 (07 green; linker cache verified as the exact union)
+- 07 on base+webserver+pytools: 7 passed, 0 failed, 1 skipped. dpkg --audit
+  clean, all three modules' requested packages satisfied, nginx -t and
+  import numpy both pass.
+- F3 now reports 140 libraries, up from 107. Checked against the layers
+  rather than taken on trust:
+      base                96
+      webserver layer    131   (+35 over base)
+      pytools layer      107   (+11 over base)
+      union              140
+  96 + 35 + 11 - 2 = 140, and the 2 libraries present in both deltas are
+  libexpat.so.1 and libexpatw.so.1 -- i.e. libexpat1, which is exactly the
+  class-1 benign overlap 05_check.sh reported for this pair weeks ago. The
+  regenerated cache is the EXACT union, not merely a larger number, and two
+  independent measurements (package metadata, linker cache) agree on the
+  overlap. Worth using in the Evaluation chapter as a cross-check.
+- Before reconciliation the composed cache was the top layer's 107, so ~35 of
+  webserver's libraries were missing from it. Nothing broke, because they sit
+  in the linker's default search paths -- which is why the smoke test could
+  not have caught this and the measurement had to be made directly.
+- Class 5 status: 10 of the 11 shared files handled. Only `status-old`
+  (drop from the artefact) remains.

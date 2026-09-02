@@ -99,9 +99,9 @@ understand what it is merging:
 | # | Files | Treatment | Status |
 |---|---|---|---|
 | 5 | `/var/log/dpkg.log`, `/var/log/apt/history.log`, `/var/log/apt/term.log`, `/var/log/apt/eipp.log.xz`, `/var/cache/ldconfig/aux-cache` | **exclude** — build byproducts, never module content | **done** |
-| 1 | `/etc/ld.so.cache` | **regenerate** with `ldconfig` at compose time | todo |
+| 1 | `/etc/ld.so.cache` | **regenerate** with `ldconfig` at compose time | **done** |
 | 1 | `/var/lib/dpkg/status-old` | **drop** — a backup dpkg rewrites on every run | todo |
-| 4 | `/var/lib/dpkg/status`, `/var/lib/apt/extended_states`, `/var/lib/dpkg/alternatives/*`, `/var/lib/dpkg/diversions` | **semantic union** — must parse the file to merge it | 1 of 4 done (`status`) |
+| 4 | `/var/lib/dpkg/status`, `/var/lib/apt/extended_states`, `/var/lib/dpkg/alternatives/*`, `/var/lib/dpkg/diversions` | **semantic union** — must parse the file to merge it | **done** |
 
 `aux-cache` is ldconfig's scratch index and stores each library's *inode
 number*, so it differs between two builds whose libraries are byte-identical.
@@ -110,12 +110,21 @@ source of non-determinism once the logs were gone. ldconfig regenerates it, so
 it does not need to ship. `/etc/ld.so.cache` is a different matter and stays:
 the composed system needs it, so it is regenerated at compose time instead.
 
-**Result: 11 → 4.** Seven of the eleven are mechanical: a path is excluded,
-regenerated, or dropped, and nothing has to know what is inside it. Only four
-are registry files whose union must actually be computed, and one of those is
-already implemented. This is the real shape of class 5 — not "modules corrupt
-shared state", but "four registries need a merge function". It is also why the
-class is reconcilable at all: the count that matters is 4, not 5 000.
+**Result: 11 → 1.** Seven of the eleven are mechanical — a path is excluded,
+regenerated, or dropped, and nothing has to know what is inside it. The four
+registry files are merged by `scripts/reconcile.py`, shared by `04_compose.sh`
+and `07_smoke_test.sh`. One item remains: dropping `status-old`.
+
+This is the real shape of class 5 — not "modules corrupt shared state", but
+"four registries need a merge function". It is also why the class is
+reconcilable at all: the count that matters is 4, not 5 000.
+
+Two of the five are **regenerated rather than merged**, and the distinction
+matters. `/etc/alternatives/*` symlinks are owned by no package: they are a
+*function* of the merged registry and its priorities, so there is nothing to
+union. The same holds for `/etc/ld.so.cache`. Both are recomputed by the tool
+that owns them — `update-alternatives --auto` and `ldconfig` — inside the
+merged chroot, rather than reimplemented.
 
 The exclusion does not change the numbers above: `03_analyse_overlap.sh`
 measures the raw `.upper` trees, where the logs still exist. What changes is
