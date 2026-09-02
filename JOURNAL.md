@@ -769,3 +769,63 @@ Evaluation chapters — do not skip it.
   not have caught this and the measurement had to be made directly.
 - Class 5 status: 10 of the 11 shared files handled. Only `status-old`
   (drop from the artefact) remains.
+
+## 2026-09-02 (tier 2: 10_compose_sweep.sh)
+- Coverage gap being closed: tier 1 had 3 654 data points, tier 2 had four,
+  and NOTHING had been composed above N=3 while the design promises arbitrary
+  N. The sweep samples 96 sets: 30 pairs, 30 triples, 20 at N=5, 10 at N=10,
+  5 at N=20, and the single N=27.
+- Per composition it verifies, against the LAYERS rather than against
+  metadata: reconciliation completed; merged dpkg status is the exact union;
+  every alternatives group holds every candidate any layer offered;
+  /etc/ld.so.cache covers the union of the layers' caches; dpkg --audit clean.
+  Mount, reconcile and total time are recorded per sample so cost against N
+  is measurable.
+- Every check compares SETS, not counts. Two sets of equal size can differ,
+  and a count-only check would pass a composition that silently swapped one
+  package for another.
+- JUDGEMENT CALL worth recording: the linker-cache check is a SUPERSET test
+  (union ⊆ regenerated), not equality. A delta can ship a library without
+  triggering ldconfig during its own build, so that layer's cache would not
+  list it while the regenerated cache legitimately does. The union is a lower
+  bound on correctness, not an upper one.
+- Sampling is seeded and verified reproducible: same seed gives an identical
+  plan, a different seed gives a different one. An evaluation that cannot be
+  re-run is not evidence.
+- do_mount() from lib.sh dies on failure, which would abort the whole sweep;
+  a failed composition is a RESULT here, so the sweep uses a non-fatal
+  try_mount and records COMPOSE_FAIL / RECONCILE_FAIL / VERIFY_CRASH rows.
+- Verifier tested on all four outcomes against real artefacts: clean PASS
+  (178 packages, 7 alternatives groups, 140 cache libraries -- matching the
+  07 run independently), a removed package, a dirty audit, and a missing
+  alternatives group. Each failure names what was missing.
+- NOT YET RUN: needs root. 96 compositions, so budget roughly half an hour.
+
+## 2026-09-02 (tier-2 sweep: 96/96, and the tier cost model was wrong)
+- 96 compositions, N=2 to N=27, ALL PASS. Every check column clean across all
+  96: status the exact union, no alternatives group short a candidate,
+  linker cache correct, dpkg --audit clean.
+- Nothing above N=3 had ever been composed before. N=27 works: 281 packages,
+  23 alternatives link groups, 205 cache libraries, composed and verified in
+  622 ms.
+- THE COST MODEL IN SECTION 6 WAS WRONG. Tier 2 was assumed at ~10 s per
+  composition. Measured: 155 ms at N=2 -- 64x cheaper. Fit over all 96:
+      total_ms = 115 + 18.8 x N      R^2 = 0.94
+  ~115 ms fixed, ~19 ms per module. Mount time is the part that scales
+  (29 ms at N=2 to 282 ms at N=27); reconciliation is nearly flat.
+- CONSEQUENCE FOR THE ARGUMENT, and it needs saying in the write-up: the
+  asymmetry the three-tier method rests on is NOT between tiers 1 and 2.
+  Tier 1 is 28 ms per check, tier 2 is 155 ms -- well under one order of
+  magnitude apart. All 351 pairs could be composed exhaustively in ~55 s.
+  The real cliff is tier 3 at ~60 s, which is 100x tier 2. Stratified
+  sampling is justified for BOOT testing; for composition it is a
+  convenience. Section 6 updated with measured figures and the correction
+  stated explicitly rather than quietly patched.
+- The linker cache was EXACTLY the union in 96 of 96, so the superset
+  relaxation was never actually exercised. Keeping it as a superset test on
+  principle -- a delta can ship a library without triggering ldconfig during
+  its own build -- but the empirical result is equality.
+- Independent arithmetic confirmation: the union at N=27 is 281 = base 113 +
+  168, and 168 is exactly the number of distinct packages across the 27
+  manifests (256 instances, 1.5x dependency sharing). The composed system and
+  the manifest arithmetic agree from two separate measurements.

@@ -199,12 +199,28 @@ alone are ~2×10⁹. Three tiers exploit the cost asymmetry:
 
 | Tier | Operation | Cost | Feasible |
 |---|---|---|---|
-| 1 | Metadata check | ~1 s | thousands |
-| 2 | Actual composition | ~10 s | hundreds |
-| 3 | QEMU boot test | ~60 s | tens |
+| 1 | Metadata check | **28 ms** measured (3 654 checks in 102 s, 8 jobs) | thousands |
+| 2 | Compose + verify | **155 ms** at N=2, **622 ms** at N=27, measured | thousands — all 351 pairs in ≈55 s |
+| 3 | QEMU boot test | ~60 s, *estimated, not yet run* | tens |
+
+**The original cost estimates were wrong, and the correction matters.** Tier 2
+was assumed to cost ~10 s per composition; it costs 155 ms — **64× cheaper**.
+Composition time is linear in N:
+
+    total = 115 ms + 18.8 ms × N        (R² = 0.94, 96 compositions)
+
+So the cost asymmetry this methodology rests on is *not* between tiers 1 and 2,
+which are within one order of magnitude of each other. It is between tier 2 and
+tier 3, which is 100× more expensive still. Stratified sampling is justified for
+boot testing; for composition it is a convenience, not a necessity — exhaustive
+tier-2 coverage of all pairs is affordable and should be reported as such.
 
 Build 30–40 small modules once; check all pairs and triples exhaustively;
-compose a stratified sample; boot-test the interesting cases. Module selection
+compose a stratified sample; boot-test the interesting cases. Tier 1 is
+`09_run_combinations.sh`; tier 2 is `10_compose_sweep.sh`, which samples
+96 sets — 30 pairs, 30 triples, 20 at N=5, 10 at N=10, 5 at N=20 and the
+single N=27 — and verifies each composed system against its own layers rather
+than against metadata. Sampling is seeded, so the sample set is reproducible. Module selection
 is **adversarial** — chosen to provoke classes — not representative.
 
 The catalogue is `specs/modules.yaml`: 27 modules, each carrying the class it
@@ -313,6 +329,26 @@ Zero version skew and zero base drift among the 27 well-formed modules is the
 central result: snapshot pinning and the base `full-upgrade` hold across 351
 sibling pairs, not just the three originally measured.
 
+**Tier-2 sweep**, 96 real compositions from N=2 to N=27: **96 passed, 0 failed**.
+Every composed system's dpkg status was the exact union of its layers, every
+alternatives group held every candidate any layer offered, `/etc/ld.so.cache`
+was exactly the union in all 96, and `dpkg --audit` was clean throughout.
+
+| N | samples | packages (median) | alt groups | cache libs | total ms |
+|---|---|---|---|---|---|
+| 2 | 30 | 128 | 5–13 | 97–119 | 155 |
+| 3 | 30 | 132 | 5–14 | 96–142 | 173 |
+| 5 | 20 | 159 | 5–19 | 114–150 | 200 |
+| 10 | 10 | 191 | 6–20 | 127–178 | 281 |
+| 20 | 5 | 245 | 8–22 | 173–188 | 519 |
+| 27 | 1 | 281 | 23 | 205 | 622 |
+
+The union grows sub-linearly in N because modules share dependencies: the 27
+modules contribute 256 package instances that collapse to 168 distinct
+packages, a factor of 1.5. At N=27 the composed system holds 281 packages —
+exactly base's 113 plus those 168, which the composition reproduces from the
+artefacts alone. Nothing above N=3 had ever been composed before this sweep.
+
 ---
 
 ## 8. Pipeline
@@ -328,7 +364,9 @@ sibling pairs, not just the three originally measured.
 | `06_extract_metadata.sh` | Write `<name>.json` beside each artefact, plus `<name>.files.json.zst` mapping every owned path to its package (class 4) |
 | `07_smoke_test.sh` | Compose a set, chroot in, and check it actually works: `dpkg --audit`, `apt-get -s install`, `ldconfig -p`, per-module probes |
 | `08_build_catalogue.sh` | Batch-build every module in `specs/modules.yaml`; reports sizes against `MODULE_MAX_MB` |
-| `09_run_combinations.sh` | Run `05_check.sh` over all pairs and triples; tabulate verdicts by conflict class into a CSV |
+| `09_run_combinations.sh` | Tier 1: run `05_check.sh` over all pairs and triples; tabulate verdicts by conflict class into a CSV |
+| `10_compose_sweep.sh` | Tier 2: actually compose sampled sets from N=2 to N=27 and verify status, alternatives, linker cache and dpkg state against the layers |
+| `reconcile.py`, `verify_compose.py` | Shared helpers: class-5 registry merge; per-composition verification |
 
 `config.sh` holds snapshot ID, suite, paths, compression.
 `lib.sh` holds logging, mount tracking with guaranteed teardown, chroot helpers.
