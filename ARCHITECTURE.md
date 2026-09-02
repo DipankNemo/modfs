@@ -329,7 +329,15 @@ Zero version skew and zero base drift among the 27 well-formed modules is the
 central result: snapshot pinning and the base `full-upgrade` hold across 351
 sibling pairs, not just the three originally measured.
 
-**Tier-2 sweep**, 96 real compositions from N=2 to N=27: **96 passed, 0 failed**.
+**Tier-2 coverage is exhaustive at N=2: all 351 pairs composed and verified,
+351 passed, 0 failed**, in 58.8 s total (median 163 ms each). Every pair's
+dpkg status was the exact union of its layers, no alternatives group was short
+a candidate, `/etc/ld.so.cache` was *exactly* the union in all 351, and
+`dpkg --audit` was clean throughout. This is not a sample: it is every pair the
+catalogue admits.
+
+Above N=2 the coverage is a stratified sample, 96 real compositions from N=2
+to N=27: **96 passed, 0 failed**.
 Every composed system's dpkg status was the exact union of its layers, every
 alternatives group held every candidate any layer offered, `/etc/ld.so.cache`
 was exactly the union in all 96, and `dpkg --audit` was clean throughout.

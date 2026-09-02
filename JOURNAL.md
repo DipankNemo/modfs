@@ -829,3 +829,35 @@ Evaluation chapters — do not skip it.
   168, and 168 is exactly the number of distinct packages across the 27
   manifests (256 instances, 1.5x dependency sharing). The composed system and
   the manifest arithmetic agree from two separate measurements.
+
+## 2026-09-02 (exhaustive tier 2, and two tier-3 findings before any boot)
+- EXHAUSTIVE TIER 2 AT N=2: all 351 pairs composed and verified, 351 PASS,
+  0 fail, 58.8 s total, median 163 ms. Not a sample -- every pair the
+  catalogue admits. Linker cache was exactly the union in 351 of 351.
+  This replaces the 96-sample claim at N=2; the stratified sample still
+  carries N=3..27. Note the run reused the default --out path, so
+  compose-sweep.csv now holds the 351-pair data and the 96-sample CSV is gone;
+  the figures survive in this journal and section 7, but re-run with
+  --out if an appendix needs the stratified CSV as a file.
+- Tier 3 has already produced two findings WITHOUT BOOTING ANYTHING, which is
+  itself the argument for having a tier 3 at all:
+  1. /etc/resolv.conf in base is a symlink to ../run/systemd/resolve/
+     stub-resolv.conf, and SQUASH_EXCLUDES drops /run, so the symlink DANGLES
+     in any composed view and apt cannot resolve. 02_build_delta.sh never hits
+     this because it builds on base.dir, the raw tree, which still has /run.
+     Fixed in the pack step: stage a real resolver from the host, restore the
+     symlink before writing the image so no host DNS ships in it.
+  2. MORE SERIOUS: the artefacts contain NO /proc, /sys, /dev, /run, /tmp or
+     /var/tmp AT ALL. SQUASH_EXCLUDES removes the DIRECTORIES, not just their
+     contents. A composed tree therefore has no mountpoints and systemd cannot
+     mount the API filesystems -- the image cannot boot. Tiers 1 and 2 never
+     saw it because mount_chroot_fs mkdir -p's them before mounting.
+     Fixed in the pack step rather than in SQUASH_EXCLUDES: those directories
+     are runtime, not module content, so an artefact is right to exclude them
+     and an image builder is responsible for creating them. Changing the
+     exclude list two days before freeze would also have invalidated all 28
+     artefacts and the reproducibility evidence, for no gain.
+- Worth stating plainly in the thesis: a module artefact is not a bootable
+  image and was never meant to be. It carries content; mountpoints, a kernel
+  and a bootloader are the image builder's job. Tier 3 is what made that
+  boundary explicit.
