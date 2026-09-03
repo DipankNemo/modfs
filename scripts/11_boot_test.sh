@@ -112,7 +112,9 @@ RJ
     done
 } > "$B/source.txt" 2>&1
 
+FINISHED=0
 finish() {               # finish <verdict> <exit-code>
+    FINISHED=1
     python3 - "$B/result.json" "$B/run.json" "$1" "$2" <<'FJ' 2>/dev/null || true
 import json, sys, time, os
 out, runf, verdict, rc = sys.argv[1:5]
@@ -139,7 +141,11 @@ boot_cleanup() {
                            losetup -d "$LOOPDEV" 2>/dev/null; }
     return 0
 }
-trap 'boot_cleanup; cleanup' EXIT INT TERM
+# Every exit path records a result, including die2 and a signal. Run A left
+# no record at all; that is precisely what C5 is meant to prevent.
+trap 'RC_TRAP=$?; boot_cleanup
+      [ "${FINISHED:-0}" -eq 1 ] || finish ABORTED "$RC_TRAP"
+      cleanup' EXIT INT TERM
 
 # ---- 0. admission --------------------------------------------------------
 # C3. Run A died inside APT because a tier-1-rejected set (the MTA pair) was
@@ -391,7 +397,7 @@ mount "${LOOPDEV}p2" "$C/mnt/root" || die2 "cannot mount root"
 log "copying the composed tree"
 rsync -aHAX --numeric-ids \
       --exclude='/proc/*' --exclude='/sys/*' --exclude='/dev/*' --exclude='/run/*' \
-      "$M/" "$B/mnt/root/" > "$B/rsync.log" 2>&1 || die2 "rsync failed, see $B/rsync.log"
+      "$M/" "$C/mnt/root/" > "$B/rsync.log" 2>&1 || die2 "rsync failed, see $B/rsync.log"
 
 # SQUASH_EXCLUDES drops proc, sys, dev, run, tmp and var/tmp from every
 # artefact -- the DIRECTORIES, not just their contents. That is right for an
@@ -400,21 +406,21 @@ rsync -aHAX --numeric-ids \
 # them. Tiers 1 and 2 never saw this because mount_chroot_fs mkdir -p's them
 # first. Creating them here is image scaffolding, exactly like the kernel.
 log "creating runtime mountpoints (excluded from artefacts by design)"
-for d in proc sys dev run tmp var/tmp; do mkdir -p "$B/mnt/root/$d"; done
-chmod 555 "$B/mnt/root/proc" "$B/mnt/root/sys"
-chmod 755 "$B/mnt/root/dev"  "$B/mnt/root/run"
-chmod 1777 "$B/mnt/root/tmp" "$B/mnt/root/var/tmp"
+for d in proc sys dev run tmp var/tmp; do mkdir -p "$C/mnt/root/$d"; done
+chmod 555 "$C/mnt/root/proc" "$C/mnt/root/sys"
+chmod 755 "$C/mnt/root/dev"  "$C/mnt/root/run"
+chmod 1777 "$C/mnt/root/tmp" "$C/mnt/root/var/tmp"
 
 # systemd-boot ships inside systemd, which base already has. BOOTX64.EFI is
 # the removable-media path, so it boots without writing UEFI NVMRAM.
 STUB="$M/usr/lib/systemd/boot/efi/systemd-bootx64.efi"
 [ -f "$STUB" ] || die2 "no systemd-bootx64.efi in the composed tree"
-mkdir -p "$B/mnt/esp/EFI/BOOT" "$B/mnt/esp/loader/entries" "$B/mnt/esp/modfs"
-cp "$STUB" "$B/mnt/esp/EFI/BOOT/BOOTX64.EFI"
-cp "$M/boot/vmlinuz-${KVER}"    "$B/mnt/esp/modfs/vmlinuz"
-cp "$M/boot/initrd.img-${KVER}" "$B/mnt/esp/modfs/initrd.img"
-printf 'default modfs\ntimeout 0\nconsole-mode max\n' > "$B/mnt/esp/loader/loader.conf"
-cat > "$B/mnt/esp/loader/entries/modfs.conf" <<ENTRY
+mkdir -p "$C/mnt/esp/EFI/BOOT" "$C/mnt/esp/loader/entries" "$C/mnt/esp/modfs"
+cp "$STUB" "$C/mnt/esp/EFI/BOOT/BOOTX64.EFI"
+cp "$M/boot/vmlinuz-${KVER}"    "$C/mnt/esp/modfs/vmlinuz"
+cp "$M/boot/initrd.img-${KVER}" "$C/mnt/esp/modfs/initrd.img"
+printf 'default modfs\ntimeout 0\nconsole-mode max\n' > "$C/mnt/esp/loader/loader.conf"
+cat > "$C/mnt/esp/loader/entries/modfs.conf" <<ENTRY
 title   modfs composed system
 linux   /modfs/vmlinuz
 initrd  /modfs/initrd.img
