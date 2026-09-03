@@ -74,13 +74,12 @@ RUN_ID="${NAME}-${RUN_TS}"
 BOOT_ROOT="${RESULTS_DIR}/boot"
 mkdir -p "$BOOT_ROOT"
 B="$(safe_child "$BOOT_ROOT" "$RUN_ID")"
-C_IMG=""; C_VARS=""
 [ -e "$B" ] && die2 "run bundle already exists: $B"
 mkdir -p "$B" || die2 "cannot create run bundle: $B"
-SERIAL="$B/serial.log"; IMG="$C_IMG"; VARS="$C_VARS"
+SERIAL="$B/serial.log"
 # Scratch for this run stays in BUILD_DIR; only evidence lands in the bundle.
 C="${BUILD_DIR}/boot-${RUN_ID}"
-C_IMG="$C/disk.img"; C_VARS="$C/OVMF_VARS.fd"
+IMG="$C/disk.img"; VARS="$C/OVMF_VARS.fd"
 require_no_mounts "$C"
 rm -rf -- "$C"; mkdir -p "$C"/{upper,work,merged}
 M="$C/merged"
@@ -241,16 +240,25 @@ with open(out, 'w', encoding='utf-8') as f:
 print("  probes for %d module(s)" % sum(1 for m in mods if m in probes))
 PY
 
-# The boot matrix needs to know which units are EXPECTED to start. Take that
-# from what the composed tree actually enables, not from a hand-written list:
-# a unit that is absent, masked or never enabled is exactly the failure mode a
-# "list the failed units" check cannot see.
+# The boot matrix asserts the units the MODULES bring, not base's background
+# services: a unit that is absent, masked or never enabled is exactly the
+# failure mode a "list the failed units" check cannot see.
+#
+# Enable symlinks point at ABSOLUTE paths inside the guest root
+# (/lib/systemd/system/nginx.service). Testing -e here resolves them against
+# the HOST, where they usually do not exist -- which silently dropped
+# nginx.service and kept only those base units the host happens to have
+# installed too. Test the link itself, never its target.
 : > "$M/etc/modfs-units"
-for wants in "$M"/etc/systemd/system/*.target.wants "$M"/usr/lib/systemd/system/*.target.wants; do
-    [ -d "$wants" ] || continue
-    for u in "$wants"/*.service; do
-        [ -e "$u" ] || continue
-        basename "$u"
+for m in "${MODULES[@]}"; do
+    [ "$m" = base ] && continue
+    for wants in "$C/ro_${m}"/etc/systemd/system/*.target.wants \
+                 "$C/ro_${m}"/usr/lib/systemd/system/*.target.wants; do
+        [ -d "$wants" ] || continue
+        for u in "$wants"/*.service; do
+            [ -L "$u" ] || [ -f "$u" ] || continue
+            basename "$u"
+        done
     done
 done | sort -u > "$M/etc/modfs-units"
 log "expected units: $(tr '\n' ' ' < "$M/etc/modfs-units")"
