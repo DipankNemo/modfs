@@ -27,6 +27,7 @@ def main(argv):
     scripts = arg(argv, '--scripts'); merged = arg(argv, '--merged')
     work = arg(argv, '--work')
     idx, n = arg(argv, '--index'), arg(argv, '--n')
+    admitted = arg(argv, '--admitted', 'unknown')
     mount_ms = arg(argv, '--mount-ms'); rec_ms = arg(argv, '--reconcile-ms')
     tot_ms = arg(argv, '--total-ms')
     layers = [(a.split('=', 1)[0], a.split('=', 1)[1]) for a in argv if '=' in a
@@ -90,12 +91,15 @@ def main(argv):
 
     ok = pkg_ok and not alt_bad and ld_ok and audit_ok
     print(','.join(str(x) for x in [
-        idx, n, ' '.join(name for name, _ in layers),
+        idx, n, ' '.join(name for name, _ in layers), admitted,
         mount_ms, rec_ms, tot_ms,
         len(expected), len(actual), int(pkg_ok),
         len(want), len(alt_bad),
         len(ld_expected), len(ld_actual), int(ld_ok), int(audit_ok),
-        'PASS' if ok else 'FAIL']))
+        # A structurally clean composition of a tier-1-rejected set is a
+        # known-negative observation, never a verification.
+        ('PASS' if admitted != 'known-negative' else 'KNOWN_NEGATIVE')
+        if ok else 'FAIL']))
     if not ok:
         miss = sorted(expected - actual)[:5]
         if miss: sys.stderr.write("  missing packages: %s\n" % ', '.join(miss))

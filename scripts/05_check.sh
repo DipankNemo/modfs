@@ -12,6 +12,7 @@
 #   CLASS 3  declared conflict -- Conflicts:/Breaks:, virtual names resolved
 #   CLASS 4  file collision -- two packages own one path, Replaces honoured
 #   CLASS 6  implicit base upgrade -- a delta replaces an inherited package
+#   CLASS 7  identity collision -- two modules give one uid/gid two meanings
 # Class 5 (state divergence) is deliberately absent: it ALWAYS occurs, and is
 # handled by reconciliation at compose time rather than by rejection.
 #
@@ -42,6 +43,8 @@ source "${HERE}/scripts/lib.sh"
 die2() { printf '\033[1;31m[FAIL]\033[0m %s\n' "$*" >&2; exit 2; }
 
 [ $# -ge 1 ] || die2 "usage: $0 <module> [module...]"
+# C1: identifiers reach paths and mount options; validate at the boundary.
+for m in "$@"; do valid_ident "$m" || die2 "invalid module name: '$m'"; done
 
 # Probe the report FILE, not its directory. A writable directory is not
 # enough: an earlier root-run check leaves a root-owned report behind, and a
@@ -453,6 +456,83 @@ else:
             print("      ... and %d more" % (len(soft) - 10))
     if not hard:
         print("\n    no unexplained file collisions  [OK]")
+
+# ------------------------------------------------- CLASS 7: identity
+print("\n" + "=" * 72)
+print(" CLASS 7. IDENTITY COLLISION  (accounts, and the units that name them)")
+print("=" * 72)
+
+# /etc/passwd, /etc/group, /etc/shadow and /etc/gshadow are rewritten whole by
+# maintainer scripts. They are not package-owned, so class 4 never sees them,
+# and OverlayFS takes the top layer's copy ENTIRE -- it cannot union text
+# records. Two modules that independently allocate the same number to
+# different names cannot be reconciled by any merge: the numbers themselves
+# disagree, and files on disk are owned by the number.
+#
+# This check REJECTS such sets. It does not repair them. Deterministic global
+# id allocation and inode remapping are Future Work.
+have_accounts = [m for m in ['base'] + modules
+                 if isinstance((docs.get(m) or base_doc).get('accounts'), dict)]
+if len(have_accounts) < len(modules) + 1:
+    WARNINGS += 1; WARN_REASONS.append("class 7 not checked (manifest has no accounts)")
+    missing = [m for m in ['base'] + modules if m not in have_accounts]
+    print("\n    SKIPPED -- no account records in: %s" % ', '.join(missing))
+    print("    regenerate with 06_extract_metadata.sh; class 7 was NOT checked")
+else:
+    name_ids = defaultdict(lambda: defaultdict(list))   # kind -> name -> id -> [mods]
+    id_names = defaultdict(lambda: defaultdict(list))
+    merged_users, merged_groups = {}, {}
+    for m in ['base'] + modules:
+        d = docs.get(m) or base_doc
+        acc = d.get('accounts') or {}
+        for n, rec in (acc.get('users') or {}).items():
+            name_ids[('user', n)][rec['uid']].append(m)
+            id_names[('user', rec['uid'])][n].append(m)
+            merged_users.setdefault(n, rec['uid'])
+        for n, rec in (acc.get('groups') or {}).items():
+            name_ids[('group', n)][rec['gid']].append(m)
+            id_names[('group', rec['gid'])][n].append(m)
+            merged_groups.setdefault(n, rec['gid'])
+
+    collisions = 0
+    for (kind, n), ids in sorted(name_ids.items()):
+        if len(ids) > 1:
+            collisions += 1; ERRORS += 1
+            print("    IDENTITY COLLISION %s '%s' has %d ids: %s"
+                  % (kind, n, len(ids),
+                     ', '.join("%s in %s" % (i, '+'.join(ms)) for i, ms in sorted(ids.items()))))
+    for (kind, i), names in sorted(id_names.items()):
+        if len(names) > 1:
+            collisions += 1; ERRORS += 1
+            print("    IDENTITY COLLISION %s id %s claimed by %d names: %s"
+                  % (kind, i, len(names),
+                     ', '.join("%s (%s)" % (n, '+'.join(ms)) for n, ms in sorted(names.items()))))
+
+    # Every identity a unit names must exist somewhere in the merged view. A
+    # name that resolves nowhere fails at service start, not at compose time.
+    unresolved = 0
+    for m in ['base'] + modules:
+        d = docs.get(m) or base_doc
+        for unit, rec in sorted((d.get('units') or {}).items()):
+            wanted = []
+            if rec.get('user'):  wanted.append(('user', rec['user'], merged_users))
+            if rec.get('group'): wanted.append(('group', rec['group'], merged_groups))
+            for g in (rec.get('supplementary') or []):
+                wanted.append(('group', g, merged_groups))
+            for kind, nm, table in wanted:
+                # systemd resolves a bare number directly; only names need an
+                # entry. Values containing '%' are SPECIFIERS substituted at
+                # runtime -- base's user@.service declares User=%i, which is
+                # the instance name, not an account. Treating those as literal
+                # names rejects every set that contains base.
+                if '%' in nm or nm.isdigit() or nm in table: continue
+                unresolved += 1; ERRORS += 1
+                print("    UNRESOLVED IDENTITY %s: %s '%s' (from %s) exists in no layer"
+                      % (unit, kind, nm, m))
+
+    if not collisions and not unresolved:
+        print("\n    %d user(s), %d group(s) across the set, no id reused  [OK]"
+              % (len(merged_users), len(merged_groups)))
 
 # ------------------------------------------------- verdict
 print("\n" + "=" * 72)

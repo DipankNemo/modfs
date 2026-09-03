@@ -26,6 +26,8 @@ need_root
 
 [ $# -ge 2 ] || die "usage: $0 base <module> [module...]"
 MODULES=("$@")
+# C1: identifiers reach paths and mount options; validate at the boundary.
+for m in "${MODULES[@]}"; do require_ident "$m" "module name"; done
 
 C="${BUILD_DIR}/compose"
 rm -rf "$C"; mkdir -p "$C"/{upper,work,merged}

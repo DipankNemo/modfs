@@ -68,6 +68,38 @@ remounted as a lowerdir. **31 checks, 31 passed** — 30 until a `python3-yaml` 
 | 4 | File collision | Different packages own the same path | Intersect per-module `<name>.files.json.zst` sidecars; honour `Replaces:` and diversions | Reject — **implemented** |
 | 5 | State divergence | Registry files rewritten by every module | Structural, always occurs | Reconcile or regenerate |
 | 6 | Implicit base upgrade | Delta upgrades a package inherited from base | Compare delta vs parent versions | Prevent; detect recurrence |
+| 7 | **Identity collision** | Two modules independently allocate the same UID/GID to different names | Compare account records across manifests | Reject — **implemented** |
+
+### Class 7 — identity collision
+
+Discovered by external audit, not by any check the project had. `/etc/passwd`,
+`/etc/group`, `/etc/shadow` and `/etc/gshadow` are rewritten wholesale by
+maintainer scripts. They are **not package-owned**, so class 4 never sees them,
+and OverlayFS takes the top layer's copy *entire* — it cannot union text
+records.
+
+Four modules in the catalogue independently allocate the **same numbers to
+different names**:
+
+| Module | Account | UID | Group | GID |
+|---|---|---:|---|---:|
+| `mta-msmtp` | `msmtp` | 103 | `msmtp` | 104 |
+| `redis` | `redis` | 103 | `redis` | 104 |
+| `tcpdump` | `tcpdump` | 103 | `tcpdump` | 104 |
+| `memcached` | `memcache` | 103 | `memcache` | 104 |
+
+In a memcached-highest composition, `redis-server.service` declares
+`User=redis` which resolves nowhere, while Redis's files — owned by the number
+`103:104` — read as `memcache`. Both tier 1 and tier 2 previously accepted
+`memcached + redis`.
+
+This is **not repairable by a record union**: the numbers themselves disagree,
+and files on disk are owned by the number, not the name. Stage `05` therefore
+rejects such sets and does not attempt to fix them. Deterministic global
+UID/GID allocation and inode remapping are Future Work.
+
+Measured: **6 of 351 ordinary pairs** are rejected by class 7 — exactly the
+C(4,2) combinations of the four colliding modules.
 
 ### Untested candidates
 - **Whiteouts** — a module removing a base file; changes ordering semantics
@@ -201,7 +233,7 @@ alone are ~2×10⁹. Three tiers exploit the cost asymmetry:
 |---|---|---|---|
 | 1 | Metadata check | **28 ms** measured (3 654 checks in 102 s, 8 jobs) | thousands |
 | 2 | Compose + verify | **155 ms** at N=2, **622 ms** at N=27, measured | thousands — all 351 pairs in ≈55 s |
-| 3 | QEMU boot test | ~60 s, *estimated, not yet run* | tens |
+| 3 | QEMU boot test | ~8 min end-to-end, measured once | tens |
 
 **The original cost estimates were wrong, and the correction matters.** Tier 2
 was assumed to cost ~10 s per composition; it costs 155 ms — **64× cheaper**.
@@ -214,6 +246,17 @@ which are within one order of magnitude of each other. It is between tier 2 and
 tier 3, which is 100× more expensive still. Stratified sampling is justified for
 boot testing; for composition it is a convenience, not a necessity — exhaustive
 tier-2 coverage of all pairs is affordable and should be reported as such.
+
+**Admission order is a rule, not a convention:**
+
+    bundle integrity -> tier-1 admission -> compose/reconcile -> tier-2/3 verification
+
+Tier 2 previously composed a tier-1-rejected set and labelled it `PASS`, and
+tier-3 Run A bypassed admission entirely and died inside APT. Stages `10` and
+`11` now verify each artefact against the digest in its own manifest, then run
+tier-1 admission, and refuse to compose a rejected set. A deliberate negative
+requires `--known-negative`, which records the expected rejection and reports
+`KNOWN_NEGATIVE` — never `admitted` or `verified`.
 
 Build 30–40 small modules once; check all pairs and triples exhaustively;
 compose a stratified sample; boot-test the interesting cases. Tier 1 is
@@ -329,12 +372,22 @@ Zero version skew and zero base drift among the 27 well-formed modules is the
 central result: snapshot pinning and the base `full-upgrade` hold across 351
 sibling pairs, not just the three originally measured.
 
-**Tier-2 coverage is exhaustive at N=2: all 351 pairs composed and verified,
-351 passed, 0 failed**, in 58.8 s total (median 163 ms each). Every pair's
-dpkg status was the exact union of its layers, no alternatives group was short
-a candidate, `/etc/ld.so.cache` was *exactly* the union in all 351, and
-`dpkg --audit` was clean throughout. This is not a sample: it is every pair the
-catalogue admits.
+**All 351 ordinary pairs were physically composed and passed every structural
+check**, in 58.8 s total (median 163 ms each): dpkg status the exact union of
+the layers, no alternatives group short a candidate, `/etc/ld.so.cache`
+*exactly* the union in all 351, `dpkg --audit` clean throughout.
+
+The admission wording matters, and the earlier phrasing was wrong. That sweep
+**bypassed tier-1 admission**: it composed every pair regardless of verdict. Of
+the 351, tier 1 as it then stood admitted **350 and rejected 1** — the
+`mta-msmtp + mta-nullmailer` virtual-conflict pair, which was composed anyway
+and reported `PASS`. Structural success is not package-semantic success, and
+that single row is the proof.
+
+Under the checks as they now stand, class 7 rejects a further 6 pairs, so the
+same space is **344 admitted, 7 rejected**. Stage `10` no longer composes a
+rejected set without `--known-negative`, and labels such runs
+`KNOWN_NEGATIVE`.
 
 Above N=2 the coverage is a stratified sample, 96 real compositions from N=2
 to N=27: **96 passed, 0 failed**.
@@ -373,7 +426,8 @@ artefacts alone. Nothing above N=3 had ever been composed before this sweep.
 | `07_smoke_test.sh` | Compose a set, chroot in, and check it actually works: `dpkg --audit`, `apt-get -s install`, `ldconfig -p`, per-module probes |
 | `08_build_catalogue.sh` | Batch-build every module in `specs/modules.yaml`; reports sizes against `MODULE_MAX_MB` |
 | `09_run_combinations.sh` | Tier 1: run `05_check.sh` over all pairs and triples; tabulate verdicts by conflict class into a CSV |
-| `10_compose_sweep.sh` | Tier 2: actually compose sampled sets from N=2 to N=27 and verify status, alternatives, linker cache and dpkg state against the layers |
+| `10_compose_sweep.sh` | Tier 2: compose admitted sets from N=2 to N=27 and verify status, alternatives, linker cache and dpkg state against the layers |
+| `11_boot_test.sh` | Tier 3: pack a UEFI image, boot it under QEMU, and record a per-unit causal matrix from inside the running system |
 | `reconcile.py`, `verify_compose.py` | Shared helpers: class-5 registry merge; per-composition verification |
 
 `config.sh` holds snapshot ID, suite, paths, compression.
@@ -396,7 +450,70 @@ correct node identity happen to require the same thing.
 
 ---
 
-## 9. Plan
+## 9. Tier-3 status
+
+Two tier-3 runs exist, and only one of them is a boot test.
+
+**Run A** — 26 modules — **did not boot.** It failed during the pre-boot kernel
+transaction with `Unmet dependencies`, because the set contained the
+tier-1-rejected `mta-msmtp + mta-nullmailer` pair and admission was never
+consulted. It is evidence for the admission-gating defect, not a boot result.
+The set is also rejected by class 7, since it contains all four
+UID-103 modules.
+
+**Run B** — `base + webserver + apache` — is **one successful UEFI/systemd
+boot** in which the expected service failure occurred: nginx started, Apache
+did not, `multi-user.target` was reached, `dpkg --audit` and both
+configuration probes passed, and the guest powered off cleanly. The port-80
+explanation was an **inference**: the Apache journal and socket ownership were
+not captured. Stage `11` now records `is-enabled`, `is-active`, `SubState`,
+`ExecMainStatus`, `NRestarts`, `Result`, `journalctl -b -u` and `ss -ltnup`
+per expected unit, which turns that inference into recorded cause — but the
+four-run causal matrix has not yet been executed.
+
+Nothing here licenses "tier 3 passes". The defensible claim is: *one composed
+set booted under UEFI and reproduced a known runtime-negative interaction.*
+
+## 10. Future Work
+
+Carried from the external audit of 3 September 2026 (`docs/ASSESSMENT.md`),
+deliberately **not** implemented in this cycle. Listed so the boundary between
+what is verified and what is merely intended stays explicit.
+
+**High severity**
+
+| | |
+|---|---|
+| H1 | Artifact, manifest, sidecar and parent generation are not cryptographically bound at consumption time |
+| H2 | Publication is only partly atomic and can mix generations |
+| H3 | Class-4 `Replaces` suppression does not implement Debian's file-overwrite semantics |
+| H4 | Class-4 inventory covers only part of filesystem semantics |
+| H5 | Class 5 is not closed: debconf and dpkg trigger registrations still last-win |
+| H6 | Removal, whiteout and opaque-directory composition are effectively untested |
+| H7 | Reconciler conflict handling is incomplete and sometimes order-dependent |
+| H8 | Tier-2 verification is materially weaker than its documentation says |
+| H9 | The monolithic comparison path is not a controlled equivalent baseline |
+| H10 | Signal cleanup can tear down resources and then continue execution |
+| H11 | The tier-1 sweep can report success when workers or output accounting fail |
+| H12 | Privileged composition executes artifact-controlled code on the host side of the VM boundary |
+
+**Medium severity**
+
+| | |
+|---|---|
+| M1 | Stage `07` can finish successfully after partial harness failure |
+| M2 | `03_analyse_overlap.sh` overstates what byte-identical regular files prove |
+| M3 | Reproducibility normalization can affect semantics |
+| M4 | Architecture and multiarch handling is intentionally narrow but should be explicit |
+| M5 | Module-level dependency declarations exist in schema but are not enforced |
+| M6 | Names, CSV and TSV formats assume trusted simple tokens |
+| M7 | Documentation and status drift are material |
+
+Also deferred: the class-7 *repair* path — deterministic global UID/GID
+allocation, or creating identities at image construction and remapping every
+affected inode. Stage `05` detects and rejects only.
+
+## 11. Plan
 
 | Week | Dates | Work |
 |---|---|---|
@@ -416,7 +533,7 @@ real hardware · multi-distro · any dependency solver of our own.
 
 ---
 
-## 10. Open questions
+## 12. Open questions
 - debconf: reconcile or document as limitation?
 - Runtime conflicts: implement the systemd/port heuristic, or document only?
 - How many generations of artefacts to retain, given no rollback requirement?

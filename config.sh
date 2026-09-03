@@ -44,6 +44,12 @@ BUILD_DIR="${ROOT}/build"         # scratch: chroots, overlay dirs
 IMAGE_DIR="${ROOT}/images"        # final .img files
 LOG_DIR="${ROOT}/logs"
 
+# C5. Evidence must outlive the scratch it was produced in. BUILD_DIR is
+# explicitly disposable; run bundles are not, so they live here and are never
+# reused or overwritten -- a run directory is timestamped and immutable once
+# written, and a name collision is an error rather than a deletion.
+RESULTS_DIR="${ROOT}/results"
+
 # ---- Module catalogue -----------------------------------------------------
 # Modules are chosen adversarially and kept small: the evaluation needs MANY
 # of them (all pairs and triples), so build time and disk dominate. A module
@@ -104,5 +110,5 @@ SQUASH_XATTR_EXCLUDE='^trusted\.overlay\.(uuid|origin)$'
 
 export SNAPSHOT_ID SNAPSHOT_BASE SOURCE_EPOCH SUITE ARCH COMPONENTS
 export SQUASH_XATTR_EXCLUDE
-export MODFS_SRC ROOT SPEC_DIR MOD_DIR BUILD_DIR IMAGE_DIR LOG_DIR
+export MODFS_SRC ROOT SPEC_DIR MOD_DIR BUILD_DIR IMAGE_DIR LOG_DIR RESULTS_DIR
 export SQUASH_COMP SQUASH_LEVEL SQUASH_EXCLUDES MODULE_MAX_MB

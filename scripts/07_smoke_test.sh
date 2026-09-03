@@ -37,6 +37,8 @@ die2() { printf '\033[1;31m[FAIL]\033[0m %s\n' "$*" >&2; exit 2; }
 [ "$(id -u)" -eq 0 ] || die2 "must run as root (mounts + chroot)"
 [ $# -ge 2 ] || die2 "usage: $0 base <module> [module...]"
 MODULES=("$@")
+# C1: identifiers reach paths and mount options; validate at the boundary.
+for m in "${MODULES[@]}"; do valid_ident "$m" || die2 "invalid module name: '$m'"; done
 
 # The probes ARE the functional test. Without the catalogue this script
 # degenerates into static checks that would still print a pass, which is the

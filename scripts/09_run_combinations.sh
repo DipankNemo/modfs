@@ -46,6 +46,9 @@ if [ "${1:-}" = "--worker" ]; then
     DECL=$(printf   '%s\n' "$OUT" | grep -cE '^ +[^ ]+ (CONFLICTS|BREAKS) ' || true)  # class 3
     DRIFT=$(printf  '%s\n' "$OUT" | grep -c 'base package(s) upgraded' || true)       # class 6
     NOCOMP=$(printf '%s\n' "$OUT" | grep -c 'NOT COMPOSABLE' || true)          # PRE
+    # Anchor on the finding lines' indent: the section HEADER also contains
+    # the words "IDENTITY COLLISION", and matching it counts every run.
+    IDENT=$(printf  '%s\n' "$OUT" | grep -cE '^    (IDENTITY COLLISION|UNRESOLVED IDENTITY)' || true)  # class 7
     FILES=$(printf  '%s\n' "$OUT" | grep -c '^    FILE COLLISION ' || true)   # class 4
     # Suppressed collisions are not errors, but they are the evidence that
     # class 4 actually ran against real data rather than finding nothing.
@@ -58,9 +61,9 @@ if [ "${1:-}" = "--worker" ]; then
         *) VERDICT=BROKEN ;;
     esac
 
-    printf '%s,%d,%s,%s,%d,%s,%s,%d,%d,%d,%d,%d,%d,%d\n' \
+    printf '%s,%d,%s,%s,%d,%s,%s,%d,%d,%d,%d,%d,%d,%d,%d\n' \
         "$TAG" "${#MODS[@]}" "${MODS[*]}" "$VERDICT" "$RC" \
-        "$ERR" "$WARN" "$BENIGN" "$SKEW" "$DECL" "$FILES" "$FSUP" "$DRIFT" "$NOCOMP" \
+        "$ERR" "$WARN" "$BENIGN" "$SKEW" "$DECL" "$FILES" "$FSUP" "$IDENT" "$DRIFT" "$NOCOMP" \
         > "${OUTDIR}/${TAG}.csv"
 
     [ "$KEEP" = "1" ] || rm -f "${LOG_DIR}/check-${TAG}.txt"
@@ -79,6 +82,7 @@ while [ $# -gt 0 ]; do
     esac
 done
 case "$MAXN" in 2|3) ;; *) die2 "--max-n must be 2 or 3" ;; esac
+require_uint "$JOBS" 1 256 "--jobs"
 [ -f "${MOD_DIR}/base.json" ] || die2 "no ${MOD_DIR}/base.json -- build base first"
 
 # Modules are the catalogue entries that actually built. A module that failed
@@ -95,6 +99,8 @@ for m in (doc.get('modules') or []):
 PY
 )
 [ "${#MODULES[@]}" -ge 2 ] || die2 "fewer than 2 built modules found -- run 08_build_catalogue.sh"
+# C1: identifiers reach paths and mount options; validate at the boundary.
+for m in "${MODULES[@]}"; do valid_ident "$m" || die2 "invalid module name in catalogue: '$m'"; done
 
 W="${BUILD_DIR}/combinations"
 rm -rf "$W"; mkdir -p "$W/lines"
@@ -117,7 +123,7 @@ ELAPSED=$(( $(date +%s) - START ))
 
 mkdir -p "$(dirname "$CSV")" 2>/dev/null || true
 {
-    echo "combination,n,modules,verdict,exit,errors,warnings,benign_overlap,version_skew,declared_conflict,file_collision,file_collision_suppressed,base_drift,not_composable"
+    echo "combination,n,modules,verdict,exit,errors,warnings,benign_overlap,version_skew,declared_conflict,file_collision,file_collision_suppressed,identity_collision,base_drift,not_composable"
     cat "$W"/lines/*.csv | sort
 } > "$CSV" || die2 "cannot write ${CSV}"
 
@@ -145,6 +151,7 @@ for label, col in (("1 benign overlap", 'benign_overlap'),
                    ("3 declared conflict", 'declared_conflict'),
                    ("4 file collision", 'file_collision'),
                    ("4 collisions suppressed", 'file_collision_suppressed'),
+                   ("7 identity collision", 'identity_collision'),
                    ("6 implicit base upgrade", 'base_drift'),
                    ("0 not composable", 'not_composable')):
     hit = sum(1 for r in rows if int(r[col]) > 0)
@@ -160,6 +167,7 @@ if rej:
         if int(r['version_skew']): why.append('skew')
         if int(r['declared_conflict']): why.append('declared')
         if int(r['file_collision']): why.append('file-collision')
+        if int(r['identity_collision']): why.append('identity')
         if int(r['not_composable']): why.append('not-composable')
         print("    %-34s %s" % (r['modules'], ','.join(why) or '?'))
 PY

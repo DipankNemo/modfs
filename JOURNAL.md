@@ -861,3 +861,61 @@ Evaluation chapters — do not skip it.
   image and was never meant to be. It carries content; mountpoints, a kernel
   and a bootloader are the image builder's job. Tier 3 is what made that
   boundary explicit.
+
+## 2026-09-03 (external audit: C1, C2, C3, C5 and the causal boot matrix)
+- An external read-only assessment (docs/ASSESSMENT.md) found four critical
+  issues in scope this cycle. Its file:line references were accurate.
+- C1 IDENTIFIER VALIDATION. `--name` in 11 was truncated but never validated
+  and fed a root `rm -rf`; `../../modules` would have deleted the artefact
+  store. lib.sh now has valid_ident/require_ident (allowlist
+  [A-Za-z0-9][A-Za-z0-9._-]*, so no slash and no leading dot, which makes "."
+  and ".." unrepresentable), require_uint, safe_child (proves a direct child
+  of a fixed root), require_no_mounts (refuses a mountpoint or symlink) and
+  safe_rm_rf. Applied in stages 02, 04, 05, 06, 07, 08, 09, 10, 11.
+- C2 CLASS 7, IDENTITY COLLISION. Confirmed the audit's finding directly:
+  mta-msmtp/msmtp, redis/redis, tcpdump/tcpdump and memcached/memcache all
+  claim uid 103 and gid 104. 06 now extracts passwd/group records and every
+  systemd User=/Group=/SupplementaryGroups= into the manifest; 05 rejects a
+  set where one name has two ids or one non-base id has two names, and
+  verifies every unit identity resolves in the merged view.
+  MEASURED: 6 of 351 ordinary pairs now rejected -- exactly C(4,2) over the
+  four colliding modules -- taking pair rejections from 28 to 34 of 378.
+  Detection only. Deterministic global id allocation and inode remapping are
+  Future Work, because the numbers themselves disagree and a record union
+  cannot fix that.
+  Two bugs found by testing against real data rather than fixtures:
+    * /etc/shadow is 0640, so extraction crashed as non-root. It now degrades
+      with a warning instead of losing the whole manifest.
+    * base ships user@.service with `User=%i`, a systemd SPECIFIER, not an
+      account. Treating it literally rejected EVERY set containing base.
+      Values containing '%' are now skipped.
+- C3 ADMISSION GATING. bundle integrity -> tier-1 admission -> compose ->
+  verify is now enforced in 10 and 11. Both refuse a tier-1-rejected set
+  unless --known-negative is given, which records the expectation and labels
+  the outcome KNOWN_NEGATIVE, never "admitted" or "verified". 10 gained an
+  `admitted` CSV column.
+- C5 EVIDENCE. Boot runs are now timestamped, immutable bundles under
+  RESULTS_DIR (outside scratch); an existing bundle is an error, not something
+  to delete. run.json and source.txt (commit, dirty file list, host, QEMU and
+  OVMF versions, script/config/spec hashes) are written BEFORE any mount,
+  chroot or image write; result.json on every exit path.
+- CAUSAL BOOT MATRIX. The guest harness was a startup oneshot ordered after
+  multi-user.target, so `is-system-running --wait` inside it could never
+  return -- it was itself the job holding boot open. It is now started by a
+  TIMER outside the boot transaction, with a bounded wait and a job-queue
+  drain. Per expected unit it records is-enabled, is-active, SubState,
+  ExecMainStatus, NRestarts, Result and `journalctl -b -u`, plus one
+  `ss -ltnup`. Expected units come from what the composed tree actually
+  enables, so an absent or masked unit is visible -- listing failed units
+  never was.
+  Verified on a synthetic port-collision log: the matrix reports nginx active
+  and apache2 failed with exit 1, `ss` shows nginx owning 0.0.0.0:80, and the
+  journal line "Address already in use ... 0.0.0.0:80" lands in journal.txt.
+  Note apache's PROBE passes -- apache2ctl configtest is syntactically fine --
+  while its unit fails. That gap is the point of tier 3.
+- CLAIMS CORRECTED in ARCHITECTURE: seven classes; the 351-pair sweep bypassed
+  admission and was 350 admitted + 1 composed-despite-rejection (344 + 7 under
+  the current checks); Run A did not boot and is evidence for C3; Run B is one
+  UEFI boot with an expected service failure whose cause was inferred, not
+  recorded. Future Work lists H1-H12 and M1-M7 by name.
+- NOT DONE, deliberately: C4 (positive dependency closure) and every H/M item.

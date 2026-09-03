@@ -62,6 +62,9 @@ while [ $# -gt 0 ]; do
 done
 
 [ -n "$NAME" ] || die "usage: $0 <name> [--parent NAME|none] [--version V] [--requested \"pkg ...\"]"
+# C1: identifiers reach paths and mount options; validate at the boundary.
+require_ident "$NAME" "module name"
+case "$PARENT" in ""|none|NONE|None) ;; *) require_ident "$PARENT" "parent module name" ;; esac
 
 # Base keeps its full rootfs in <name>.dir; deltas keep only the overlay
 # upperdir in <name>.upper. Either one carries a complete dpkg status file:
@@ -279,6 +282,91 @@ if os.path.exists(sqsh):
 else:
     artifact = None
 
+# ------------------------------------------------- accounts and unit identity
+# Conflict class 7. /etc/passwd, /etc/group, /etc/shadow and /etc/gshadow are
+# rewritten wholesale by maintainer scripts, so they are NOT package-owned
+# files and never appear in the class-4 sidecar. OverlayFS takes the top
+# layer's copy entire and cannot union conflicting numbers: four modules in
+# this catalogue independently allocate uid 103 / gid 104 to four different
+# names, so whichever lands on top silently redefines the others' ownership.
+#
+# Only names the module ADDS relative to its parent are recorded -- the same
+# contribution model the package list uses. Password hashes are deliberately
+# NOT stored: verifying that a shadow record exists needs the name only.
+def colon_table(tree, rel, key_at, want):
+    out = {}
+    path = os.path.join(tree, rel)
+    if not os.path.exists(path):
+        return out
+    try:
+        fh = open(path, encoding='utf-8', errors='replace')
+    except OSError as exc:
+        # /etc/shadow is 0640: unreadable without root. Degrade rather than
+        # abort -- a missing shadow record is a check the class-7 verifier can
+        # report as unknown, not a reason to lose the whole manifest.
+        warn("cannot read %s (%s); account records from it are omitted" % (path, exc))
+        return out
+    with fh as f:
+        for line in f:
+            line = line.rstrip('\n')
+            if not line or line.startswith('#'):
+                continue
+            parts = line.split(':')
+            if len(parts) <= max([key_at] + [i for i, _ in want]):
+                continue
+            out[parts[key_at]] = {name: parts[i] for i, name in want}
+    return out
+
+def account_view(tree):
+    return (colon_table(tree, 'etc/passwd', 0, [(2, 'uid'), (3, 'gid')]),
+            colon_table(tree, 'etc/group', 0, [(2, 'gid'), (3, 'members')]),
+            set(colon_table(tree, 'etc/shadow', 0, []).keys()),
+            set(colon_table(tree, 'etc/gshadow', 0, []).keys()))
+
+own_u, own_g, own_sh, own_gsh = account_view(tree)
+par_u, par_g, par_sh, par_gsh = account_view(parent_tree) if parent_tree else ({}, {}, set(), set())
+
+users = {n: {'uid': v['uid'], 'gid': v['gid']}
+         for n, v in own_u.items() if n not in par_u}
+groups = {n: {'gid': v['gid'],
+              'members': [x for x in v['members'].split(',') if x]}
+          for n, v in own_g.items() if n not in par_g}
+accounts = {'users': dict(sorted(users.items())),
+            'groups': dict(sorted(groups.items())),
+            'shadow': sorted(own_sh - par_sh),
+            'gshadow': sorted(own_gsh - par_gsh)}
+
+# systemd units name identities that must resolve in the composed account
+# view. Collected over-inclusively (any User=/Group=/SupplementaryGroups=
+# line, not only those under [Service]) because a false positive here costs a
+# harmless extra resolution check while a miss costs a boot failure.
+units = {}
+for unit_dir in ('lib/systemd/system', 'usr/lib/systemd/system', 'etc/systemd/system'):
+    d = os.path.join(tree, unit_dir)
+    if not os.path.isdir(d):
+        continue
+    for entry in sorted(os.listdir(d)):
+        if not entry.endswith(('.service', '.socket', '.mount', '.timer')):
+            continue
+        fp = os.path.join(d, entry)
+        if not os.path.isfile(fp) or os.path.islink(fp):
+            continue
+        rec = {'user': None, 'group': None, 'supplementary': []}
+        try:
+            with open(fp, encoding='utf-8', errors='replace') as f:
+                for line in f:
+                    line = line.strip()
+                    if line.startswith('User=') and not rec['user']:
+                        rec['user'] = line[5:].strip() or None
+                    elif line.startswith('Group=') and not rec['group']:
+                        rec['group'] = line[6:].strip() or None
+                    elif line.startswith('SupplementaryGroups='):
+                        rec['supplementary'] += line[20:].split()
+        except OSError:
+            continue
+        if rec['user'] or rec['group'] or rec['supplementary']:
+            units[entry] = rec
+
 # ---------------------------------------------------------------- assemble
 doc = {
     'schema':   SCHEMA,
@@ -300,6 +388,8 @@ doc = {
 
     'requested': requested,
     'removed':   removed,
+    'accounts':  accounts,
+    'units':     units,
     'artifact':  artifact,
     'packages':  packages,
 }
@@ -324,6 +414,8 @@ print("  packages : %d contributed (%d added, %d upgraded)"
       % (len(packages), added, upgraded))
 print("  removed  : %d" % len(removed))
 print("  requested: %s" % (' '.join(requested) if requested else '<none>'))
+print("  accounts : %d user(s), %d group(s); %d unit(s) name an identity"
+      % (len(users), len(groups), len(units)))
 if artifact:
     print("  artifact : %s (%d bytes)" % (artifact['file'], artifact['bytes']))
     print("  sha256   : %s" % artifact['sha256'])

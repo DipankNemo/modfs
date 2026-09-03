@@ -111,7 +111,8 @@ while IFS=$'\t' read -r name version pkgs snapshot; do
     if [ -n "$snapshot" ]; then
         log "building ${name}: ${pkgs}   [snapshot ${snapshot}]"
     else
-        log "building ${name}: ${pkgs}"
+        require_ident "$name" "catalogue module name"
+    log "building ${name}: ${pkgs}"
     fi
     # MODFS_SNAPSHOT_ID is empty for every normal module, so config.sh keeps
     # its default; only a declared control overrides it.
@@ -135,6 +136,7 @@ echo "========================================================================"
 printf " %-16s %10s  %s\n" "MODULE" "SIZE" "STATUS"
 echo "========================================================================"
 while IFS=$'\t' read -r name version pkgs snapshot; do
+    require_ident "$name" "catalogue module name"
     sqsh="${MOD_DIR}/${name}.sqsh"
     if [ ! -f "$sqsh" ]; then
         printf " %-16s %10s  %s\n" "$name" "-" "FAILED"; continue

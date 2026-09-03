@@ -45,6 +45,9 @@ done
 [ ${#ARGS[@]} -ge 2 ] || die "usage: $0 [--parent NAME] [--version V] [--compare] <name> <pkg> [pkg...]"
 NAME="${ARGS[0]}"
 PKGS=("${ARGS[@]:1}")
+# C1: identifiers reach paths and mount options; validate at the boundary.
+require_ident "$NAME" "module name"
+require_ident "$PARENT" "parent module name"
 
 PARENT_DIR="${MOD_DIR}/${PARENT}.dir"
 [ -d "$PARENT_DIR" ] || die "parent rootfs missing: ${PARENT_DIR} (build base first)"

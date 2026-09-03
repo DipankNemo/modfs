@@ -31,11 +31,13 @@ die2() { printf '\033[1;31m[FAIL]\033[0m %s\n' "$*" >&2; exit 2; }
 [ "$(id -u)" -eq 0 ] || die2 "must run as root (mounts + chroot)"
 
 SEED=1; PLAN="2:30,3:30,5:20,10:10,20:5,27:1"; CSV="${LOG_DIR}/compose-sweep.csv"
+KNOWN_NEG=0
 while [ $# -gt 0 ]; do
     case "$1" in
         --seed) [ $# -ge 2 ] || die2 "--seed needs a value"; SEED="$2"; shift 2 ;;
         --plan) [ $# -ge 2 ] || die2 "--plan needs a value"; PLAN="$2"; shift 2 ;;
         --out)  [ $# -ge 2 ] || die2 "--out needs a value";  CSV="$2";  shift 2 ;;
+        --known-negative) KNOWN_NEG=1; shift ;;
         *) die2 "unknown option: $1" ;;
     esac
 done
@@ -96,6 +98,7 @@ print("  compositions planned: %d" % len(rows))
 for s in skipped: print("  SKIPPED %s" % s)
 PY
 
+require_uint "$SEED" 0 4294967295 "--seed"
 TOTAL=$(wc -l < "$SAMPLES")
 log "tier-2 sweep: ${TOTAL} compositions, seed ${SEED}"
 
@@ -108,12 +111,35 @@ try_mount() {
 }
 now_ms() { date +%s%3N; }
 
-echo "sample,n,modules,mount_ms,reconcile_ms,total_ms,pkg_expected,pkg_actual,pkg_ok,alt_groups,alt_groups_bad,ld_expected,ld_actual,ld_ok,audit_ok,result" > "$CSV"
+echo "sample,n,modules,admitted,mount_ms,reconcile_ms,total_ms,pkg_expected,pkg_actual,pkg_ok,alt_groups,alt_groups_bad,ld_expected,ld_actual,ld_ok,audit_ok,result" > "$CSV"
+
+# C3: integrity before anything else. A composed artefact that does not match
+# its own manifest invalidates every downstream measurement.
+log "verifying bundle integrity"
+ALLMODS=$(cut -f2 "$SAMPLES" | tr ' ' '\n' | sort -u | tr '\n' ' ')
+# shellcheck disable=SC2086
+verify_bundle base $ALLMODS || die2 "bundle integrity failed; refusing to compose"
 
 IDX=0; FAILED=0
 while IFS=$'\t' read -r N MODS; do
     IDX=$((IDX+1))
     SET=(base $MODS)
+    for m in "${SET[@]}"; do valid_ident "$m" || die2 "invalid module name: '$m'"; done
+
+    # C3: tier-1 admission BEFORE composing. A structural PASS on a set tier 1
+    # rejects is not a verification of anything; it is a physical experiment on
+    # an inconsistent set, and must be labelled as such.
+    tier1_admit "$W/tier1.log" "${SET[@]}"; ADM=$?
+    if [ "$ADM" -eq 2 ]; then
+        printf '%d,%d,%s,broken,,,,,,,,,,,,,TIER1_BROKEN\n' "$IDX" "$N" "${SET[*]}" >> "$CSV"
+        FAILED=$((FAILED+1)); continue
+    fi
+    if [ "$ADM" -eq 1 ] && [ "$KNOWN_NEG" -eq 0 ]; then
+        printf '%d,%d,%s,no,,,,,,,,,,,,,NOT_ADMITTED\n' "$IDX" "$N" "${SET[*]}" >> "$CSV"
+        printf '      tier-1 REJECT -- not composed (use --known-negative to force)\n'
+        continue
+    fi
+    ADM_LABEL=yes; [ "$ADM" -eq 1 ] && ADM_LABEL=known-negative
     C="$W/c"; rm -rf "$C"; mkdir -p "$C"/{upper,work,merged}
     M="$C/merged"
     printf '  [%3d/%3d] N=%-3d %s\n' "$IDX" "$TOTAL" "$N" "${MODS:0:64}"
@@ -137,7 +163,7 @@ while IFS=$'\t' read -r N MODS; do
     T1=$(now_ms)
 
     if [ "$OK" -eq 0 ]; then
-        printf '%d,%d,%s,,,,,,,,,,,,,COMPOSE_FAIL\n' "$IDX" "$N" "${SET[*]}" >> "$CSV"
+        printf '%d,%d,%s,%s,,,,,,,,,,,,COMPOSE_FAIL\n' "$IDX" "$N" "${SET[*]}" "$ADM_LABEL" >> "$CSV"
         FAILED=$((FAILED+1)); unmount_all; continue
     fi
 
@@ -145,7 +171,7 @@ while IFS=$'\t' read -r N MODS; do
     if ! python3 "${HERE}/scripts/reconcile.py" --merged "$M" \
              --groups-out "$C/alt.groups" "${LAYERS[@]}" > "$C/reconcile.log" 2>&1; then
         warn "reconciliation failed at N=${N}"
-        printf '%d,%d,%s,,,,,,,,,,,,,RECONCILE_FAIL\n' "$IDX" "$N" "${SET[*]}" >> "$CSV"
+        printf '%d,%d,%s,%s,,,,,,,,,,,,RECONCILE_FAIL\n' "$IDX" "$N" "${SET[*]}" "$ADM_LABEL" >> "$CSV"
         FAILED=$((FAILED+1)); unmount_all; continue
     fi
     while read -r g; do
@@ -163,15 +189,16 @@ while IFS=$'\t' read -r N MODS; do
 
     ROW=$(python3 "${HERE}/scripts/verify_compose.py" \
               --scripts "${HERE}/scripts" --merged "$M" --work "$C" \
-              --index "$IDX" --n "$N" \
+              --index "$IDX" --n "$N" --admitted "$ADM_LABEL" \
               --mount-ms "$((T1-T0))" --reconcile-ms "$((T2-T1))" \
               --total-ms "$((T2-T0))" "${LAYERS[@]}" 2>>"$W/verify.err")
     if [ -z "$ROW" ]; then
         warn "verification crashed at N=${N}; see $W/verify.err"
-        printf '%d,%d,%s,,,,,,,,,,,,,VERIFY_CRASH\n' "$IDX" "$N" "${SET[*]}" >> "$CSV"
+        printf '%d,%d,%s,%s,,,,,,,,,,,,VERIFY_CRASH\n' "$IDX" "$N" "${SET[*]}" "$ADM_LABEL" >> "$CSV"
         FAILED=$((FAILED+1)); unmount_all; continue
     fi
     printf '%s\n' "$ROW" >> "$CSV"
+    # A known-negative that passes structurally is NOT a verification.
     case "$ROW" in *,PASS) ;; *) FAILED=$((FAILED+1)); warn "VERIFY FAILED: ${SET[*]}" ;; esac
     unmount_all
 done < "$SAMPLES"
