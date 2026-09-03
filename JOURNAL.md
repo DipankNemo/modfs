@@ -919,3 +919,39 @@ Evaluation chapters — do not skip it.
   UEFI boot with an expected service failure whose cause was inferred, not
   recorded. Future Work lists H1-H12 and M1-M7 by name.
 - NOT DONE, deliberately: C4 (positive dependency closure) and every H/M item.
+
+## 2026-09-03 (the causal boot matrix: four runs, cause recorded)
+- Four gated tier-3 runs, all tier-1 ADMITTED, all immutable bundles:
+    m1 base+webserver          running   nginx active                ALL GREEN
+    m2 base+apache             running   apache2 active              ALL GREEN
+    m3 base+webserver+apache   degraded  apache2 FAILED, nginx active
+    m4 base+apache+webserver   degraded  apache2 FAILED, nginx active
+- The port-80 story is no longer an inference. journal.txt records:
+      (98)Address already in use: AH00072: could not bind to 0.0.0.0:80
+      (98)Address already in use: AH00072: could not bind to [::]:80
+      no listening sockets available, shutting down
+  and listeners.txt shows nginx holding both 0.0.0.0:80 and [::]:80.
+- THE ORDER REVERSAL IS THE RESULT. m3 and m4 stack the same two modules in
+  opposite orders and Apache fails in BOTH. Layer priority does not decide
+  port ownership. OverlayFS precedence decides which FILE wins; it has no
+  bearing on which process reaches bind() first. This is a startup race
+  between two units systemd has no ordering constraint between, and the
+  composition model cannot influence it.
+  Two samples do not show nginx ALWAYS wins -- only that layer order did not
+  change it. Describe it as a race, not a precedence rule.
+- Sharpest detail for the write-up: in both failing runs BOTH probes PASS.
+  `apache2ctl configtest` reports valid syntax while the service cannot start.
+  Configuration validity is not service health. Every static tier, and the
+  probe itself, says fine; only the running system disagrees.
+- HARNESS GAP found by m2: "ss unavailable". `ss` was present in m1/m3/m4 only
+  because nginx pulls in iproute2; apache does not. The socket evidence the
+  matrix depends on was incidental to module selection. iproute2 is now
+  installed as pack-time observability scaffolding alongside the kernel, on
+  the same argument: it is not module content. m2 should be re-run to complete
+  the matrix.
+- Three pack-stage defects were fixed to get here, all mine, all found by
+  running rather than reading, and all the same shape -- a path correct in one
+  namespace and silently wrong in another: an empty IMG from a reordered
+  assignment; `-e` on enable symlinks resolving guest-absolute targets against
+  the host (which dropped nginx.service and kept 23 irrelevant base units);
+  and sixteen $B/mnt references a two-string sed had missed.

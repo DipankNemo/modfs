@@ -221,8 +221,14 @@ cp -L "$RESOLV_SRC" "$M/etc/resolv.conf" || die2 "cannot stage resolv.conf"
 log "installing kernel into the image (not into any module)"
 in_chroot "$M" apt-get update -qq </dev/null > "$B/apt.log" 2>&1 \
     || die2 "apt update failed in the merged view, see $B/apt.log"
+# iproute2 is here for the same reason as the kernel: it is OBSERVABILITY
+# SCAFFOLDING, not module content. Run m2 (base+apache) reported
+# "ss unavailable" and produced no socket evidence at all, because `ss` only
+# happened to be present in the other runs -- nginx pulls iproute2 in, apache
+# does not. Diagnostic tooling the matrix depends on must be guaranteed, never
+# incidental to which modules were selected.
 in_chroot "$M" apt-get install -y -qq --no-install-recommends \
-    linux-image-generic initramfs-tools </dev/null >> "$B/apt.log" 2>&1 \
+    linux-image-generic initramfs-tools iproute2 </dev/null >> "$B/apt.log" 2>&1 \
     || die2 "kernel install failed, see $B/apt.log"
 # Back to what the modules actually ship, so the image carries no host DNS.
 rm -f "$M/etc/resolv.conf"

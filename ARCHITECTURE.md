@@ -465,14 +465,51 @@ UID-103 modules.
 boot** in which the expected service failure occurred: nginx started, Apache
 did not, `multi-user.target` was reached, `dpkg --audit` and both
 configuration probes passed, and the guest powered off cleanly. The port-80
-explanation was an **inference**: the Apache journal and socket ownership were
-not captured. Stage `11` now records `is-enabled`, `is-active`, `SubState`,
-`ExecMainStatus`, `NRestarts`, `Result`, `journalctl -b -u` and `ss -ltnup`
-per expected unit, which turns that inference into recorded cause — but the
-four-run causal matrix has not yet been executed.
+explanation was an inference; it has since been replaced by direct evidence.
 
-Nothing here licenses "tier 3 passes". The defensible claim is: *one composed
-set booted under UEFI and reproduced a known runtime-negative interaction.*
+### The causal boot matrix
+
+Four gated runs, each an admitted set, each an immutable bundle under
+`$RESULTS_DIR/boot/`:
+
+| Run | Set | systemd | nginx | apache2 | Port 80 owner |
+|---|---|---|---|---|---|
+| m1 | `base webserver` | running | active | — | nginx |
+| m2 | `base apache` | running | — | active | *(not captured)* |
+| m3 | `base webserver apache` | degraded | active | **failed** | nginx |
+| m4 | `base apache webserver` | degraded | active | **failed** | nginx |
+
+The cause is now recorded rather than inferred. From `journal.txt`:
+
+```
+(98)Address already in use: AH00072: could not bind to address 0.0.0.0:80
+(98)Address already in use: AH00072: could not bind to address [::]:80
+no listening sockets available, shutting down
+```
+
+and `listeners.txt` shows nginx holding both `0.0.0.0:80` and `[::]:80`.
+
+**The order reversal is the informative part.** m3 and m4 stack the two
+modules in opposite orders and produce the *same* outcome: Apache fails in
+both. **Layer priority does not decide port ownership.** OverlayFS precedence
+governs which file wins; it has no bearing on which process reaches `bind()`
+first. That is a startup race between two units systemd has no ordering
+constraint between, and the composition model cannot influence it.
+
+Two samples do not establish that nginx *always* wins — only that the layer
+order did not change it. The mechanism is a race, and it should be described
+as one.
+
+Each run alone is green: the conflict exists only in the union, is invisible
+to every static tier, and — importantly — **both configuration probes pass in
+the failing runs**. `apache2ctl configtest` reports valid syntax while the
+service cannot start. Configuration validity is not service health, and that
+distinction is what tier 3 buys.
+
+Nothing here licenses "tier 3 passes". The defensible claim is: *four composed
+sets booted under UEFI; two single-service sets reached a running state, and
+both two-service sets reproduced a runtime-negative interaction whose cause is
+recorded.*
 
 ## 10. Future Work
 
