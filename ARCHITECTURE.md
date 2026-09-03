@@ -475,7 +475,7 @@ Four gated runs, each an admitted set, each an immutable bundle under
 | Run | Set | systemd | nginx | apache2 | Port 80 owner |
 |---|---|---|---|---|---|
 | m1 | `base webserver` | running | active | — | nginx |
-| m2 | `base apache` | running | — | active | *(not captured)* |
+| m2 | `base apache` | running | — | active | apache2 |
 | m3 | `base webserver apache` | degraded | active | **failed** | nginx |
 | m4 | `base apache webserver` | degraded | active | **failed** | nginx |
 
@@ -488,6 +488,11 @@ no listening sockets available, shutting down
 ```
 
 and `listeners.txt` shows nginx holding both `0.0.0.0:80` and `[::]:80`.
+
+Each service binds successfully when it is alone, and they do it differently:
+nginx opens two sockets (`0.0.0.0:80` and `[::]:80`), Apache one dual-stack
+wildcard (`*:80`). Either is valid; they are simply incompatible with each
+other on one host.
 
 **The order reversal is the informative part.** m3 and m4 stack the two
 modules in opposite orders and produce the *same* outcome: Apache fails in

@@ -955,3 +955,7 @@ Evaluation chapters — do not skip it.
   assignment; `-e` on enable symlinks resolving guest-absolute targets against
   the host (which dropped nginx.service and kept 23 irrelevant base units);
   and sixteen $B/mnt references a two-string sed had missed.
+- m2 re-run with iproute2 present: apache2 alone binds `*:80`, a dual-stack
+  wildcard, where nginx opens `0.0.0.0:80` and `[::]:80` as two sockets. Both
+  bind styles are valid alone; they are simply incompatible on one host. The
+  matrix now has socket ownership recorded for all four runs.
