@@ -94,12 +94,31 @@ In a memcached-highest composition, `redis-server.service` declares
 `memcached + redis`.
 
 This is **not repairable by a record union**: the numbers themselves disagree,
-and files on disk are owned by the number, not the name. Stage `05` therefore
-rejects such sets and does not attempt to fix them. Deterministic global
-UID/GID allocation and inode remapping are Future Work.
+and files on disk are owned by the number, not the name.
 
-Measured: **6 of 351 ordinary pairs** are rejected by class 7 — exactly the
-C(4,2) combinations of the four colliding modules.
+**Prevention.** `specs/uid-ranges.yaml` gives every module a disjoint 100-wide
+window starting at 2000. Before any package is installed, `02_build_delta.sh`
+points **both** allocators at that window — `adduser.conf`
+(`FIRST_SYSTEM_UID`/`LAST_SYSTEM_UID` and the GID pair) for `adduser --system`,
+and `login.defs` (`SYS_UID_MIN`/`SYS_UID_MAX` and the GID pair) for
+`useradd -r` — because maintainer scripts use both. The policy is restored to
+base's bytes before squashing: it is build scaffolding, not module content.
+Restored rather than deleted, since deleting a file present in the lower layer
+would leave a whiteout and hide base's copy from every composition.
+
+The file is **append-only**. An assigned range is permanent, because changing
+one changes the numeric ownership already baked into a built artefact. A new
+module takes the next free window; nothing is ever renumbered or reused.
+
+**Detection stays.** `06` audits every account a module created and classifies
+it as *static-reserved* (uid < 100, Debian-global, e.g. `www-data=33`),
+*in-range*, or *out-of-range*; anything out of range is reported, never
+silently accepted. The class-7 check in `05` remains as the guard. This is the
+same relationship as class 6 and the base `full-upgrade`: **prevention is the
+policy, detection is the proof that the policy held.**
+
+Before partitioning: **6 of 351 ordinary pairs** rejected by class 7 — exactly
+the C(4,2) combinations of the four colliding modules.
 
 ### Untested candidates
 - **Whiteouts** — a module removing a base file; changes ordering semantics
@@ -200,6 +219,12 @@ Checks in `05_check.sh` are numbered by these classes — `CLASS 3`, `CLASS 4`
 and so on — rather than in the order they happen to run, so output maps onto
 the table above directly. Class 5 has no check: it always occurs, and is
 answered by reconciliation rather than rejection.
+
+These fields are now **enforced** by `05_check.sh`: each `requires` must be
+satisfied by a module in the set whose name or `provides` matches, at a version
+meeting the constraint; each `conflicts` must match nothing in the set. This
+closes audit finding M5, which observed that the schema had carried these
+fields for weeks without any check reading them.
 
 **Verification only, never search.** Full installability in Debian-style systems
 is NP-complete (Di Cosmo et al., EDOS/Mancoosi). apt resolves once at build
@@ -422,7 +447,7 @@ artefacts alone. Nothing above N=3 had ever been composed before this sweep.
 | `03_analyse_overlap.sh` | Byte-compare files shared by two deltas (research tool, run once) |
 | `04_compose.sh` | Stack modules; demonstrate defect; write reconciled state layer |
 | `05_check.sh` | Metadata-only consistency check over `module.json` → ACCEPT/REJECT |
-| `06_extract_metadata.sh` | Write `<name>.json` beside each artefact, plus `<name>.files.json.zst` mapping every owned path to its package (class 4) |
+| `06_extract_metadata.sh` | Write `<name>.json` beside each artefact, plus `<name>.files.json.zst` mapping every owned path to its package (class 4). Records the assigned UID window and audits every account against it |
 | `07_smoke_test.sh` | Compose a set, chroot in, and check it actually works: `dpkg --audit`, `apt-get -s install`, `ldconfig -p`, per-module probes |
 | `08_build_catalogue.sh` | Batch-build every module in `specs/modules.yaml`; reports sizes against `MODULE_MAX_MB` |
 | `09_run_combinations.sh` | Tier 1: run `05_check.sh` over all pairs and triples; tabulate verdicts by conflict class into a CSV |
@@ -430,6 +455,7 @@ artefacts alone. Nothing above N=3 had ever been composed before this sweep.
 | `11_boot_test.sh` | Tier 3: pack a UEFI image, boot it under QEMU, and record a per-unit causal matrix from inside the running system |
 | `reconcile.py`, `verify_compose.py` | Shared helpers: class-5 registry merge; per-composition verification |
 
+`specs/uid-ranges.yaml` holds the append-only UID/GID partition.
 `config.sh` holds snapshot ID, suite, paths, compression.
 `lib.sh` holds logging, mount tracking with guaranteed teardown, chroot helpers.
 
@@ -547,7 +573,7 @@ what is verified and what is merely intended stays explicit.
 | M2 | `03_analyse_overlap.sh` overstates what byte-identical regular files prove |
 | M3 | Reproducibility normalization can affect semantics |
 | M4 | Architecture and multiarch handling is intentionally narrow but should be explicit |
-| M5 | Module-level dependency declarations exist in schema but are not enforced |
+| ~~M5~~ | ~~Module-level dependency declarations exist in schema but are not enforced~~ — **done**: enforced in `05_check.sh` |
 | M6 | Names, CSV and TSV formats assume trusted simple tokens |
 | M7 | Documentation and status drift are material |
 

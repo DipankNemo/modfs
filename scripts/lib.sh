@@ -74,6 +74,72 @@ safe_rm_rf() {           # safe_rm_rf <root> <name>
     rm -rf -- "$target"
 }
 
+# ---- identity policy: prevent class 7 ------------------------------------
+# Debian allocates dynamic system accounts from 100-999 on every build, so two
+# independently built siblings reach for the same number and get different
+# names. Pointing each module at a disjoint window makes the collision
+# impossible to create, rather than something to find afterwards. Same
+# relationship as the base full-upgrade and class 6: prevention is the policy,
+# the class-7 check in 05 is the guard that proves the policy held.
+uid_range_for() {        # uid_range_for <module> -> "START END"
+    python3 - "${SPEC_DIR}/uid-ranges.yaml" "$1" <<'URPY'
+import sys, yaml
+spec, name = sys.argv[1], sys.argv[2]
+try:
+    d = yaml.safe_load(open(spec, encoding='utf-8')) or {}
+except Exception as exc:
+    sys.stderr.write("cannot read %s: %s\n" % (spec, exc)); sys.exit(2)
+r = (d.get('ranges') or {}).get(name)
+if r is None:
+    sys.stderr.write(
+        "no UID range assigned to '%s' in %s.\n"
+        "The file is append-only: add it with the next free start "
+        "(see the trailing comment) and never renumber an existing entry.\n"
+        % (name, spec))
+    sys.exit(2)
+print("%d %d" % (int(r), int(r) + int(d.get('width', 100)) - 1))
+URPY
+}
+
+_idpol_set_eq() {        # <file> <key> <value>   KEY=VALUE form
+    sed -i -E "/^[[:space:]]*#?[[:space:]]*${2}[[:space:]]*=/d" "$1"
+    printf '%s=%s\n' "$2" "$3" >> "$1"
+}
+_idpol_set_sp() {        # <file> <key> <value>   KEY VALUE form
+    sed -i -E "/^[[:space:]]*#?[[:space:]]*${2}[[:space:]]+/d" "$1"
+    printf '%s %s\n' "$2" "$3" >> "$1"
+}
+
+# Both files are needed: adduser.conf governs `adduser --system`, login.defs
+# governs `useradd -r`, and maintainer scripts use both.
+write_identity_policy() {   # write_identity_policy <root> <start> <end> <backupdir>
+    local r="$1" lo="$2" hi="$3" bk="$4" f
+    mkdir -p "$bk"
+    for f in etc/adduser.conf etc/login.defs; do
+        [ -f "$r/$f" ] || die "missing $f in the merged view"
+        cp -a "$r/$f" "$bk/$(basename "$f").orig"
+    done
+    _idpol_set_eq "$r/etc/adduser.conf" FIRST_SYSTEM_UID "$lo"
+    _idpol_set_eq "$r/etc/adduser.conf" LAST_SYSTEM_UID  "$hi"
+    _idpol_set_eq "$r/etc/adduser.conf" FIRST_SYSTEM_GID "$lo"
+    _idpol_set_eq "$r/etc/adduser.conf" LAST_SYSTEM_GID  "$hi"
+    _idpol_set_sp "$r/etc/login.defs" SYS_UID_MIN "$lo"
+    _idpol_set_sp "$r/etc/login.defs" SYS_UID_MAX "$hi"
+    _idpol_set_sp "$r/etc/login.defs" SYS_GID_MIN "$lo"
+    _idpol_set_sp "$r/etc/login.defs" SYS_GID_MAX "$hi"
+}
+
+# The policy is BUILD scaffolding, not module content. Restoring the original
+# bytes keeps it out of the artefact -- and restores rather than deletes,
+# because deleting a file that exists in the lower layer would leave a
+# whiteout and HIDE base's copy from every composition.
+restore_identity_policy() { # restore_identity_policy <root> <backupdir>
+    local r="$1" bk="$2"
+    [ -f "$bk/adduser.conf.orig" ] && cp -a "$bk/adduser.conf.orig" "$r/etc/adduser.conf"
+    [ -f "$bk/login.defs.orig" ]   && cp -a "$bk/login.defs.orig"   "$r/etc/login.defs"
+    return 0
+}
+
 # ---- admission: integrity, then tier-1 ------------------------------------
 # C3. The pipeline order is a rule, not a convention:
 #     bundle integrity -> tier-1 admission -> compose/reconcile -> tier-2

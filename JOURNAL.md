@@ -959,3 +959,51 @@ Evaluation chapters — do not skip it.
   wildcard, where nginx opens `0.0.0.0:80` and `[::]:80` as two sockets. Both
   bind styles are valid alone; they are simply incompatible on one host. The
   matrix now has socket ownership recorded for all four runs.
+
+## 2026-09-03 (UID range partitioning: prevent class 7, not only detect it)
+- specs/uid-ranges.yaml: 38 modules, disjoint 100-wide windows from 2000,
+  APPEND-ONLY because an assigned range is baked into a built artefact's file
+  ownership. base gets none -- it is the baseline, not a sibling.
+- 02 writes BOTH allocators before any install: adduser.conf
+  (FIRST/LAST_SYSTEM_UID and GID) for `adduser --system`, login.defs
+  (SYS_UID_MIN/MAX and GID) for `useradd -r`. Maintainer scripts use both, so
+  setting one would have left a hole. Verified against base's real files: the
+  commented-out login.defs defaults are replaced with active settings, no
+  duplicate keys, and restore is byte-identical.
+- The policy is restored before squashing -- build scaffolding, not module
+  content. RESTORED, not deleted: deleting a file that exists in the lower
+  layer leaves a whiteout and would hide base's adduser.conf from every
+  composition.
+- 06 records the window and audits each created account as static-reserved
+  (uid < 100, Debian Policy 9.2.2 global allocations), in-range, or
+  out-of-range. Confirmed against the CURRENT pre-rebuild artefacts: redis
+  reports "IDENTITY AUDIT out-of-range: group redis=104, user redis=103",
+  which is precisely what the rebuild must eliminate.
+- Class 7 detection stays in 05. Same shape as class 6 and the base
+  full-upgrade: prevention is the policy, detection proves the policy held.
+- Bug caught while wiring 02: `read -r LO HI <<< "$(cmd)" || die` tests read's
+  status, not the command substitution's, so a failed range lookup would only
+  have been caught by accident.
+
+## 2026-09-03 (catalogue to 38 modules; module-level dependencies enforced)
+- Added gcc, java, rust, llvm, postgres, mysql, docker -- the first modules
+  chosen for SIZE and REALISM rather than to provoke a class.
+- kubectl DROPPED, and for the same reason CUDA was: it lives in Google's apt
+  repository, which has no snapshot service, so it cannot be pinned. Checked
+  the snapshot index directly -- jammy carries a `kubernetes` package but it is
+  a 19 KB stub, not a client. Recording the check rather than the assumption.
+- fake-nvidia-driver (version 550, provides nvidia-driver) and fake-cuda
+  (requires nvidia-driver >= 550) exercise the module-level layer without
+  NVIDIA's repo, its 3-4 GB, or a DKMS module against a kernel-less base.
+- pipdemo installs `requests` with pip via a new --post-install hook, so the
+  dpkg-blindness of every check here can be MEASURED rather than argued.
+- 05 now enforces requires/conflicts/provides (audit finding M5). Validated:
+    fake-cuda alone                    REJECT  unsatisfied requirement
+    fake-cuda + fake-nvidia-driver     ACCEPT  satisfied by 550
+    fake-cuda-hi(>=600) + driver 550   REJECT  constraint not met
+    hostile conflicts fake-cuda        REJECT  module conflict
+- 10 --maximal-subset computes a maximal tier-1-admitted subset from the pair
+  verdicts and confirms it with one n-ary tier-1 run, because "no rejecting
+  pair" is not by itself a proof for the whole set. Validated on a synthetic
+  graph containing a 4-clique and an all-conflicting control: the selection is
+  internally consistent and nothing further can be added.

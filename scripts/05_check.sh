@@ -13,6 +13,8 @@
 #   CLASS 4  file collision -- two packages own one path, Replaces honoured
 #   CLASS 6  implicit base upgrade -- a delta replaces an inherited package
 #   CLASS 7  identity collision -- two modules give one uid/gid two meanings
+# Plus the module-level layer of ARCHITECTURE section 5: requires/conflicts/
+# provides between MODULES, which package relations cannot express.
 # Class 5 (state divergence) is deliberately absent: it ALWAYS occurs, and is
 # handled by reconciliation at compose time rather than by rejection.
 #
@@ -533,6 +535,74 @@ else:
     if not collisions and not unresolved:
         print("\n    %d user(s), %d group(s) across the set, no id reused  [OK]"
               % (len(merged_users), len(merged_groups)))
+
+# ------------------------------------------------- module-level relations
+print("\n" + "=" * 72)
+print(" MODULE-LEVEL DEPENDENCIES  (requires / conflicts / provides)")
+print("=" * 72)
+
+# ARCHITECTURE section 5: package relations cannot express cross-module
+# requirements, because apt only ever sees one module's build. These fields
+# have been in the manifest schema for weeks without being enforced -- the
+# audit called that out (M5). Verification only, never search: the set is
+# fixed, so this is linear checking, not solving.
+capabilities = defaultdict(list)          # name -> [(module, version)]
+for m in ['base'] + modules:
+    d = docs.get(m) or base_doc
+    ver = str(d.get('version') or '0')
+    capabilities[m].append((m, ver))
+    for cap in (d.get('provides') or []):
+        capabilities[str(cap)].append((m, ver))
+
+rel_errors = 0
+for m in ['base'] + modules:
+    d = docs.get(m) or base_doc
+    for req in (d.get('requires') or []):
+        if not isinstance(req, dict):
+            continue
+        want, cons = str(req.get('module') or ''), (req.get('constraint') or '').strip()
+        if not want:
+            continue
+        providers = capabilities.get(want, [])
+        if not providers:
+            rel_errors += 1; ERRORS += 1
+            print("    UNSATISFIED REQUIREMENT %s requires '%s'%s"
+                  " -- no module in the set provides it"
+                  % (m, want, " (%s)" % cons if cons else ""))
+            continue
+        if cons:
+            parts = cons.split(None, 1)
+            op, ver = (parts[0], parts[1].strip()) if len(parts) > 1 else (None, None)
+            ok = [(pm, pv) for pm, pv in providers
+                  if op and ver and vcmp(pv, op, ver) is True]
+            if not ok:
+                rel_errors += 1; ERRORS += 1
+                print("    UNSATISFIED REQUIREMENT %s requires '%s' (%s)"
+                      " -- provided by %s"
+                      % (m, want, cons,
+                         ', '.join("%s at %s" % pr for pr in providers)))
+                continue
+            print("    %s requires %s (%s) -- satisfied by %s"
+                  % (m, want, cons, ', '.join("%s %s" % pr for pr in ok)))
+        else:
+            print("    %s requires %s -- satisfied by %s"
+                  % (m, want, ', '.join(pm for pm, _ in providers)))
+    for con in (d.get('conflicts') or []):
+        want = str(con.get('module') or '') if isinstance(con, dict) else str(con)
+        if not want:
+            continue
+        hit = [pm for pm, _ in capabilities.get(want, []) if pm != m]
+        if hit:
+            rel_errors += 1; ERRORS += 1
+            print("    MODULE CONFLICT %s conflicts with '%s' -- present as %s"
+                  % (m, want, ', '.join(sorted(set(hit)))))
+
+if not rel_errors and not any((docs.get(m) or base_doc).get('requires') or
+                              (docs.get(m) or base_doc).get('conflicts')
+                              for m in ['base'] + modules):
+    print("\n    no module-level relations declared in this set  [OK]")
+elif not rel_errors:
+    print("\n    all module-level relations satisfied  [OK]")
 
 # ------------------------------------------------- verdict
 print("\n" + "=" * 72)

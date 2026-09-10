@@ -60,8 +60,9 @@ for m in (doc.get('modules') or []):
         sys.stderr.write("duplicate module name: %s\n" % name); sys.exit(2)
     seen.add(name)
     if wanted is not None and name not in wanted: continue
+    post = str(m.get('post_install') or '').replace('\t', ' ').replace('\n', ' ')
     rows.append((name, str(m.get('version') or defaults.get('version') or '1.0'),
-                 ' '.join(str(p) for p in pkgs), str(m.get('snapshot') or '')))
+                 ' '.join(str(p) for p in pkgs), str(m.get('snapshot') or ''), post))
 if wanted:
     missing = wanted - {r[0] for r in rows}
     if missing:
@@ -81,7 +82,7 @@ if [ "$REFRESH" -eq 1 ]; then
         > "${LOG_DIR}/refresh-base.log" 2>&1 </dev/null \
         || die2 "metadata refresh failed for base"
     RC=0
-    while IFS=$'\t' read -r name version pkgs snapshot; do
+    while IFS=$'\t' read -r name version pkgs snapshot post; do
         [ -f "${MOD_DIR}/${name}.json" ] || continue
         # A module built from another snapshot must have that snapshot
         # recorded, so the override has to be re-applied on refresh too --
@@ -99,7 +100,7 @@ if [ "$REFRESH" -eq 1 ]; then
     exit "$RC"
 fi
 
-while IFS=$'\t' read -r name version pkgs snapshot; do
+while IFS=$'\t' read -r name version pkgs snapshot post; do
     sqsh="${MOD_DIR}/${name}.sqsh"
     json="${MOD_DIR}/${name}.json"
     if [ "$FORCE" -eq 0 ] && [ -f "$sqsh" ] && [ -f "$json" ]; then
@@ -117,8 +118,10 @@ while IFS=$'\t' read -r name version pkgs snapshot; do
     # MODFS_SNAPSHOT_ID is empty for every normal module, so config.sh keeps
     # its default; only a declared control overrides it.
     # shellcheck disable=SC2086
+    POSTARGS=()
+    [ -n "${post:-}" ] && POSTARGS=(--post-install "$post")
     if MODFS_SNAPSHOT_ID="${snapshot}" \
-       "${HERE}/scripts/02_build_delta.sh" --version "$version" "$name" $pkgs \
+       "${HERE}/scripts/02_build_delta.sh" --version "$version" "${POSTARGS[@]}" "$name" $pkgs \
            > "${LOG_DIR}/catalogue-${name}.log" 2>&1 </dev/null; then
         BUILT+=("$name")
     else
@@ -135,7 +138,7 @@ echo
 echo "========================================================================"
 printf " %-16s %10s  %s\n" "MODULE" "SIZE" "STATUS"
 echo "========================================================================"
-while IFS=$'\t' read -r name version pkgs snapshot; do
+while IFS=$'\t' read -r name version pkgs snapshot post; do
     require_ident "$name" "catalogue module name"
     sqsh="${MOD_DIR}/${name}.sqsh"
     if [ ! -f "$sqsh" ]; then

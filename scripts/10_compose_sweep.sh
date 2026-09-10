@@ -31,19 +31,84 @@ die2() { printf '\033[1;31m[FAIL]\033[0m %s\n' "$*" >&2; exit 2; }
 [ "$(id -u)" -eq 0 ] || die2 "must run as root (mounts + chroot)"
 
 SEED=1; PLAN="2:30,3:30,5:20,10:10,20:5,27:1"; CSV="${LOG_DIR}/compose-sweep.csv"
-KNOWN_NEG=0
+KNOWN_NEG=0; MAXSUB=0; SUBSET_OUT="${RESULTS_DIR}/maximal-subset.txt"
 while [ $# -gt 0 ]; do
     case "$1" in
         --seed) [ $# -ge 2 ] || die2 "--seed needs a value"; SEED="$2"; shift 2 ;;
         --plan) [ $# -ge 2 ] || die2 "--plan needs a value"; PLAN="$2"; shift 2 ;;
         --out)  [ $# -ge 2 ] || die2 "--out needs a value";  CSV="$2";  shift 2 ;;
         --known-negative) KNOWN_NEG=1; shift ;;
+        --maximal-subset) MAXSUB=1; shift ;;
+        --subset-out) [ $# -ge 2 ] || die2 "--subset-out needs a value"
+                      SUBSET_OUT="$2"; shift 2 ;;
         *) die2 "unknown option: $1" ;;
     esac
 done
 
 W="${BUILD_DIR}/csweep"
 rm -rf "$W"; mkdir -p "$W"
+
+# ---- maximal admitted subset ---------------------------------------------
+# A high-N boot test is impossible while the catalogue contains sets tier 1
+# rejects -- Run A died in APT for exactly that reason. This computes a set
+# to which no further module can be added without a tier-1 rejection, and
+# records it so the boot test has something legitimate to compose.
+#
+# Tier-1 rejections here are overwhelmingly pairwise (class 2, 3, 7 and the
+# precondition), so the pair verdicts give a conflict graph and a maximal
+# independent set in it is a maximal admitted subset. The result is then
+# CONFIRMED with one n-ary tier-1 run, because "no rejecting pair" is not by
+# itself a proof for the whole set.
+if [ "$MAXSUB" -eq 1 ]; then
+    PAIRCSV="$W/pairs.csv"
+    log "computing pair verdicts for the subset search"
+    "${HERE}/scripts/09_run_combinations.sh" --max-n 2 --jobs "${JOBS:-8}" \
+        --out "$PAIRCSV" > "$W/pairs.log" 2>&1 \
+        || die2 "pair sweep failed, see $W/pairs.log"
+    mkdir -p "$(dirname "$SUBSET_OUT")" 2>/dev/null || true
+    python3 - "$PAIRCSV" "$SUBSET_OUT" <<'MSPY' || die2 "subset computation failed"
+import csv, sys
+from collections import defaultdict
+csv_path, out = sys.argv[1], sys.argv[2]
+rows = list(csv.DictReader(open(csv_path, encoding='utf-8')))
+mods, conflict = set(), defaultdict(set)
+for r in rows:
+    a, b = r['modules'].split()
+    mods.add(a); mods.add(b)
+    if r['verdict'] != 'ACCEPT':
+        conflict[a].add(b); conflict[b].add(a)
+# Greedy on fewest conflicts first: a module that disagrees with nothing can
+# never be the reason another has to be dropped.
+chosen, excluded = [], []
+for m in sorted(mods, key=lambda x: (len(conflict[x]), x)):
+    if any(c in conflict[m] for c in chosen):
+        excluded.append(m)
+    else:
+        chosen.append(m)
+chosen.sort()
+with open(out, 'w', encoding='utf-8') as f:
+    f.write("# maximal tier-1-admitted subset, from %s\n" % csv_path)
+    f.write("# %d of %d modules; no further module can be added\n" % (len(chosen), len(mods)))
+    f.write(' '.join(chosen) + '\n')
+print("  catalogue      : %d modules" % len(mods))
+print("  conflicting    : %d module(s) have at least one rejecting pair"
+      % sum(1 for m in mods if conflict[m]))
+print("  SELECTED       : %d" % len(chosen))
+print("  excluded       : %s" % (', '.join(excluded) or 'none'))
+print("  subset written : %s" % out)
+MSPY
+    SUBSET=$(grep -v '^#' "$SUBSET_OUT" | head -1)
+    log "confirming the subset with one n-ary tier-1 run"
+    # shellcheck disable=SC2086
+    if tier1_admit "$W/subset-tier1.log" base $SUBSET; then
+        log "subset CONFIRMED admitted as a whole set"
+    else
+        warn "subset rejected as a whole set -- see $W/subset-tier1.log"
+        warn "a rejection here means some class is not purely pairwise"
+        exit 1
+    fi
+    exit 0
+fi
 mkdir -p "$(dirname "$CSV")" 2>/dev/null || true
 
 # ---- sample plan ----------------------------------------------------------

@@ -30,6 +30,7 @@ COMPARE=0
 # Forwarded to the metadata extractor. ARCHITECTURE section 5: modules need
 # explicit version numbers, not implicit (snapshot, parent) identity.
 MOD_VERSION=""
+POST_INSTALL=""
 ARGS=()
 while [ $# -gt 0 ]; do
     case "$1" in
@@ -37,12 +38,14 @@ while [ $# -gt 0 ]; do
                   PARENT="$2"; shift 2 ;;
         --version) [ $# -ge 2 ] || die "--version needs a value"
                   MOD_VERSION="$2"; shift 2 ;;
+        --post-install) [ $# -ge 2 ] || die "--post-install needs a value"
+                  POST_INSTALL="$2"; shift 2 ;;
         --compare) COMPARE=1; shift ;;
         *) ARGS+=("$1"); shift ;;
     esac
 done
 
-[ ${#ARGS[@]} -ge 2 ] || die "usage: $0 [--parent NAME] [--version V] [--compare] <name> <pkg> [pkg...]"
+[ ${#ARGS[@]} -ge 2 ] || die "usage: $0 [--parent NAME] [--version V] [--post-install CMD] [--compare] <name> <pkg> [pkg...]"
 NAME="${ARGS[0]}"
 PKGS=("${ARGS[@]:1}")
 # C1: identifiers reach paths and mount options; validate at the boundary.
@@ -73,6 +76,22 @@ write_sources_list "$MERGED"
 write_chroot_policy "$MERGED"
 mount_chroot_fs "$MERGED"
 
+# ---- identity policy: class 7 prevention ---------------------------------
+# Point adduser AND useradd at this module's disjoint window BEFORE anything
+# is installed, so maintainer scripts cannot reach into Debian's shared
+# 100-999 dynamic range where the collisions came from. Restored afterwards:
+# this is build scaffolding, not module content.
+# Capture first: `read ... <<< "$(cmd)" || die` tests read's status, not the
+# command substitution's, and would only catch a failure by accident.
+UID_RANGE="$(uid_range_for "$NAME")" \
+    || die "no UID range for '${NAME}' -- add one to ${SPEC_DIR}/uid-ranges.yaml"
+read -r UID_LO UID_HI <<< "$UID_RANGE"
+[ -n "${UID_LO:-}" ] && [ -n "${UID_HI:-}" ] || die "malformed UID range: '$UID_RANGE'"
+IDPOL_BK="${BUILD_DIR}/${NAME}.idpol"
+rm -rf "$IDPOL_BK"
+write_identity_policy "$MERGED" "$UID_LO" "$UID_HI" "$IDPOL_BK"
+log "identity policy: system uid/gid confined to ${UID_LO}-${UID_HI}"
+
 log "apt update"
 in_chroot "$MERGED" apt-get update -qq || die "apt update failed"
 
@@ -85,8 +104,19 @@ log "installing: ${PKGS[*]}"
 in_chroot "$MERGED" apt-get install -y -qq --no-install-recommends \
     "${PKGS[@]}" 2>&1 | tail -5 || die "install failed"
 
+if [ -n "$POST_INSTALL" ]; then
+    # Deliberately outside dpkg: pipdemo uses this to install with pip, so the
+    # blindness of every dpkg-based check in this project can be MEASURED
+    # rather than argued.
+    log "post-install: ${POST_INSTALL}"
+    in_chroot "$MERGED" sh -c "$POST_INSTALL" 2>&1 | tail -5 \
+        || die "post-install command failed"
+fi
+
 in_chroot "$MERGED" dpkg-query -f '${binary:Package}\n' -W \
     2>/dev/null | sort > "${BUILD_DIR}/${NAME}.after"
+
+restore_identity_policy "$MERGED" "$IDPOL_BK"
 
 ADDED=$(comm -13 "${BUILD_DIR}/${NAME}.before" "${BUILD_DIR}/${NAME}.after" | wc -l)
 log "delta adds ${ADDED} packages"

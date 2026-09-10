@@ -12,6 +12,13 @@
 #             Must exit 0 when the module works. Keep it cheap and offline.
 #   provokes  which conflict class this module exists to exercise
 #   note      why it is here, when that is not obvious
+#   version   module version, used by module-level `requires` constraints
+#   provides  module-level capabilities this module offers
+#   requires  module-level dependencies: [{module: NAME, constraint: ">= V"}]
+#   conflicts module-level exclusions: [{module: NAME}]
+#   snapshot  build from a DIFFERENT archive snapshot (positive control only)
+#   post_install  shell command run in the chroot after apt, for deliberately
+#             non-dpkg installs
 #
 # Probes avoid commands that exit non-zero on success: `nc -h` prints usage
 # and exits 1, so those modules probe with `command -v` instead.
@@ -111,6 +118,78 @@ modules:
     probe: python3 -c "import yaml"
     provokes: benign-overlap
     note: shares the python3 dependency cone with pytools.
+
+  # ---- production-scale modules -------------------------------------------
+  # Added after UID range partitioning was in place, so nothing needed
+  # rebuilding twice. These are the first modules in the catalogue chosen for
+  # SIZE and REALISM rather than to provoke a class.
+  - name: gcc
+    packages: [build-essential]
+    probe: gcc --version
+    provokes: scale
+  - name: java
+    packages: [default-jdk-headless]
+    probe: javac -version
+    provokes: scale
+  - name: rust
+    packages: [rustc, cargo]
+    probe: rustc --version
+    provokes: shared-toolchain
+    note: pair with llvm; both pull large parts of the LLVM runtime.
+  - name: llvm
+    packages: [llvm, clang]
+    probe: clang --version
+    provokes: shared-toolchain
+  - name: postgres
+    packages: [postgresql]
+    probe: psql --version
+    provokes: service-account
+    note: allocates a system account; with ranges in place it must not collide.
+  - name: mysql
+    packages: [mariadb-server]
+    probe: mariadbd --version
+    provokes: service-account
+  - name: docker
+    packages: [docker.io]
+    probe: dockerd --version
+    provokes: service-account
+
+  # ---- module-level dependency exercise -----------------------------------
+  # Deliberately fake. Real CUDA is not usable here: it lives in NVIDIA's
+  # repository, which has no snapshot service, so it cannot be pinned; it is
+  # 3-4 GB against a 256 MB catalogue; and its driver is a DKMS kernel module
+  # while base ships no kernel. These two carry the module-level relationship
+  # without any of that, which is the part being tested.
+  - name: fake-nvidia-driver
+    packages: [hello]
+    version: "550"
+    provides: [nvidia-driver]
+    probe: command -v hello
+    provokes: module-dependency
+  - name: fake-cuda
+    packages: [sl]
+    requires:
+      - module: nvidia-driver
+        constraint: ">= 550"
+    probe: command -v sl
+    provokes: module-dependency
+    note: >
+      must REJECT alone (unsatisfied requirement) and ACCEPT with
+      fake-nvidia-driver. Exercises requires/provides, which existed in the
+      manifest schema for weeks without being enforced.
+
+  # ---- measuring the blindness --------------------------------------------
+  - name: pipdemo
+    packages: [python3-pip]
+    post_install: pip3 install --no-cache-dir --break-system-packages requests || pip3 install --no-cache-dir requests
+    probe: python3 -c "import requests"
+    provokes: dpkg-blindness
+    note: >
+      installs a Python package OUTSIDE dpkg. Every check in this project
+      reads dpkg metadata, so nothing sees these files: the manifest package
+      count and the sidecar path count both exclude them. Turns an argued
+      limitation into a measured one. TensorFlow was rejected for the same
+      reason at a size that would have dominated the catalogue.
 
   # ---- positive control ---------------------------------------------------
   - name: control-oldsnap

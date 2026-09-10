@@ -1,0 +1,69 @@
+# UID/GID range partitioning -- PREVENTION for conflict class 7.
+#
+# Four modules in the original catalogue independently allocated uid 103 /
+# gid 104 to four different names, because Debian's dynamic system-account
+# range (100-999) is the same for every build. OverlayFS cannot union
+# conflicting numbers, so whichever layer landed on top silently redefined
+# the others' file ownership.
+#
+# Each module is given a disjoint 100-wide window. 02_build_delta.sh points
+# both adduser (adduser.conf) and useradd (login.defs) at that window before
+# any package is installed, so accounts are allocated apart by construction
+# rather than found to collide afterwards.
+#
+# APPEND-ONLY. An assigned range is PERMANENT: changing one changes the
+# numeric ownership baked into an already-built artefact, so a new module
+# takes the next free window and existing entries are never renumbered or
+# reused. Deleting a module does not free its range.
+#
+# 0-99    Debian-global static allocations (base-passwd): never ours
+# 100-999 Debian dynamic system range: deliberately NOT used, this is where
+#         the collisions came from
+# 2000+   partitioned per module, 100 wide
+#
+# base has no range: it is the baseline every module inherits, not a sibling.
+
+width: 100
+first: 2000
+
+ranges:
+  vim:                 2000
+  emacs:               2100
+  gawk:                2200
+  original-awk:        2300
+  nc-openbsd:          2400
+  nc-traditional:      2500
+  webserver:           2600
+  apache:              2700
+  mta-msmtp:           2800
+  mta-nullmailer:      2900
+  pytools:             3000
+  pyyaml:              3100
+  control-oldsnap:     3200
+  curl:                3300
+  wget:                3400
+  git:                 3500
+  jq:                  3600
+  rsync:               3700
+  tmux:                3800
+  htop:                3900
+  socat:               4000
+  zstd:                4100
+  sqlite:              4200
+  tcpdump:             4300
+  dnsutils:            4400
+  pgclient:            4500
+  redis:               4600
+  memcached:           4700
+  gcc:                 4800
+  java:                4900
+  rust:                5000
+  llvm:                5100
+  postgres:            5200
+  mysql:               5300
+  docker:              5400
+  fake-nvidia-driver:  5500
+  fake-cuda:           5600
+  pipdemo:             5700
+
+# next free start: 5800

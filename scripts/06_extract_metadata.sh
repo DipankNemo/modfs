@@ -111,6 +111,15 @@ export M_ARCH="$ARCH"
 export M_SQSH="$SQSH"
 export M_OUT="$OUT"
 export M_BUILT="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+# The assigned window, so the manifest records the policy the build ran under.
+# base has none: it is the baseline, not a partitioned sibling.
+if [ -n "$PARENT" ]; then
+    M_UID_RANGE="$(uid_range_for "$NAME" 2>/dev/null || true)"
+else
+    M_UID_RANGE=""
+fi
+export M_UID_RANGE
+export M_SPEC_DIR="$SPEC_DIR"
 
 python3 - <<'PY' || die "metadata extraction failed"
 import hashlib, json, os, sys, tempfile
@@ -234,7 +243,28 @@ if os.path.exists(out_path):
         warn("could not read existing %s (%s); starting fresh" % (out_path, exc))
         prev = {}
 
-version = E.get('M_VERSION') or prev.get('version') or ''
+# Module-level relations come from the hand-written catalogue when it
+# declares them, and are otherwise carried over from a previous manifest so a
+# hand edit survives a rebuild. The catalogue is the authority when both exist.
+cat_requires = cat_conflicts = cat_provides = None
+cat_version = None
+spec_path = os.path.join(E.get('M_SPEC_DIR') or '', 'modules.yaml')
+if os.path.exists(spec_path):
+    try:
+        import yaml as _yaml
+        for entry in ((_yaml.safe_load(open(spec_path, encoding='utf-8')) or {})
+                      .get('modules') or []):
+            if entry.get('name') == E['M_NAME']:
+                cat_requires  = entry.get('requires')
+                cat_conflicts = entry.get('conflicts')
+                cat_provides  = entry.get('provides')
+                if entry.get('version') is not None:
+                    cat_version = str(entry['version'])
+                break
+    except Exception as exc:
+        warn("could not read %s (%s); module relations not refreshed" % (spec_path, exc))
+
+version = E.get('M_VERSION') or cat_version or prev.get('version') or ''
 if not version:
     version = '0'
     warn("no --version given for '%s'; defaulting to \"0\". ARCHITECTURE "
@@ -336,6 +366,43 @@ accounts = {'users': dict(sorted(users.items())),
             'shadow': sorted(own_sh - par_sh),
             'gshadow': sorted(own_gsh - par_gsh)}
 
+# ---- post-build identity audit ------------------------------------------
+# Prevention is not proof. Every account the module created must be either a
+# Debian-global static allocation (base-passwd territory, uid < 100, e.g.
+# www-data=33) or inside this module's assigned window. Anything else escaped
+# the policy -- typically a maintainer script with a hardcoded id, or a tool
+# that consults neither adduser.conf nor login.defs -- and is reported rather
+# than quietly accepted.
+DEBIAN_STATIC_MAX = 99          # Debian Policy 9.2.2: 0-99 globally allocated
+NOBODY = 65534
+
+uid_range = None
+rr = os.environ.get('M_UID_RANGE') or ''
+if rr:
+    try:
+        lo, hi = (int(x) for x in rr.split())
+        uid_range = {'start': lo, 'end': hi}
+    except ValueError:
+        warn("malformed M_UID_RANGE %r; audit will treat every id as out of range" % rr)
+
+def classify(num):
+    try:
+        n = int(num)
+    except (TypeError, ValueError):
+        return 'malformed'
+    if n <= DEBIAN_STATIC_MAX or n == NOBODY:
+        return 'static-reserved'
+    if uid_range and uid_range['start'] <= n <= uid_range['end']:
+        return 'in-range'
+    return 'out-of-range'
+
+audit = {'static-reserved': [], 'in-range': [], 'out-of-range': [], 'malformed': []}
+for n, rec in users.items():
+    audit[classify(rec['uid'])].append('user %s=%s' % (n, rec['uid']))
+for n, rec in groups.items():
+    audit[classify(rec['gid'])].append('group %s=%s' % (n, rec['gid']))
+identity_audit = {k: sorted(v) for k, v in audit.items()}
+
 # systemd units name identities that must resolve in the composed account
 # view. Collected over-inclusively (any User=/Group=/SupplementaryGroups=
 # line, not only those under [Service]) because a false positive here costs a
@@ -382,13 +449,15 @@ doc = {
     # relations cannot express cross-module requirements, because apt only
     # ever sees one module's build. Filled in by hand in week 3; note these
     # are a different namespace from the per-package fields of the same name.
-    'requires':  list(prev.get('requires')  or []),
-    'conflicts': list(prev.get('conflicts') or []),
-    'provides':  list(prev.get('provides')  or []),
+    'requires':  list(cat_requires  if cat_requires  is not None else (prev.get('requires')  or [])),
+    'conflicts': list(cat_conflicts if cat_conflicts is not None else (prev.get('conflicts') or [])),
+    'provides':  list(cat_provides  if cat_provides  is not None else (prev.get('provides')  or [])),
 
     'requested': requested,
     'removed':   removed,
+    'uid_range': uid_range,
     'accounts':  accounts,
+    'identity_audit': identity_audit,
     'units':     units,
     'artifact':  artifact,
     'packages':  packages,
@@ -416,6 +485,15 @@ print("  removed  : %d" % len(removed))
 print("  requested: %s" % (' '.join(requested) if requested else '<none>'))
 print("  accounts : %d user(s), %d group(s); %d unit(s) name an identity"
       % (len(users), len(groups), len(units)))
+if uid_range:
+    print("  uid range: %d-%d" % (uid_range['start'], uid_range['end']))
+for kind in ('static-reserved', 'in-range'):
+    if identity_audit[kind]:
+        print("  audit    : %-15s %s" % (kind, ', '.join(identity_audit[kind])))
+for kind in ('out-of-range', 'malformed'):
+    if identity_audit[kind]:
+        warn("IDENTITY AUDIT %s: %s -- escaped the assigned window"
+             % (kind, ', '.join(identity_audit[kind])))
 if artifact:
     print("  artifact : %s (%d bytes)" % (artifact['file'], artifact['bytes']))
     print("  sha256   : %s" % artifact['sha256'])
