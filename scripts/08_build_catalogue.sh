@@ -61,8 +61,14 @@ for m in (doc.get('modules') or []):
     seen.add(name)
     if wanted is not None and name not in wanted: continue
     post = str(m.get('post_install') or '').replace('\t', ' ').replace('\n', ' ')
+    # '-' for empty, never an empty field: IFS=$'\t' treats tab as IFS
+    # WHITESPACE, so bash collapses runs of tabs and an empty column silently
+    # shifts every later value one place left. That put post_install into the
+    # snapshot variable and pipdemo tried to derive SOURCE_EPOCH from a pip
+    # command line.
     rows.append((name, str(m.get('version') or defaults.get('version') or '1.0'),
-                 ' '.join(str(p) for p in pkgs), str(m.get('snapshot') or ''), post))
+                 ' '.join(str(p) for p in pkgs),
+                 str(m.get('snapshot') or '') or '-', post or '-'))
 if wanted:
     missing = wanted - {r[0] for r in rows}
     if missing:
@@ -83,6 +89,8 @@ if [ "$REFRESH" -eq 1 ]; then
         || die2 "metadata refresh failed for base"
     RC=0
     while IFS=$'\t' read -r name version pkgs snapshot post; do
+    [ "$snapshot" = "-" ] && snapshot=""
+    [ "$post" = "-" ] && post=""
         [ -f "${MOD_DIR}/${name}.json" ] || continue
         # A module built from another snapshot must have that snapshot
         # recorded, so the override has to be re-applied on refresh too --
@@ -101,6 +109,8 @@ if [ "$REFRESH" -eq 1 ]; then
 fi
 
 while IFS=$'\t' read -r name version pkgs snapshot post; do
+    [ "$snapshot" = "-" ] && snapshot=""
+    [ "$post" = "-" ] && post=""
     sqsh="${MOD_DIR}/${name}.sqsh"
     json="${MOD_DIR}/${name}.json"
     if [ "$FORCE" -eq 0 ] && [ -f "$sqsh" ] && [ -f "$json" ]; then
@@ -139,6 +149,8 @@ echo "========================================================================"
 printf " %-16s %10s  %s\n" "MODULE" "SIZE" "STATUS"
 echo "========================================================================"
 while IFS=$'\t' read -r name version pkgs snapshot post; do
+    [ "$snapshot" = "-" ] && snapshot=""
+    [ "$post" = "-" ] && post=""
     require_ident "$name" "catalogue module name"
     sqsh="${MOD_DIR}/${name}.sqsh"
     if [ ! -f "$sqsh" ]; then

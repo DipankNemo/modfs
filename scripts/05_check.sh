@@ -53,6 +53,12 @@ for m in "$@"; do valid_ident "$m" || die2 "invalid module name: '$m'"; done
 # later unprivileged run cannot reopen it. That is an environment wart, not a
 # verdict, so fall back rather than failing the check.
 TAG="$(IFS=-; echo "$*")"
+# A 34-module set produces a 300-character name and every filesystem refuses
+# it, which surfaced as "checker broke" and was misread as a rejection. Long
+# sets get a stable digest instead; short ones keep the readable name.
+if [ "${#TAG}" -gt 100 ]; then
+    TAG="$(printf '%s' "$TAG" | sha256sum | cut -c1-12)-$#modules"
+fi
 mkdir -p "$LOG_DIR" 2>/dev/null
 OUT="${LOG_DIR}/check-${TAG}.txt"
 if ! : > "$OUT" 2>/dev/null; then

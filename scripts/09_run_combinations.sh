@@ -49,6 +49,7 @@ if [ "${1:-}" = "--worker" ]; then
     # Anchor on the finding lines' indent: the section HEADER also contains
     # the words "IDENTITY COLLISION", and matching it counts every run.
     IDENT=$(printf  '%s\n' "$OUT" | grep -cE '^    (IDENTITY COLLISION|UNRESOLVED IDENTITY)' || true)  # class 7
+    MODREL=$(printf '%s\n' "$OUT" | grep -cE '^    (UNSATISFIED REQUIREMENT|MODULE CONFLICT)' || true)  # section 5
     FILES=$(printf  '%s\n' "$OUT" | grep -c '^    FILE COLLISION ' || true)   # class 4
     # Suppressed collisions are not errors, but they are the evidence that
     # class 4 actually ran against real data rather than finding nothing.
@@ -61,9 +62,9 @@ if [ "${1:-}" = "--worker" ]; then
         *) VERDICT=BROKEN ;;
     esac
 
-    printf '%s,%d,%s,%s,%d,%s,%s,%d,%d,%d,%d,%d,%d,%d,%d\n' \
+    printf '%s,%d,%s,%s,%d,%s,%s,%d,%d,%d,%d,%d,%d,%d,%d,%d\n' \
         "$TAG" "${#MODS[@]}" "${MODS[*]}" "$VERDICT" "$RC" \
-        "$ERR" "$WARN" "$BENIGN" "$SKEW" "$DECL" "$FILES" "$FSUP" "$IDENT" "$DRIFT" "$NOCOMP" \
+        "$ERR" "$WARN" "$BENIGN" "$SKEW" "$DECL" "$FILES" "$FSUP" "$IDENT" "$MODREL" "$DRIFT" "$NOCOMP" \
         > "${OUTDIR}/${TAG}.csv"
 
     [ "$KEEP" = "1" ] || rm -f "${LOG_DIR}/check-${TAG}.txt"
@@ -123,7 +124,7 @@ ELAPSED=$(( $(date +%s) - START ))
 
 mkdir -p "$(dirname "$CSV")" 2>/dev/null || true
 {
-    echo "combination,n,modules,verdict,exit,errors,warnings,benign_overlap,version_skew,declared_conflict,file_collision,file_collision_suppressed,identity_collision,base_drift,not_composable"
+    echo "combination,n,modules,verdict,exit,errors,warnings,benign_overlap,version_skew,declared_conflict,file_collision,file_collision_suppressed,identity_collision,module_relation,base_drift,not_composable"
     cat "$W"/lines/*.csv | sort
 } > "$CSV" || die2 "cannot write ${CSV}"
 
@@ -152,6 +153,7 @@ for label, col in (("1 benign overlap", 'benign_overlap'),
                    ("4 file collision", 'file_collision'),
                    ("4 collisions suppressed", 'file_collision_suppressed'),
                    ("7 identity collision", 'identity_collision'),
+                   ("module-level relation", 'module_relation'),
                    ("6 implicit base upgrade", 'base_drift'),
                    ("0 not composable", 'not_composable')):
     hit = sum(1 for r in rows if int(r[col]) > 0)
@@ -168,6 +170,7 @@ if rej:
         if int(r['declared_conflict']): why.append('declared')
         if int(r['file_collision']): why.append('file-collision')
         if int(r['identity_collision']): why.append('identity')
+        if int(r['module_relation']): why.append('module-dep')
         if int(r['not_composable']): why.append('not-composable')
         print("    %-34s %s" % (r['modules'], ','.join(why) or '?'))
 PY

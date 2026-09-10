@@ -1007,3 +1007,56 @@ Evaluation chapters — do not skip it.
   pair" is not by itself a proof for the whole set. Validated on a synthetic
   graph containing a 4-clique and an all-conflicting control: the selection is
   internally consistent and nothing further can be added.
+
+## 2026-09-03 (results: class 7 prevented, catalogue at 37, four predictions wrong)
+- HEADLINE: class-7 identity collisions 6 -> 0. The four modules that all
+  claimed uid 103 / gid 104 now sit in their assigned windows.
+- IDENTITY AUDIT over every rebuilt module: 14 accounts created, ALL in-range,
+  0 out-of-range, 0 static-reserved, 0 malformed.
+      mta-msmtp  msmtp=2800/2800      redis      redis=4600/4600
+      tcpdump    tcpdump=4300/4300    memcached  memcache=4700/4700
+      postgres   postgres=5200/5201, ssl-cert group 5200
+      mysql      mysql=5300/5300      docker     docker group 5400
+  Every service-account package honoured adduser.conf/login.defs -- including
+  the three new ones, which was the open question. Nothing hardcoded an id.
+- FOUR PREDICTIONS, ALL WRONG, and the wrongness is the result:
+      rust + llvm       ACCEPT, 23 shared packages
+      gcc + rust        ACCEPT, 31 shared
+      gcc + llvm        ACCEPT, 24 shared
+      postgres + mysql  ACCEPT, 10 shared, no identity collision
+      postgres/docker, mysql/docker  ACCEPT
+  rust and llvm were expected to disagree over LLVM. They share 23 packages at
+  IDENTICAL versions, because both were built from one snapshot -- which is
+  precisely what pinning is for. This is the strongest evidence for the
+  pinning claim so far, and at a far larger scale than the original catalogue:
+  the biggest toolchains overlap most and agree completely.
+- Tier 1, 666 pairs of 37 modules: 595 ACCEPT, 71 REJECT =
+      36 control-oldsnap (precondition, 7 of them also version skew)
+      34 fake-cuda (unsatisfied module-level requirement)
+       1 mta-msmtp + mta-nullmailer (class 3 via virtual name)
+       0 class 7
+- Tier 2, 630 pairs: 595 composed and passed, 35 correctly NOT_ADMITTED and
+  never composed. C3 gating doing exactly its job.
+- Size: 7 modules over MODULE_MAX_MB -- rust 168 MB, java 136, llvm 123,
+  docker 80, gcc 81, postgres 79, mysql 54. Reported, not rejected, as asked.
+  The catalogue is no longer "deliberately small": it now spans 212 KB to
+  168 MB, three orders of magnitude.
+- FOUR BUGS found by this run, all mine:
+  1. pipdemo failed with "cannot derive SOURCE_EPOCH from 'pip3 install ...'".
+     IFS=$'\t' treats tab as IFS WHITESPACE, so bash collapses runs of tabs
+     and an empty snapshot column shifted post_install one field left. Empty
+     TSV columns are now written as '-'.
+  2. The 34-module maximal subset reported "REJECTED as a whole set -- some
+     class is not purely pairwise". It was nothing of the kind: 05 exited 2
+     because the report filename built from 34 module names exceeded 255
+     bytes. Long sets now get a digest. The subset is ACCEPTED, 0 errors,
+     0 warnings -- so a 34-module high-N boot is possible.
+  3. That same code treated any non-zero tier-1 exit as a rejection, which is
+     how a filename error became a composability finding. Exit 2 is now
+     reported as the checker breaking, explicitly not a verdict on the set.
+  4. The subset confirmation log was written under BUILD_DIR and deleted by
+     the next sweep before it could be read -- the C5 lesson repeating in new
+     code. It now lands beside the subset file.
+- Tier 2's summary listed NOT_ADMITTED rows under "failures" while the header
+  said 0 failed. A correct tier-1 refusal is a skip, and is now reported as
+  one.

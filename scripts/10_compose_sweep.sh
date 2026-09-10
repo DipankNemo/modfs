@@ -98,15 +98,24 @@ print("  excluded       : %s" % (', '.join(excluded) or 'none'))
 print("  subset written : %s" % out)
 MSPY
     SUBSET=$(grep -v '^#' "$SUBSET_OUT" | head -1)
+    # Beside the subset, not in scratch: the first run of this wrote its log
+    # under BUILD_DIR and the next sweep deleted it before it could be read.
+    SUBSET_LOG="${SUBSET_OUT%.txt}-tier1.log"
     log "confirming the subset with one n-ary tier-1 run"
     # shellcheck disable=SC2086
-    if tier1_admit "$W/subset-tier1.log" base $SUBSET; then
-        log "subset CONFIRMED admitted as a whole set"
-    else
-        warn "subset rejected as a whole set -- see $W/subset-tier1.log"
-        warn "a rejection here means some class is not purely pairwise"
-        exit 1
-    fi
+    tier1_admit "$SUBSET_LOG" base $SUBSET; SUB_RC=$?
+    case "$SUB_RC" in
+        0) log "subset CONFIRMED admitted as a whole set" ;;
+        1) warn "subset REJECTED as a whole set -- see $SUBSET_LOG"
+           warn "a rejection here means some class is not purely pairwise"
+           exit 1 ;;
+        # Anything else is the checker failing, which says nothing about the
+        # subset. Conflating the two reported a filename-length error as a
+        # composability finding.
+        *) warn "tier-1 checker BROKE on the subset (exit ${SUB_RC}) -- see $SUBSET_LOG"
+           warn "this is not a verdict on the subset"
+           exit 2 ;;
+    esac
     exit 0
 fi
 mkdir -p "$(dirname "$CSV")" 2>/dev/null || true
@@ -292,7 +301,16 @@ for n in sorted(byn):
           % (n, len(rs), len(ok), len(rs)-len(ok), med('mount_ms'),
              med('reconcile_ms'), med('total_ms'),
              "%d-%d" % (min(pk), max(pk)) if pk else "-"))
-bad = [r for r in rows if r['result'] != 'PASS']
+# NOT_ADMITTED is tier 1 doing its job, not tier 2 failing. Listing the two
+# together under "failures" made a correct refusal look like a defect.
+skipped = [r for r in rows if r['result'] == 'NOT_ADMITTED']
+bad = [r for r in rows if r['result'] not in ('PASS', 'KNOWN_NEGATIVE', 'NOT_ADMITTED')]
+if skipped:
+    print("\n  not admitted by tier 1 (correctly refused, never composed): %d" % len(skipped))
+    for r in skipped[:5]:
+        print("    %s" % r['modules'][:74])
+    if len(skipped) > 5:
+        print("    ... and %d more" % (len(skipped) - 5))
 if bad:
     print("\n  failures:")
     for r in bad[:15]:
