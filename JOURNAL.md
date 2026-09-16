@@ -1168,3 +1168,33 @@ Evaluation chapters — do not skip it.
   carry result.json; 3 predate that fix. combinations.csv and
   combinations-all.csv are byte-identical duplicates. The 96-composition
   tier-2 claim still has no backing CSV.
+
+## 2026-09-16 (evidence-integrity bug: sweeps could republish a run that never happened)
+- Found while establishing a green baseline before recommending a rebuild.
+  A non-root tier-1 sweep reported base_drift=36 and 15-field rows against a
+  16-field header. It was not a regression in the new columns.
+- ROOT CAUSE: 09 and 10 clear their scratch with `rm -rf "$W"` and never check
+  it worked. /srv/modfs/build/combinations was owned by root from an earlier
+  `sudo ./scripts/10_compose_sweep.sh --maximal-subset`, so the delete failed
+  silently, mkdir -p succeeded, and `cat $W/lines/*.csv` concatenated 666
+  STALE result files from the previous schema into a CSV presented as a fresh
+  run. Every headline number in that CSV came from a run that never happened.
+  A removed module's results would also have persisted.
+- This is the worst class of defect for a thesis: not a crash, a quiet
+  fabrication of evidence.
+- FIX: lib.sh gains reset_workdir(), which clears the directory and then PROVES
+  it is empty, dying with an explanation otherwise. Routed 04, 07, 09, 10, 11
+  and tests/repro_check.sh through it, which also answers the audit's request
+  that recursive deletion go through one tested helper. Verified: the sweep now
+  refuses with "668 file(s) remain" instead of reusing them.
+- config.sh gains MODFS_BUILD_DIR, matching MODFS_ROOT and MODFS_SPEC_DIR, so
+  unprivileged checks can run against the real artefacts without write access
+  to a scratch directory a previous sudo run created. That is what made this
+  bug reproducible at all.
+- CORRECTED tier-1 numbers on a clean workspace, 666 pairs of 37 modules:
+      ACCEPT 595, REJECT 71
+      benign overlap 146, version skew 7, declared conflict 1,
+      file collision 0, identity collision 0, module-level relation 35,
+      base drift 0, not composable 36
+  71 = 36 control + 35 fake-cuda + 1 MTA, less the one pair that is both.
+  base drift is 0, not 36; the 36 was stale rows being misparsed.

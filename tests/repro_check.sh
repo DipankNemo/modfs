@@ -55,7 +55,7 @@ else
     }
 fi
 
-rm -rf "$W"; mkdir -p "$W"
+reset_workdir "$W"
 
 # Exactly the invocation 02_build_delta.sh uses. If these ever drift apart the
 # diagnostic is measuring the wrong thing, so keep them in step.

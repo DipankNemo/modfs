@@ -149,6 +149,24 @@ restore_identity_policy() { # restore_identity_policy <root> <backupdir>
     return 0
 }
 
+# A scratch workspace that could not be cleared is worse than no workspace:
+# `rm -rf` fails silently for a non-root user against a directory a previous
+# sudo run created, and the sweep then concatenates 666 stale result files
+# from an older schema into a CSV presented as a fresh run. Clear, then PROVE
+# it is empty.
+reset_workdir() {        # reset_workdir <dir>
+    local d="$1" left
+    require_no_mounts "$d"
+    rm -rf -- "$d" 2>/dev/null || true
+    if [ -e "$d" ]; then
+        left=$(find "$d" -mindepth 1 2>/dev/null | wc -l)
+        [ "$left" -eq 0 ] || die "cannot clear workspace ${d}: ${left} file(s) remain
+       they are probably owned by a previous sudo run -- remove them and retry,
+       otherwise this run would silently reuse stale results"
+    fi
+    mkdir -p "$d" || die "cannot create workspace ${d}"
+}
+
 # ---- admission: integrity, then tier-1 ------------------------------------
 # C3. The pipeline order is a rule, not a convention:
 #     bundle integrity -> tier-1 admission -> compose/reconcile -> tier-2

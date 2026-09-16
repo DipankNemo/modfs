@@ -50,7 +50,7 @@ python3 -c 'import yaml' >/dev/null 2>&1 \
     || die2 "python3-yaml missing -- cannot read ${SPEC} (apt install python3-yaml)"
 
 C="${BUILD_DIR}/smoke"
-rm -rf "$C"; mkdir -p "$C"/{upper,work,merged}
+reset_workdir "$C"; mkdir -p "$C"/{upper,work,merged}
 
 PASS=0; FAIL=0; SKIP=0; PROBED=0
 ok()   { printf '  \033[1;32m[ ok ]\033[0m %s\n' "$*"; PASS=$((PASS+1)); }

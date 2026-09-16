@@ -80,8 +80,7 @@ SERIAL="$B/serial.log"
 # Scratch for this run stays in BUILD_DIR; only evidence lands in the bundle.
 C="${BUILD_DIR}/boot-${RUN_ID}"
 IMG="$C/disk.img"; VARS="$C/OVMF_VARS.fd"
-require_no_mounts "$C"
-rm -rf -- "$C"; mkdir -p "$C"/{upper,work,merged}
+reset_workdir "$C"; mkdir -p "$C"/{upper,work,merged}
 M="$C/merged"
 
 # Written BEFORE any mount, chroot, apt transaction or image write, so an

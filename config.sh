@@ -40,7 +40,10 @@ SPEC_DIR="${MODFS_SPEC_DIR:-${MODFS_SRC}/specs}"   # hand written, in git
 ROOT="${MODFS_ROOT:-/srv/modfs}"
 
 MOD_DIR="${ROOT}/modules"         # built .sqsh + .json artefacts
-BUILD_DIR="${ROOT}/build"         # scratch: chroots, overlay dirs
+# Overridable so the unprivileged checks (tier 1, subset search) can run
+# against the real artefacts without needing write access to a scratch
+# directory a previous sudo run created.
+BUILD_DIR="${MODFS_BUILD_DIR:-${ROOT}/build}"   # scratch: chroots, overlay dirs
 IMAGE_DIR="${ROOT}/images"        # final .img files
 LOG_DIR="${ROOT}/logs"
 

@@ -46,7 +46,7 @@ while [ $# -gt 0 ]; do
 done
 
 W="${BUILD_DIR}/csweep"
-rm -rf "$W"; mkdir -p "$W"
+reset_workdir "$W"
 
 # ---- maximal admitted subset ---------------------------------------------
 # A high-N boot test is impossible while the catalogue contains sets tier 1

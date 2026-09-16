@@ -30,7 +30,7 @@ MODULES=("$@")
 for m in "${MODULES[@]}"; do require_ident "$m" "module name"; done
 
 C="${BUILD_DIR}/compose"
-rm -rf "$C"; mkdir -p "$C"/{upper,work,merged}
+reset_workdir "$C"; mkdir -p "$C"/{upper,work,merged}
 
 # ---- mount each artefact read-only ---------------------------------------
 LAYERS=(); LOWERS=()

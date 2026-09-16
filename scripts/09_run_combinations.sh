@@ -104,7 +104,7 @@ PY
 for m in "${MODULES[@]}"; do valid_ident "$m" || die2 "invalid module name in catalogue: '$m'"; done
 
 W="${BUILD_DIR}/combinations"
-rm -rf "$W"; mkdir -p "$W/lines"
+reset_workdir "$W"; mkdir -p "$W/lines"
 COMBOS="$W/combos.txt"
 python3 - "$MAXN" "$COMBOS" "${MODULES[@]}" <<'PY'
 import itertools, sys
