@@ -1313,3 +1313,49 @@ Evaluation chapters — do not skip it.
   own cannot report its own failure to own it. The liveness marker did not fix
   anything -- it made the system able to describe its own failure, which is what
   turned an unexplainable empty log into a ten-minute diagnosis.
+
+## 2026-09-16 (tier 3 ALL GREEN: class 7 proven at runtime, not only on paper)
+- `11_boot_test.sh --name acct-pm --size-mb 6144 base postgres mysql`: ALL GREEN.
+  This is the runtime counterpart to the account-reconciliation work, and the
+  first evidence that the class-7 fix holds in a booted system rather than in a
+  metadata check.
+        mariadb.service      enabled active sub=running exit=0 result=success
+        postgresql.service   enabled active sub=exited  exit=0 result=success
+        failed units: 0      check audit PASS
+        probe postgres PASS  probe mysql PASS
+- The sockets are the part that actually proves it, because they show the daemons
+  running AS their reconciled identities, not merely that the units started:
+        127.0.0.1:3306   users:(("mariadbd",...))
+        127.0.0.1:5432   users:(("postgres",...))
+        [::1]:5432       users:(("postgres",...))
+  Two modules built independently, each creating its own system users, composed
+  into one account database of 23 passwd / 45 group records, and both daemons
+  started under their own distinct identities. That is the claim ARCHITECTURE
+  makes about class 7, now with a booted system behind it.
+- STILL OUTSTANDING and not to be forgotten: the reverse order,
+  `base mysql postgres`. One order proves composition works; it does not prove
+  order independence, which is the stronger claim the architecture actually makes.
+- NEW FINDING, from the instrumentation rather than from the failure:
+  `MODFS wait-system rc=124` -- `systemctl is-system-running --wait` consumed its
+  full 120 s and NEVER returned, and the drain loop then ran all 60 iterations.
+  Every run ever recorded reports `jobs-remaining: 1`. So ~180 s of every boot
+  run is spent waiting for a steady state that never arrives.
+- This partially contradicts a comment in our own harness, which says the race
+  "used to be" a problem because the harness was itself an unfinished job, and
+  that moving to a timer means "waiting is safe". Precisely: the DEADLOCK is
+  gone, the wait is bounded and does return. But the wait never SUCCEEDS, and
+  this run reported `systemd state: starting`, where the 09-03 runs reported
+  running or degraded. Half the claim held; the half about reaching a steady
+  state did not.
+- Being honest about the limit of the evidence: the harness printed the job
+  COUNT and never the job NAME, so which job is outstanding is not answerable
+  from any run we have. Same shape of gap as the silent-harness bug -- we cannot
+  diagnose what we never recorded.
+- FIX: print `MODFS job <name>` lines and surface them in the report. Verified by
+  fixture, and the real green log re-parses to ALL GREEN unchanged. The
+  reverse-order run that is needed anyway will now also name the job.
+- Incidental, worth knowing for anyone parsing these logs by hand: the serial log
+  really does contain CRLF (`cat -A` shows `^M$`), but Python's text-mode open()
+  applies universal newlines, so the parser never sees a CR. A sed fixture
+  anchored on `$` silently matches nothing. Cost a few minutes; recorded so it
+  costs nobody else any.

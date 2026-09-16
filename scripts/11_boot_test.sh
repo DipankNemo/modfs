@@ -350,6 +350,11 @@ exec > /dev/console 2>&1
 echo "===MODFS-BOOTTEST-BEGIN==="
 echo "MODFS state: $(systemctl is-system-running 2>&1)"
 echo "MODFS jobs-remaining: $(systemctl list-jobs --no-legend --plain 2>/dev/null | grep -c . || echo 0)"
+# Every run so far reports exactly 1 outstanding job and none of them says WHICH.
+# That one job is why `is-system-running --wait` returns 124 and why the reported
+# state can sit at "starting", so naming it is the difference between a number we
+# cannot act on and a fact we can.
+systemctl list-jobs --no-legend --plain 2>/dev/null | sed 's/^/MODFS job /' 
 
 echo "MODFS failed-begin"
 systemctl list-units --state=failed --no-legend --plain 2>/dev/null \
@@ -563,6 +568,8 @@ with open(os.path.join(bundle, 'journal.txt'), 'w') as f:
 
 print("\n  tier-1 admission : %s%s" % (admitted, "  (KNOWN NEGATIVE)" if known_neg else ""))
 print("  systemd state    : %s   (jobs remaining: %s)" % (state, jobs))
+for j in re.findall(r'MODFS job (.+)', serial):
+    print("    outstanding job: %s" % j.strip()[:90])
 print("  failed units     : %d%s" % (len(failed), "  " + ", ".join(failed) if failed else ""))
 if units:
     print("\n  unit matrix")
