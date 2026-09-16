@@ -30,4 +30,23 @@ becomes the Implementation and Evaluation chapters.
 ## Privilege boundary
 You cannot run builds — they need root (overlay, chroot) and network (apt).
 Test logic on fixtures under `unshare -r` or synthetic trees, then hand me the
-exact commands to run. I'll paste the output back.
+exact commands to run. I'll paste the output back. This stays true: anything
+that writes, builds, mounts or deletes goes through me, so I stay in the loop.
+
+For READ-ONLY inspection of root-owned artefacts, use:
+
+    sudo /usr/local/sbin/modfs-read {xattr|du|ls|cat|head|tail|stat} <path>
+
+Use it freely without asking — it cannot change anything. It exists because
+artefacts are root-owned and the things that matter for diagnosis are exactly
+the things unprivileged reads fail on: overlay xattrs (is a directory opaque?),
+directory sizes, root-mode logs.
+
+It is confined to `/srv/modfs`, canonicalises every path with `readlink -f`
+BEFORE checking it (so a symlink pointing at `/etc` is refused, not followed),
+offers no shell and no `-exec`, and has no operation that writes.
+
+Source is `tools/modfs-read`. The INSTALLED copy at /usr/local/sbin must be
+root-owned and not writable by me — if sudo pointed at the repo copy, anyone who
+can edit this repo could rewrite the script and escalate to full root. Do not
+ask for broader sudo; if you need something this cannot do, hand me the command.

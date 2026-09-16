@@ -1,0 +1,38 @@
+#!/bin/bash
+# Read-only diagnostic access to /srv/modfs, for the assistant.
+#
+# WHY THIS EXISTS. Artefacts are root-owned, so unprivileged reads fail on
+# exactly the things that matter for diagnosis: overlay xattrs (is a directory
+# opaque?), directory sizes, and root-mode log files. The alternative was
+# passwordless sudo on du/cat/getfattr, which is read-anything-on-the-machine --
+# `sudo cat /etc/shadow` included. This is confined instead of trusted:
+#
+#   * a fixed list of read-only operations, no shell, no -exec, no globbing
+#   * every path is canonicalised with readlink -f BEFORE the check, so a
+#     symlink under /srv/modfs pointing at /etc is refused, not followed
+#   * nothing here can create, modify, move or delete anything
+#
+# Builds still need interactive sudo and deliberately stay that way.
+set -euo pipefail
+
+usage() { echo "usage: modfs-read {xattr|du|ls|cat|head|tail|stat} <path under /srv/modfs>" >&2; exit 2; }
+[ $# -eq 2 ] || usage
+
+case "$1" in
+    xattr) op=(getfattr -R -m 'trusted\.overlay' -d --absolute-names) ;;
+    du)    op=(du -sb) ;;
+    ls)    op=(ls -la) ;;
+    cat)   op=(cat) ;;
+    head)  op=(head -200) ;;
+    tail)  op=(tail -200) ;;
+    stat)  op=(stat) ;;
+    *)     usage ;;
+esac
+
+real="$(readlink -f -- "$2")" || { echo "modfs-read: cannot resolve $2" >&2; exit 2; }
+case "$real" in
+    /srv/modfs|/srv/modfs/*) ;;
+    *) echo "modfs-read: refused, '$real' is outside /srv/modfs" >&2; exit 3 ;;
+esac
+
+exec "${op[@]}" -- "$real"
