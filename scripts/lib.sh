@@ -268,7 +268,16 @@ write_chroot_policy() {  # write_chroot_policy <root>
         > "$r/etc/apt/apt.conf.d/99modfs"
 }
 
-remove_chroot_policy() { rm -f "$1/usr/sbin/policy-rc.d"; }
+# Everything write_chroot_policy created must come back out. 99modfs was
+# written but never removed, so APT::Install-Recommends "false" shipped inside
+# all 38 artefacts and every node built from them would silently stop
+# installing recommended packages. Build scaffolding, leaking into the
+# product -- the same category as the UID policy and the boot test's staged
+# resolv.conf, both of which are restored.
+remove_chroot_policy() {
+    rm -f "$1/usr/sbin/policy-rc.d"
+    rm -f "$1/etc/apt/apt.conf.d/99modfs"
+}
 
 in_chroot() {            # in_chroot <root> <command...>
     local r="$1"; shift

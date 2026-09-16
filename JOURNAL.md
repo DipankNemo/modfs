@@ -1105,3 +1105,66 @@ Evaluation chapters — do not skip it.
   1000-60000 ordinary-user range and nothing in the deployed image reserves
   them, so a long-lived node could later hand a human account a UID already
   baked into module-owned files.
+
+## 2026-09-16 (full independent audit: what the numbers actually support)
+- STORAGE CLAIM WAS STALE AND DIRECTIONALLY WRONG. ARCHITECTURE said 256.7 MB
+  stored / 1373.9 MB monolithic / 5.35x. Measured at 37 built modules:
+      small adversarial cohort (30)  257.1 MB  1467.0 MB  5.70x
+      large realistic cohort   (7)   792.8 MB  1043.1 MB  1.32x
+      whole catalogue          (37) 1008.2 MB  2510.0 MB  2.49x
+  The ratio is (N*B + sum d)/(B + sum d): it tends to N as deltas shrink and
+  to 1 as they grow. 5.35x was a property of a catalogue of tiny adversarial
+  modules, not of sibling deltas. The 7 large modules are 78% of all delta
+  bytes and return almost nothing.
+  This is the operating envelope, not a refutation -- but the headline number
+  had to be replaced with the characterisation.
+- The design's own remedy is unexploited: section 2 says "base may be fat",
+  and the built base is minbase + 4 packages. Among the 7 large modules, 53
+  packages appear in >=2 and 32 in >=3 (gcc+rust share 31, gcc+llvm 24,
+  llvm+rust 23). Moving that shared toolchain into base would shrink every
+  large delta. NOT TESTED -- it is the obvious next experiment.
+- FRAMING CORRECTION: 11_boot_test flattens the composed overlay into ext4, so
+  a provisioned node gets a conventional image. The saving is server-side
+  storage and assembly, not a node-side filesystem.
+- REGISTRY COMPLETENESS, which we never had. Every reconciled registry was
+  found by a failure. An enumeration is computable: files present in >=2
+  module upperdirs and owned by NO package. Of 1479 such files --
+      252    already reconciled/excluded/regenerated
+     ~1200   /var/lib/dpkg/info/* control files, byte-identical, benign
+      4      lock files, zero length, benign
+      3      debconf *.dat            <- OPEN
+      1      /etc/apt/apt.conf.d/99modfs  <- LEAK, fixed
+      1      /etc/apt/sources.list, deliberate
+  The list is closed for this catalogue with exactly one unhandled registry.
+- DEBCONF QUANTIFIED rather than guessed: 7 of 37 modules diverge from base
+  (docker, java, mta-msmtp, mta-nullmailer, mysql, postgres, webserver), so 21
+  pairs have two diverging copies and 231 of 666 have at least one. Same shape
+  as the account defect. Not implemented; documented with the number.
+- LEAK FOUND AND FIXED: write_chroot_policy wrote /etc/apt/apt.conf.d/99modfs
+  and remove_chroot_policy never removed it, so APT::Install-Recommends
+  "false" shipped inside all 38 artefacts. Every node built from them would
+  silently stop installing recommended packages. Build scaffolding in the
+  product -- the same category as the UID policy and the staged resolv.conf,
+  both of which are restored. Takes effect on rebuild; rebuild base FIRST, or
+  a delta built on the old base produces a whiteout (correct, but it would be
+  the catalogue's first and whiteouts are untested).
+- MY OWN UID-POLICY RESTORE VALIDATED INDEPENDENTLY: /etc/login.defs and
+  /etc/adduser.conf are present in 13 artefacts and 13/13 are byte-identical
+  to base. No window leaked into any artefact.
+- POSITIVE DEPENDENCY CLOSURE MEASURED (C4 is unimplemented, so this was an
+  external audit): 0 unsatisfied relations in base alone, in every base+module,
+  and across all 666 pairs. The gap is latent, not active -- and it is latent
+  precisely because one snapshot means one version per package and no module
+  removes anything. It becomes live the moment either changes.
+- CHECKER ATTACKED WITH ADVERSARIAL FIXTURES. Three demonstrable false
+  negatives, all ACCEPT:
+      a module REMOVING a package another module depends on
+      a package depending on something no module provides
+      two modules providing one capability with no declared conflict
+  The third contradicts section 5, which says multiple providers are rejected.
+  Epoch-versioned conflicts are handled correctly (REJECT).
+  A base-package DOWNGRADE is reported only as "implicit base upgrade".
+- EVIDENCE: all 38 artefacts match their manifest digests. 5 of 8 boot bundles
+  carry result.json; 3 predate that fix. combinations.csv and
+  combinations-all.csv are byte-identical duplicates. The 96-composition
+  tier-2 claim still has no backing CSV.

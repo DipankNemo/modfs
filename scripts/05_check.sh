@@ -238,7 +238,7 @@ if not ERRORS and not WARNINGS:
 
 # ------------------------------------------------- CLASS 6: base drift
 print("\n" + "=" * 72)
-print(" CLASS 6. IMPLICIT BASE UPGRADE  (delta replaces a package inherited")
+print(" CLASS 6. IMPLICIT BASE CHANGE  (delta replaces a package inherited")
 print("     from its parent -- siblings may not expect the new version)")
 print("=" * 72)
 
@@ -271,7 +271,10 @@ for m in modules:
     for u in upgraded:
         bv, nv = base[u]['version'], pk[u]['version']
         print("      %s" % u)
-        print("          base    : %s" % bv)
+        direction = "upgrade"
+        if vcmp(nv, '<<', bv) is True:
+            direction = "DOWNGRADE"
+        print("          base    : %s   (%s)" % (bv, direction))
         print("          %-8s: %s" % (m, nv))
 
         # who demanded a version base could not satisfy?

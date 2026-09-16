@@ -224,8 +224,41 @@ survive as directories; nginx needs the latter at runtime. Three of the four
 logs also record wall-clock timestamps, which is why shipping them made
 artefacts impossible to reproduce byte-for-byte (section 8).
 
-`debconf/config.dat` and `templates.dat` sit outside this count and remain
-open — union, or documented limitation.
+`debconf/config.dat` and `templates.dat` sit outside that count and remain
+open, but they are no longer unquantified. **7 of 37 modules carry a debconf
+database that differs from base's** — `docker`, `java`, `mta-msmtp`,
+`mta-nullmailer`, `mysql`, `postgres`, `webserver` — so 21 pairs have two
+diverging copies and **231 of 666 pairs have at least one**. Under last-wins
+every one of those loses debconf state. This is the same shape as the account
+defect and is not implemented; it is stated as a bounded limitation with a
+measurement rather than a guess.
+
+### How do we know the registry list is complete?
+
+We did not, until now. Each reconciled registry was found by a failure:
+`status` by invisible packages, alternatives/diversions/`extended_states` by
+the class-5 survey, `ld.so.cache` by measurement, the account databases by
+external audit. That is discovery by accident, and a thesis should say so.
+
+An enumeration is possible and has now been run. Take every file present in
+two or more module upperdirs that is **not owned by any package** — package
+ownership is already recorded in the class-4 sidecars — and the result is the
+complete candidate set. Of 1 479 such files:
+
+| Category | Count | Status |
+|---|---:|---|
+| already reconciled, excluded, or regenerated | 252 | handled |
+| `/var/lib/dpkg/info/*` control files | ~1 200 | benign: byte-identical copies of the same package version |
+| lock files (`dpkg/lock`, `archives/lock`, …) | 4 | benign: zero length |
+| `debconf/*.dat` | 3 | **open**, quantified above |
+| `/etc/apt/apt.conf.d/99modfs` | 1 | **was a leak**, now removed after build |
+| `/etc/apt/sources.list` | 1 | deliberate: records the pinned generation |
+
+So the list is closed for the current catalogue, with exactly one unhandled
+registry (debconf) and one defect found and fixed. The method generalises:
+*non-package-owned files shared by two or more modules* is a computable
+definition of "registry", and it should be run whenever the catalogue grows
+rather than waiting for the next failure.
 
 Failed prediction, worth recording: `/etc/passwd` and `/etc/group` were expected
 to collide. They did not — base already provides `www-data`.
@@ -252,7 +285,14 @@ sees one module's build. A second layer is needed:
 ```
 
 Checker verifies: every `requires` satisfied by the set at an acceptable
-version; no `conflicts` pair both present; no capability with two providers.
+version, and no `conflicts` pair both present.
+
+It does **not** reject a capability with two providers, though this document
+previously said it did. Verified with a fixture: two modules each declaring
+`Provides: mail-transport-agent`, neither declaring a conflict, are ACCEPTed.
+Whether that is even correct is open — some capabilities are alternatives with
+many valid providers and some are exclusive, and the schema records no
+cardinality. Stated as unimplemented rather than described as working.
 
 Checks in `05_check.sh` are numbered by these classes — `CLASS 3`, `CLASS 4`
 and so on — rather than in the order they happen to run, so output maps onto
@@ -351,8 +391,13 @@ Baseline: monolithic, one image per use case.
 86 MB expresses four bootable configurations. Monolithic ≈ 252 MB (estimate;
 comparison build not yet run) → ~2.9×, growing per module.
 
-**Full catalogue, 28 modules** (`specs/modules.yaml`, including one
-deliberately-broken positive control), built in ~6 minutes:
+> **Superseded — see "Storage depends on the catalogue" below.** The figures
+> in this subsection describe the original 28-module catalogue of small
+> adversarial modules. Adding seven realistic modules changed the headline
+> ratio from 5.35× to 2.49×, and that change is itself the result.
+
+**Original catalogue, 28 modules** (small adversarial modules only), built in
+~6 minutes:
 
 | | |
 |---|---|
@@ -411,6 +456,46 @@ four distinct fixes, none of them about package content: pinned `mkfs`/file
 timestamps, excluded build logs and `aux-cache`, stripped overlayfs
 `uuid`/`origin` xattrs, and an emptied `/etc/machine-id`. Cross-host
 reproducibility is now plausible but **untested**.
+
+### Storage depends on the catalogue, not only on the method
+
+Re-measured at 37 built modules after adding `gcc`, `java`, `rust`, `llvm`,
+`postgres`, `mysql` and `docker`:
+
+| Cohort | N | Stored | Monolithic | Ratio |
+|---|---:|---:|---:|---:|
+| small adversarial modules | 30 | 257.1 MB | 1 467.0 MB | **5.70×** |
+| large realistic modules | 7 | 792.8 MB | 1 043.1 MB | **1.32×** |
+| whole catalogue | 37 | 1 008.2 MB | 2 510.0 MB | **2.49×** |
+
+The ratio is
+
+    (N·B + Σd) / (B + Σd)
+
+so it tends to N as deltas shrink and to 1 as they grow. With B = 41.7 MB, a
+mean delta of 7.2 MB gives 5.70×; a mean delta of 107.3 MB gives 1.32×. The
+seven large modules are 78 % of all delta bytes and return almost nothing.
+
+**This is the honest form of the storage claim.** The earlier 5.35× was a
+property of a catalogue deliberately built from tiny modules, not a property
+of sibling deltas. The method's benefit is `B·(N−1)/(B+Σd)`: it pays when many
+modules share a large base, and approaches zero when modules are large and
+independent.
+
+That is not a refutation — it is the operating envelope, and it points at a
+design parameter the project already names. §2 says "Base may be fat; larger
+base ⇒ smaller deltas", yet the built base is `minbase` plus four packages.
+Among the seven large modules, **53 packages appear in two or more** and 32 in
+three or more (`gcc`+`rust` share 31, `gcc`+`llvm` 24, `llvm`+`rust` 23).
+Moving that shared toolchain into the base would shrink every large delta and
+raise the ratio. Testing that is the obvious next experiment and has not been
+run.
+
+One framing correction that follows: `11_boot_test.sh` flattens the composed
+overlay into an ext4 root, so a provisioned node receives a conventional
+image. The saving is **server-side storage and assembly**, not a node-side
+filesystem. On-node overlay composition is listed out of scope in §11, and the
+storage figures should be read accordingly.
 
 **Combination sweep**, all 378 pairs of the 28-module catalogue, 9 s at
 `--jobs 8`:
