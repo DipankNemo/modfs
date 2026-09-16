@@ -323,21 +323,29 @@ exec > /dev/console 2>&1
 # that ambiguity is the only reason the cause could not be read off the log.
 echo "===MODFS-HARNESS-ALIVE=== uptime=$(cut -d' ' -f1 /proc/uptime)"
 
-# The steady-state race: this used to be a startup oneshot ordered after
-# multi-user.target, so `is-system-running --wait` could never return -- the
-# harness was itself an unfinished job in the boot transaction. It is now
-# started by a timer OUTSIDE that transaction, so waiting is safe, but the
-# wait is still bounded rather than trusted.
-timeout 120 systemctl is-system-running --wait >/dev/null 2>&1
-rc=$?
-echo "MODFS wait-system rc=$rc uptime=$(cut -d' ' -f1 /proc/uptime)"
+# THE OBSERVER IS THE JOB, and this is structural rather than a race.
+# systemctl(1): the state is "starting" until the job queue goes idle for the
+# FIRST time -- and this harness is itself a queued job for as long as it runs.
+# Run acct-mp finally named it: "360 modfs-boottest.service start running".
+# Moving to a timer removed the DEADLOCK but not the job, so the old
+# `is-system-running --wait` burned its full 120 s on every run and could not
+# have done otherwise. It is gone: a wait that cannot succeed is not a wait.
+#
+# Second and independent: the old drain loop used `grep -c . || echo 0`, but
+# `grep -c` prints 0 AND exits 1 on no match, so `|| echo 0` appended a SECOND
+# zero and n became the two-line string "0\n0". `[ "$n" = "0" ]` was therefore
+# never true and the loop could not break even on a genuinely empty queue.
+# Two defects, one symptom (iterations=60 forever). wc -l always exits 0.
+jobs_foreign() {
+    systemctl list-jobs --no-legend --plain 2>/dev/null \
+        | grep -v 'modfs-boottest\.service' | wc -l
+}
 i=0
-while [ "$i" -lt 60 ]; do
-    n=$(systemctl list-jobs --no-legend --plain 2>/dev/null | grep -c . || echo 0)
-    [ "$n" = "0" ] && break
+while [ "$i" -lt 120 ]; do
+    [ "$(jobs_foreign)" -eq 0 ] && break
     i=$((i + 1)); sleep 1
 done
-echo "MODFS wait-jobs iterations=$i uptime=$(cut -d' ' -f1 /proc/uptime)"
+echo "MODFS wait-jobs iterations=$i foreign=$(jobs_foreign) uptime=$(cut -d' ' -f1 /proc/uptime)"
 
 # Re-open the console immediately before the report. The waits above are where
 # a TTYVHangup lands -- serial-getty is Type=idle, so its vhangup fires
@@ -349,7 +357,8 @@ exec > /dev/console 2>&1
 
 echo "===MODFS-BOOTTEST-BEGIN==="
 echo "MODFS state: $(systemctl is-system-running 2>&1)"
-echo "MODFS jobs-remaining: $(systemctl list-jobs --no-legend --plain 2>/dev/null | grep -c . || echo 0)"
+echo "MODFS jobs-remaining: $(systemctl list-jobs --no-legend --plain 2>/dev/null | wc -l)"
+echo "MODFS jobs-foreign: $(jobs_foreign)"
 # Every run so far reports exactly 1 outstanding job and none of them says WHICH.
 # That one job is why `is-system-running --wait` returns 124 and why the reported
 # state can sit at "starting", so naming it is the difference between a number we
@@ -567,9 +576,15 @@ with open(os.path.join(bundle, 'journal.txt'), 'w') as f:
         f.write("===== %s =====\n%s\n" % (m.group(1), m.group(2)))
 
 print("\n  tier-1 admission : %s%s" % (admitted, "  (KNOWN NEGATIVE)" if known_neg else ""))
+foreign = (re.search(r'MODFS jobs-foreign: (\d+)', serial) or [None, None])[1]
 print("  systemd state    : %s   (jobs remaining: %s)" % (state, jobs))
 for j in re.findall(r'MODFS job (.+)', serial):
     print("    outstanding job: %s" % j.strip()[:90])
+if foreign is not None and int(foreign) == 0 and state == 'starting':
+    # systemctl(1): "starting" holds until the job queue goes idle for the
+    # FIRST time, and the harness is itself a queued job. With no FOREIGN job
+    # outstanding this is the expected reading, not an unsettled system.
+    print("    ^ steady: the only outstanding job is the harness itself")
 print("  failed units     : %d%s" % (len(failed), "  " + ", ".join(failed) if failed else ""))
 if units:
     print("\n  unit matrix")

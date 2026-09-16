@@ -1359,3 +1359,50 @@ Evaluation chapters — do not skip it.
   applies universal newlines, so the parser never sees a CR. A sed fixture
   anchored on `$` silently matches nothing. Cost a few minutes; recorded so it
   costs nobody else any.
+
+## 2026-09-16 (order independence proven; and the observer was the job all along)
+- `11_boot_test.sh --name acct-mp --size-mb 6144 base mysql postgres`: ALL GREEN.
+  With acct-pm green in the opposite order, this is the pair that matters:
+        acct-pm  base postgres mysql  ALL GREEN
+        acct-mp  base mysql postgres  ALL GREEN
+  Same unit matrix, same sockets, both daemons under their own reconciled
+  identities in both orders. One order shows composition works; the pair is what
+  supports the ORDER INDEPENDENCE claim the architecture actually makes.
+- And the newly added job NAME answered the open question immediately:
+        outstanding job: 360 modfs-boottest.service start running
+  The one chronically outstanding job, in every run ever recorded, IS THE
+  HARNESS. systemctl(1) is explicit: the state is "starting" until the job queue
+  goes idle for the FIRST time. The harness is a queued job for as long as it
+  runs, so the queue cannot go idle while it is looking, and the state it is
+  trying to observe is one its own existence prevents. Not a race, not timing:
+  structural. Host control, fully booted: state running, 0 jobs.
+- This closes out the comment in our own code, which I flagged one entry ago as
+  half-right and can now settle. Moving the harness to a timer removed the
+  DEADLOCK -- true, and worth having. It did not remove the JOB, and the comment
+  implied it did. `timeout 120 systemctl is-system-running --wait` could never
+  have succeeded on any run, in any configuration, at any timeout value. It
+  burned its full 120 s on every boot test we have ever run.
+- SECOND DEFECT, independent, same symptom. The drain loop counted jobs with
+  `grep -c . || echo 0`. `grep -c` prints 0 AND exits 1 on no match, so the
+  `|| echo 0` appended a second zero and n became the two-line string "0\n0".
+  `[ "$n" = "0" ]` was therefore never true. THE LOOP COULD NOT BREAK EVEN ON A
+  GENUINELY EMPTY QUEUE. Verified directly:
+        n=$(printf '' | grep -c . || echo 0)  ->  "0\n0"
+  So iterations=60 had two sufficient causes and fixing either alone would have
+  left the symptom. Worth remembering as a case where one symptom had two
+  independent root causes and the obvious one was not the only one.
+- FIX: wait on jobs OTHER than our own (`jobs_foreign`, filtered, counted with
+  `wc -l`, which always exits 0), drop `is-system-running --wait` entirely
+  because a wait that cannot succeed is not a wait, and report `jobs-foreign`
+  alongside `jobs-remaining` so the report can say when "starting" is the
+  expected reading rather than an unsettled system. Fixture-tested on three
+  queues (empty / harness only / harness + real job -> 0, 0, 1) and the real
+  acct-mp log still re-parses to ALL GREEN.
+- COST RECOVERED: ~180 s of every boot run was spent in two waits that could not
+  terminate early. That is pure overhead on every tier-3 run from here on.
+- HONEST NOTE for the evaluation chapter: the tier-3 runs published before today
+  reported `systemd state: running` or `degraded` while carrying an outstanding
+  job they never named. Those readings are not wrong, but they were not
+  measuring what the field implies, and no run before today could distinguish
+  "the system settled" from "the system could not be observed settling". The
+  acct-pm/acct-mp pair is the first evidence where that distinction is recorded.
