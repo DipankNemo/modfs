@@ -131,7 +131,30 @@ log "overlay unmounted; upperdir now holds the delta"
 
 # ---- squash the UPPERDIR ONLY --------------------------------------------
 # -no-strip is not needed; mksquashfs preserves char devices (whiteouts)
-# and trusted.* xattrs (opaque markers). Verified in step 1.
+# and trusted.* xattrs. Verified in step 1.
+#
+# ASSERT THE PREMISE THAT LETS US STRIP trusted.overlay.opaque. config.sh drops
+# that xattr because a marker recorded against base is meaningless once sibling
+# modules sit below at compose time. That argument holds only while BOTH of
+# these are true, so check them on every build instead of trusting a comment --
+# trusting a comment is precisely how opaque came to delete pytools' numpy:
+#
+#   1. the parent is base. A module built on ANOTHER module could legitimately
+#      replace one of its parent's directories wholesale, and stripping would
+#      resurrect the parent's files underneath it.
+#   2. the upperdir holds no whiteouts. Whiteouts delete individual files and
+#      survive stripping untouched, but their presence means this module deletes
+#      things, and a module that deletes things may also mean its opaque
+#      directories. Stop and make someone look.
+if [ "$PARENT" != "base" ]; then
+    die "module '${NAME}' has parent '${PARENT}', not base, but SQUASH_XATTR_EXCLUDE strips trusted.overlay.opaque. A non-base parent can be replaced wholesale, so stripping may resurrect its files. Re-examine config.sh before building this."
+fi
+WHITEOUTS=$(find "$UPPER" -type c -printf '%p %n\n' 2>/dev/null \
+            | while read -r f _; do [ "$(stat -c '%t,%T' "$f" 2>/dev/null)" = "0,0" ] && echo "$f"; done | wc -l)
+if [ "$WHITEOUTS" -ne 0 ]; then
+    die "module '${NAME}' upperdir contains ${WHITEOUTS} whiteout(s), meaning it DELETES files. config.sh strips trusted.overlay.opaque on the premise that no module deletes anything. Re-examine that premise before building this."
+fi
+
 log "squashing upperdir -> ${SQSH}"
 rm -f "$SQSH"
 # shellcheck disable=SC2086

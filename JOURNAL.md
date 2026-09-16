@@ -1571,3 +1571,58 @@ Evaluation chapters — do not skip it.
   or (c) a V7 in tier 2 asserting that every file present in any layer is visible
   in the merged view, which would have caught this directly. (b) and (c) are
   complementary and neither is written yet.
+
+## 2026-09-16 (fixing opaque at source: one line, one assertion, one new check)
+- DECISION, and it came from Dipanker pushing back on my first proposal. I had
+  suggested detecting colliding opaque directories at tier 1. That is the wrong
+  tool: 159 of 666 pairs (24%) share an opaque directory, and tier 2 passed
+  81/81 on sets full of them. Rejecting would gut the catalogue to prevent a
+  problem that usually does not fire. The right move is to remove the cause.
+- THE CASE FOR STRIPPING, measured rather than argued:
+        opaque dirs that also exist in base        0   -> nothing resurrects
+        modules containing whiteouts               0   -> nothing deletes
+        modules with a parent other than base      0   -> no inherited semantics
+        file collisions across all 703 pairs       0   -> merging cannot conflict
+  An opaque marker means "replace everything below at this path". Each was
+  written when the only thing below was base, and base has nothing at any of
+  those paths, so it hid nothing. At compose time "below" becomes the sibling
+  modules -- which did not exist at build time. The marker answers a question
+  about a stack that never existed.
+- WHEN OPAQUE IS GENUINELY NEEDED, recorded so the reasoning survives: a module
+  that does `rm -rf /etc/nginx/conf.d/*` to replace base's config wholesale
+  RELIES on opaque to keep base's files hidden. Stripping would resurrect them.
+  Deleting individual files uses WHITEOUTS, which stripping does not touch, so
+  file-level deletion semantics are unchanged either way. Only "wipe the whole
+  directory" is lost, and nothing in this catalogue uses it.
+- FIX 1: config.sh, one line.
+        SQUASH_XATTR_EXCLUDE='^trusted\.overlay\.(uuid|origin|opaque)$'
+  The machinery already existed -- mksquashfs -xattrs-exclude was already
+  dropping uuid and origin as instance state. We had simply MISCLASSIFIED
+  opaque as semantic. Verified the mechanism end to end on a fixture: a
+  user.overlay.opaque xattr is stripped, an unrelated user.keepthis survives.
+- FIX 2: 02_build_delta.sh now ASSERTS the premise on every build instead of
+  trusting a comment, which is exactly how this went wrong the first time. It
+  refuses to build if the parent is not base, or if the upperdir contains any
+  whiteout, because either makes stripping potentially destructive.
+- FIX 3: tier 2 gains V7 -- every name present in any layer must be visible in
+  the merged view. Cause-agnostic, so it fires on file loss from any route, not
+  just this one. Implemented by comparing DIRECTORY ENTRY SETS (one listdir per
+  layer-directory) rather than stat-ing every file, which keeps it cheap.
+  Fixture-tested both ways: against a merge where pyyaml's opaque erased numpy
+  it reports exactly `pytools:/usr/lib/python3/dist-packages/numpy`; against a
+  correct merge containing both it reports vis_ok with zero findings.
+- Note on V7's value beyond this bug: V1-V6 are all metadata checks, and this
+  failure passed all of them because dpkg was telling the truth about a package
+  whose files were invisible. V7 is the first check that looks at the composed
+  filesystem itself.
+- MISTAKE, mine, caught immediately: the first V7 patch aborted on a bad anchor
+  AFTER the sed that added the CSV columns had already run, leaving the header
+  21 columns wide while the writer still emitted 19. Re-applied with verified
+  anchors. The csv_stub helper added earlier today made the header change safe
+  for the failure rows at least -- padding is derived, not hand-counted.
+- ARCHITECTURE Assumption B rewritten. It was not wrong: opaque markers DO
+  survive SquashFS. It was the wrong thing to want, and that distinction is
+  worth the paragraph.
+- STILL TO DO: rebuild so the artefacts actually lose the markers, then re-run
+  tier 2 (V7 should be clean) and re-run the 36-module boot, where numpy should
+  now import.

@@ -152,7 +152,41 @@ def main(argv):
     # ---- V5 ---------------------------------------------------------------
     audit_ok = not (read(os.path.join(work, 'audit.txt')) or '').strip()
 
-    ok = pkg_ok and not alt_bad and ld_ok and audit_ok and acct_ok
+    # ---- V7: every file in any layer is VISIBLE in the merged view --------
+    # The check nothing had. V1-V6 verify dpkg status, alternatives,
+    # ld.so.cache, dpkg --audit and the account databases -- all METADATA. On
+    # 2026-09-16 the 36-module set passed every one of them while silently
+    # losing the whole of pytools' numpy tree, because pyyaml's
+    # trusted.overlay.opaque on /usr/lib/python3 told OverlayFS to ignore every
+    # lower layer at that path. dpkg was right that python3-numpy was
+    # installed. The files were simply not there.
+    #
+    # Compare DIRECTORY ENTRY SETS, not stat() per file: one listdir per
+    # (layer, directory) instead of millions of stats, and it catches exactly
+    # the failure mode -- a name present in a layer, absent from the merge.
+    # Cause-agnostic on purpose, so it still fires if file loss ever arrives by
+    # a route we have not met.
+    SKIP = {'proc', 'sys', 'dev', 'run', 'tmp'}
+    vis_missing = []
+    for lname, root in layers:
+        for dirpath, dirnames, filenames in os.walk(root):
+            rel = os.path.relpath(dirpath, root)
+            if rel == '.':
+                dirnames[:] = [d for d in dirnames if d not in SKIP]
+                rel = ''
+            names = set(dirnames) | set(filenames)
+            if not names:
+                continue
+            try:
+                seen = set(os.listdir(os.path.join(merged, rel) if rel else merged))
+            except OSError:
+                vis_missing.append('%s:/%s (directory absent)' % (lname, rel))
+                continue
+            for g in sorted(names - seen)[:3]:
+                vis_missing.append('%s:/%s/%s' % (lname, rel, g))
+    vis_ok = not vis_missing
+
+    ok = pkg_ok and not alt_bad and ld_ok and audit_ok and acct_ok and vis_ok
     print(','.join(str(x) for x in [
         idx, n, ' '.join(name for name, _ in layers), admitted,
         mount_ms, rec_ms, tot_ms,
@@ -160,6 +194,7 @@ def main(argv):
         len(want), len(alt_bad),
         len(ld_expected), len(ld_actual), int(ld_ok), int(audit_ok),
         n_acct, int(acct_ok),
+        len(vis_missing), int(vis_ok),
         # A structurally clean composition of a tier-1-rejected set is a
         # known-negative observation, never a verification.
         ('PASS' if admitted != 'known-negative' else 'KNOWN_NEGATIVE')
@@ -173,6 +208,8 @@ def main(argv):
                              % ', '.join(sorted(ld_expected - ld_actual)[:5]))
         for a in acct_bad[:5]:
             sys.stderr.write("  accounts: %s\n" % a)
+        for v in vis_missing[:5]:
+            sys.stderr.write("  NOT VISIBLE IN MERGE: %s\n" % v)
     return 0
 
 if __name__ == '__main__':

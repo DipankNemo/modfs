@@ -56,6 +56,31 @@ to a small, declarative *package-level* one.
 survive a mksquashfs round trip and still function when the compressed delta is
 remounted as a lowerdir. **31 checks, 31 passed** — 30 until a `python3-yaml` check was added for the module catalogue.
 
+> **Revised 2026-09-16.** The assumption is *true* and was the wrong thing to
+> want. Opaque markers did survive, faithfully — and that is what broke
+> composition. A marker is written against the stack present at BUILD time,
+> where the only lower layer is base; at COMPOSE time the lower layers are the
+> sibling modules, which did not exist when the marker was made. It then tells
+> OverlayFS to ignore them. In the 36-module boot, `pyyaml`'s opaque
+> `/usr/lib/python3` erased the whole of `pytools`' numpy tree, and every
+> metadata check passed because `dpkg` was correctly reporting a package whose
+> files were not visible.
+>
+> Measured across 38 modules: **869 markers, 456 distinct directories, 178
+> claimed by two or more modules.** Of those 456, **zero exist in base**, **zero
+> modules carry a whiteout**, and **every module's parent is base** — so no
+> marker was ever hiding anything, and none can be honouring a deletion. With
+> **zero file collisions across all 703 pairs**, merging those directories is
+> safe by construction.
+>
+> `trusted.overlay.opaque` is therefore now stripped at squash time alongside
+> `uuid` and `origin`. Whiteouts are untouched, so file-level deletion semantics
+> are unchanged; only "replace this whole directory" is dropped, and nothing
+> used it. `02_build_delta.sh` asserts the two preconditions on every build
+> rather than trusting this paragraph, and tier 2 gained **V7**, which requires
+> every name present in any layer to be visible in the merged view — the check
+> that would have caught this on the day it was introduced.
+
 ---
 
 ## 4. Conflict taxonomy

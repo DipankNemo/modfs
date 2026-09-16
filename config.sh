@@ -93,9 +93,27 @@ SQUASH_EXCLUDES="proc sys dev run tmp var/tmp var/cache/apt/archives var/lib/apt
 # xattr into an upperdir, and squashing the upperdir captures its BOOKKEEPING
 # as well as the file diff:
 #
-#   trusted.overlay.opaque    "y"  -- SEMANTIC. A directory replaced wholesale.
-#                                     Assumption B in ARCHITECTURE section 3
-#                                     exists to prove this survives. Keep.
+#   trusted.overlay.opaque    "y"  -- WAS classified SEMANTIC ("a directory
+#                                     replaced wholesale, keep"). That reasoning
+#                                     is sound but its PREMISE is false here, and
+#                                     nobody had measured it. Opaque only does
+#                                     anything when the directory has content in
+#                                     a LOWER layer. Measured 2026-09-16: of 456
+#                                     distinct opaque directories across 38
+#                                     modules, ZERO exist in base, zero modules
+#                                     carry a whiteout, and every module's parent
+#                                     is base. Each marker was therefore recorded
+#                                     against a stack where nothing was below it.
+#                                     At COMPOSE time "below" becomes the SIBLING
+#                                     modules, which did not exist at build time,
+#                                     and the marker then erases them: pyyaml's
+#                                     opaque /usr/lib/python3 deleted pytools'
+#                                     entire numpy tree in the 36-module boot.
+#                                     178 directories are claimed by 2+ modules.
+#                                     It is instance state, like uuid and origin.
+#                                     STRIP. 02_build_delta.sh asserts the premise
+#                                     on every build rather than trusting this
+#                                     comment -- which is how it went wrong.
 #   trusted.overlay.redirect  path -- SEMANTIC. Records a rename. Keep.
 #   trusted.overlay.impure    "y"  -- constant, harmless either way. Keep.
 #   trusted.overlay.uuid      rand -- an RFC 4122 v4 UUID the kernel generates
@@ -109,7 +127,7 @@ SQUASH_EXCLUDES="proc sys dev run tmp var/tmp var/cache/apt/archives var/lib/apt
 # The last two are why artefacts were not reproducible. This is an EXTENDED
 # regex -- verified, because the basic-regex spelling '\(a\|b\)' matches
 # nothing here and would silently strip no attributes at all.
-SQUASH_XATTR_EXCLUDE='^trusted\.overlay\.(uuid|origin)$'
+SQUASH_XATTR_EXCLUDE='^trusted\.overlay\.(uuid|origin|opaque)$'
 
 export SNAPSHOT_ID SNAPSHOT_BASE SOURCE_EPOCH SUITE ARCH COMPONENTS
 export SQUASH_XATTR_EXCLUDE
