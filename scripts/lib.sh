@@ -56,13 +56,22 @@ safe_child() {           # safe_child <root> <name> -> canonical path on stdout
 # A stale mount under a deletion target turns rm -rf into a deletion of
 # whatever is mounted there, which may be an artefact store or a host path.
 require_no_mounts() {    # require_no_mounts <path>
-    local p="$1" hit
+    local p="$1" canon hit
     [ -e "$p" ] || return 0
-    hit=$(awk -v d="$p/" '$2 == substr(d,1,length($2)) || index($2, d) == 1 {print $2}' \
-          /proc/self/mountinfo 2>/dev/null | head -1)
-    [ -z "$hit" ] || die "refusing to touch ${p}: still mounted at ${hit}"
-    mountpoint -q "$p" 2>/dev/null && die "refusing to touch ${p}: it is a mountpoint"
     [ -L "$p" ] && die "refusing to touch ${p}: it is a symlink"
+    # Compare canonical paths: a mount is recorded under its real path, so a
+    # relative or symlinked argument would never match.
+    canon="$(cd "$p" 2>/dev/null && pwd -P)" || canon="$p"
+    # Field 5 of /proc/self/mountinfo is the MOUNT POINT. This used to read
+    # field 2, which is the parent mount ID -- an integer -- so the check never
+    # matched anything and the whole guard was inert. Matching "$canon/" as a
+    # prefix catches mounts nested BELOW the target, which is the case that
+    # turns rm -rf into a deletion of whatever is mounted there.
+    hit=$(awk -v d="$canon" '
+        { mp = $5 }
+        mp == d || index(mp, d "/") == 1 { print mp; exit }
+    ' /proc/self/mountinfo 2>/dev/null)
+    [ -z "$hit" ] || die "refusing to touch ${p}: mount present at ${hit}"
     return 0
 }
 

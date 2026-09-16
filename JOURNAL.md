@@ -1060,3 +1060,48 @@ Evaluation chapters — do not skip it.
 - Tier 2's summary listed NOT_ADMITTED rows under "failures" while the header
   said 0 failed. A correct tier-1 refusal is a skip, and is now reported as
   one.
+
+## 2026-09-16 (reassessment response: class 7 was a numeric claim, not a composition one)
+- Read docs/REASSESSMENT_2026-09-10.md and verified its four main technical
+  claims directly rather than accepting them. All four hold:
+  1. `require_no_mounts` parsed field 2 of /proc/self/mountinfo. Field 5 is
+     the mount point; field 2 is the parent mount ID, an integer, so the guard
+     never matched anything and was completely inert. Fixed to read field 5
+     and to detect mounts NESTED BELOW the target, which is the case that
+     turns rm -rf into deleting whatever is mounted there. Tested in a real
+     mount namespace: both a nested tmpfs and a direct mountpoint are refused.
+  2. reconcile.py merges status, alternatives, diversions and extended_states
+     -- and no account database at all.
+  3. postgres.upper and mysql.upper each ship a COMPLETE 22-line /etc/passwd
+     (base's 21 + one). Composed, OverlayFS shows one file entire, so one
+     account disappears. 7 catalogue modules write accounts -> 21 pairs, every
+     one previously recorded ACCEPT.
+  4. The 34-module "maximal" subset was not maximal: it contains
+     fake-nvidia-driver but excludes fake-cuda, and 05 admits subset+fake-cuda
+     (exit 0). Treating rejected pairs as undirected conflict edges is invalid
+     once positive requirements exist.
+- MY CLAIM WAS TOO BROAD. "Class 7 prevented" was true of the NUMBERS and
+  false of the RECORDS. Numeric uniqueness and database composition are
+  different invariants; I verified the first and asserted the second.
+- FIX: account databases are now a sixth reconciled registry in reconcile.py
+  -- records unioned by name, group/gshadow member lists MERGED rather than
+  overwritten, mode and ownership preserved (/etc/shadow is 0640 root:shadow
+  and reconciliation must not widen it).
+  Verified on real artefacts: base+postgres+mysql now contains both accounts,
+  ssl-cert keeps its postgres member, and passwd/group/shadow/gshadow are
+  IDENTICAL under order reversal. The naive tree shows postgres=0.
+- Tier 2 gains V6: the composed account databases must equal the semantic
+  union of the layers, compared record by record. Tested both ways -- the
+  reconciled tree passes; the naive top-layer tree fails naming exactly what
+  is lost (postgres user; postgres and ssl-cert groups; shadow and gshadow).
+- Two shadowing bugs caught by that test, both mine: V6 reused `expected`
+  (the package-name set) and `idx` (the run index), which corrupted the CSV
+  and crashed the failure path. Renamed.
+- --maximal-subset rewritten: pair verdicts now only ORDER the search, and
+  every addition is confirmed N-ARILY against the whole selected set, with
+  repeat rounds until nothing more can be added. The output says "maximal,
+  NOT proven maximum" because that distinction is real.
+- RECORDED AS UNRESOLVED: the 2000-5799 module windows sit inside the
+  1000-60000 ordinary-user range and nothing in the deployed image reserves
+  them, so a long-lived node could later hand a human account a UID already
+  baked into module-owned files.

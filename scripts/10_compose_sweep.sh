@@ -61,61 +61,83 @@ rm -rf "$W"; mkdir -p "$W"
 # itself a proof for the whole set.
 if [ "$MAXSUB" -eq 1 ]; then
     PAIRCSV="$W/pairs.csv"
-    log "computing pair verdicts for the subset search"
+    log "computing pair verdicts to order the search"
     "${HERE}/scripts/09_run_combinations.sh" --max-n 2 --jobs "${JOBS:-8}" \
         --out "$PAIRCSV" > "$W/pairs.log" 2>&1 \
         || die2 "pair sweep failed, see $W/pairs.log"
-    mkdir -p "$(dirname "$SUBSET_OUT")" 2>/dev/null || true
-    python3 - "$PAIRCSV" "$SUBSET_OUT" <<'MSPY' || die2 "subset computation failed"
+
+    # Pair verdicts ORDER the search; they no longer decide it. Treating every
+    # rejected pair as an undirected conflict edge is invalid once positive
+    # requirements exist: fake-cuda is rejected with every module except
+    # fake-nvidia-driver, yet it is admissible in any set that already
+    # contains the driver. The previous "no further module can be added" claim
+    # was false for exactly that reason.
+    CAND="$W/candidates.txt"
+    python3 - "$PAIRCSV" "$CAND" <<'ORDPY' || die2 "candidate ordering failed"
 import csv, sys
 from collections import defaultdict
-csv_path, out = sys.argv[1], sys.argv[2]
-rows = list(csv.DictReader(open(csv_path, encoding='utf-8')))
-mods, conflict = set(), defaultdict(set)
+rows = list(csv.DictReader(open(sys.argv[1], encoding='utf-8')))
+mods, rej = set(), defaultdict(int)
 for r in rows:
     a, b = r['modules'].split()
     mods.add(a); mods.add(b)
     if r['verdict'] != 'ACCEPT':
-        conflict[a].add(b); conflict[b].add(a)
-# Greedy on fewest conflicts first: a module that disagrees with nothing can
-# never be the reason another has to be dropped.
-chosen, excluded = [], []
-for m in sorted(mods, key=lambda x: (len(conflict[x]), x)):
-    if any(c in conflict[m] for c in chosen):
-        excluded.append(m)
-    else:
-        chosen.append(m)
-chosen.sort()
-with open(out, 'w', encoding='utf-8') as f:
-    f.write("# maximal tier-1-admitted subset, from %s\n" % csv_path)
-    f.write("# %d of %d modules; no further module can be added\n" % (len(chosen), len(mods)))
-    f.write(' '.join(chosen) + '\n')
-print("  catalogue      : %d modules" % len(mods))
-print("  conflicting    : %d module(s) have at least one rejecting pair"
-      % sum(1 for m in mods if conflict[m]))
-print("  SELECTED       : %d" % len(chosen))
-print("  excluded       : %s" % (', '.join(excluded) or 'none'))
-print("  subset written : %s" % out)
-MSPY
-    SUBSET=$(grep -v '^#' "$SUBSET_OUT" | head -1)
-    # Beside the subset, not in scratch: the first run of this wrote its log
-    # under BUILD_DIR and the next sweep deleted it before it could be read.
+        rej[a] += 1; rej[b] += 1
+# Fewest pairwise rejections first: modules that agree with everything are
+# safe early picks, and a module rejected everywhere (an unmet requirement, or
+# the different-snapshot control) is tried last, once providers are present.
+order = sorted(mods, key=lambda m: (rej[m], m))
+open(sys.argv[2], 'w').write('\n'.join(order) + '\n')
+print("  candidates     : %d" % len(order))
+ORDPY
+
+    mkdir -p "$(dirname "$SUBSET_OUT")" 2>/dev/null || true
     SUBSET_LOG="${SUBSET_OUT%.txt}-tier1.log"
-    log "confirming the subset with one n-ary tier-1 run"
+    : > "$SUBSET_LOG"
+    CHOSEN=""; EXCLUDED=""; TRIES=0
+    # Every addition is confirmed N-ARILY against the whole selected set, so
+    # the result is admitted by construction rather than inferred from pairs.
+    for round in 1 2 3; do
+        ADDED=0; NEXT=""
+        for m in $( [ "$round" = 1 ] && cat "$CAND" || echo $EXCLUDED ); do
+            TRIES=$((TRIES+1))
+            # shellcheck disable=SC2086
+            if tier1_admit "$W/try.log" base $CHOSEN "$m" >/dev/null 2>&1; then
+                CHOSEN="$CHOSEN $m"; ADDED=$((ADDED+1))
+                printf 'round %d ADD    %s\n' "$round" "$m" >> "$SUBSET_LOG"
+            else
+                NEXT="$NEXT $m"
+                printf 'round %d reject %s\n' "$round" "$m" >> "$SUBSET_LOG"
+            fi
+        done
+        EXCLUDED="$NEXT"
+        log "round ${round}: +${ADDED}, $(echo $CHOSEN | wc -w) selected, $(echo $EXCLUDED | wc -w) excluded"
+        [ "$ADDED" -eq 0 ] && break
+    done
+
+    CHOSEN=$(echo $CHOSEN | tr ' ' '\n' | sort | tr '\n' ' ' | sed 's/ *$//')
+    NSEL=$(echo $CHOSEN | wc -w)
+    {
+        echo "# maximal tier-1-admitted subset"
+        echo "# ${NSEL} modules; every addition confirmed n-arily; ${TRIES} admission runs"
+        echo "# locally unextendable: no excluded module was admissible against the"
+        echo "# final set in the last round. Maximal, NOT proven maximum."
+        echo "$CHOSEN"
+    } > "$SUBSET_OUT"
+
+    log "confirming the whole set once more"
     # shellcheck disable=SC2086
-    tier1_admit "$SUBSET_LOG" base $SUBSET; SUB_RC=$?
+    tier1_admit "${SUBSET_OUT%.txt}-final.log" base $CHOSEN; SUB_RC=$?
     case "$SUB_RC" in
-        0) log "subset CONFIRMED admitted as a whole set" ;;
-        1) warn "subset REJECTED as a whole set -- see $SUBSET_LOG"
-           warn "a rejection here means some class is not purely pairwise"
+        0) log "subset CONFIRMED: ${NSEL} modules admitted as a whole set" ;;
+        1) warn "final confirmation REJECTED the set -- see ${SUBSET_OUT%.txt}-final.log"
            exit 1 ;;
-        # Anything else is the checker failing, which says nothing about the
-        # subset. Conflating the two reported a filename-length error as a
-        # composability finding.
-        *) warn "tier-1 checker BROKE on the subset (exit ${SUB_RC}) -- see $SUBSET_LOG"
+        *) warn "tier-1 checker BROKE on the final set (exit ${SUB_RC})"
            warn "this is not a verdict on the subset"
            exit 2 ;;
     esac
+    echo "  excluded: ${EXCLUDED:-none}"
+    echo "  subset  : $SUBSET_OUT"
     exit 0
 fi
 mkdir -p "$(dirname "$CSV")" 2>/dev/null || true
@@ -185,7 +207,7 @@ try_mount() {
 }
 now_ms() { date +%s%3N; }
 
-echo "sample,n,modules,admitted,mount_ms,reconcile_ms,total_ms,pkg_expected,pkg_actual,pkg_ok,alt_groups,alt_groups_bad,ld_expected,ld_actual,ld_ok,audit_ok,result" > "$CSV"
+echo "sample,n,modules,admitted,mount_ms,reconcile_ms,total_ms,pkg_expected,pkg_actual,pkg_ok,alt_groups,alt_groups_bad,ld_expected,ld_actual,ld_ok,audit_ok,acct_expected,acct_ok,result" > "$CSV"
 
 # C3: integrity before anything else. A composed artefact that does not match
 # its own manifest invalidates every downstream measurement.

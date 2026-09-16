@@ -86,16 +86,80 @@ def main(argv):
     ld_actual = cache_libs(read(os.path.join(work, 'actual.ld')) or '')
     ld_ok = ld_expected <= ld_actual        # regeneration may legitimately add
 
+    # ---- V6: account databases are the exact semantic union ---------------
+    # The invariant that was missing. Numeric uniqueness (disjoint UID windows)
+    # and database composition are different properties: OverlayFS shows one
+    # complete passwd, so without reconciliation a composed system silently
+    # loses every account except the top layer's. This compares the COMPOSED
+    # files against the union of the layers, by record, not by count.
+    def accounts(root):
+        out = {}
+        for rel, key_at, member_at in (('etc/passwd', 0, ()), ('etc/group', 0, (3,)),
+                                       ('etc/shadow', 0, ()), ('etc/gshadow', 0, (2, 3))):
+            recs = {}
+            for line in (read(os.path.join(root, rel)) or '').split('\n'):
+                if not line.strip():
+                    continue
+                f = line.split(':')
+                if len(f) < 3 and rel in ('etc/passwd', 'etc/group'):
+                    continue
+                recs[f[key_at]] = f
+            out[rel] = recs
+        return out
+
+    acct_expected, acct_bad = {}, []
+    for _, root in layers:
+        for rel, recs in accounts(root).items():
+            tgt = acct_expected.setdefault(rel, {})
+            for k, f in recs.items():
+                if k not in tgt:
+                    tgt[k] = list(f); continue
+                member_at = {'etc/group': (3,), 'etc/gshadow': (2, 3)}.get(rel, ())
+                cur = tgt[k]
+                new = list(f)
+                for mi in member_at:
+                    if mi < len(cur) and mi < len(f):
+                        mem = [x for x in cur[mi].split(',') if x]
+                        for x in f[mi].split(','):
+                            if x and x not in mem:
+                                mem.append(x)
+                        new[mi] = ','.join(mem)
+                tgt[k] = new
+    got = accounts(merged)
+    for rel, want in acct_expected.items():
+        missing = sorted(set(want) - set(got.get(rel, {})))
+        if missing:
+            acct_bad.append("%s missing %d: %s" % (rel, len(missing), ', '.join(missing[:6])))
+            continue
+        for k, f in want.items():
+            g = got[rel][k]
+            # identity fields only: gecos/home/shell may legitimately differ
+            id_fields = (2, 3) if rel == 'etc/passwd' else ((2,) if rel == 'etc/group' else ())
+            for i in id_fields:
+                if i < len(f) and i < len(g) and f[i] != g[i]:
+                    acct_bad.append("%s '%s' field %d is %s, union says %s"
+                                    % (rel, k, i, g[i], f[i]))
+            for mi in {'etc/group': (3,), 'etc/gshadow': (2, 3)}.get(rel, ()):
+                if mi < len(f) and mi < len(g):
+                    wm = {x for x in f[mi].split(',') if x}
+                    gm = {x for x in g[mi].split(',') if x}
+                    if wm - gm:
+                        acct_bad.append("%s '%s' lost members %s"
+                                        % (rel, k, ','.join(sorted(wm - gm))))
+    acct_ok = not acct_bad
+    n_acct = sum(len(v) for v in acct_expected.values())
+
     # ---- V5 ---------------------------------------------------------------
     audit_ok = not (read(os.path.join(work, 'audit.txt')) or '').strip()
 
-    ok = pkg_ok and not alt_bad and ld_ok and audit_ok
+    ok = pkg_ok and not alt_bad and ld_ok and audit_ok and acct_ok
     print(','.join(str(x) for x in [
         idx, n, ' '.join(name for name, _ in layers), admitted,
         mount_ms, rec_ms, tot_ms,
         len(expected), len(actual), int(pkg_ok),
         len(want), len(alt_bad),
         len(ld_expected), len(ld_actual), int(ld_ok), int(audit_ok),
+        n_acct, int(acct_ok),
         # A structurally clean composition of a tier-1-rejected set is a
         # known-negative observation, never a verification.
         ('PASS' if admitted != 'known-negative' else 'KNOWN_NEGATIVE')
@@ -107,6 +171,8 @@ def main(argv):
         if not ld_ok:
             sys.stderr.write("  linker cache missing: %s\n"
                              % ', '.join(sorted(ld_expected - ld_actual)[:5]))
+        for a in acct_bad[:5]:
+            sys.stderr.write("  accounts: %s\n" % a)
     return 0
 
 if __name__ == '__main__':

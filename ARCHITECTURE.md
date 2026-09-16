@@ -118,7 +118,46 @@ same relationship as class 6 and the base `full-upgrade`: **prevention is the
 policy, detection is the proof that the policy held.**
 
 Before partitioning: **6 of 351 ordinary pairs** rejected by class 7 — exactly
-the C(4,2) combinations of the four colliding modules.
+the C(4,2) combinations of the four colliding modules. After: **0 of 666**,
+with all 14 accounts created across the catalogue landing in-range.
+
+### Numeric uniqueness is not database composition
+
+Disjoint windows fix the *numbers*. They do not compose the *records*, and the
+10 September reassessment was right that this was claimed too broadly.
+
+`/etc/passwd`, `/etc/group`, `/etc/shadow`, `/etc/gshadow`, `/etc/subuid` and
+`/etc/subgid` are rewritten **whole** by maintainer scripts, so every
+account-writing delta carries a complete copy. OverlayFS exposes only the top
+layer's, which means a naive composition of `base + postgres + mysql` shows
+*either* `postgres` *or* `mysql` — never both — and `User=postgres` fails to
+resolve in the order where it loses. Seven catalogue modules write accounts,
+so **21 pairs were affected**, all previously recorded `ACCEPT`.
+
+They are registry files in exactly the sense class 5 already defined, and they
+were simply missing from `reconcile.py`. They are now merged there: records
+unioned by name, group and gshadow member lists merged rather than
+overwritten, and file mode and ownership preserved — `/etc/shadow` is
+`0640 root:shadow` and reconciliation must not widen it.
+
+Verified on the real artefacts: after reconciliation `base + postgres + mysql`
+contains both accounts and `ssl-cert` keeps its `postgres` member, and the
+merged `passwd`, `group`, `shadow` and `gshadow` are **identical under order
+reversal**. Tier 2 now checks this directly (V6): the composed account
+databases must equal the semantic union of the layers, compared record by
+record, not by count.
+
+**What may be claimed:** disjoint pre-install windows eliminated the six
+observed numeric collisions, and account records are now reconciled and
+verified at tier 2. **What may not yet be claimed:** that a high-N set boots
+with all identities working — that requires the tier-3 runs below.
+
+**Known limitation (unresolved).** The module windows span 2000–5799, which
+lies inside the 1000–60000 range `login.defs` uses for ordinary users. Nothing
+in the final image reserves it, so a sufficiently long-lived node could later
+assign a human account a UID already baked into module-owned files. Reserving
+the span in the deployed image's allocation policy is required before this is
+production-safe, and is not done.
 
 ### Untested candidates
 - **Whiteouts** — a module removing a base file; changes ordering semantics
