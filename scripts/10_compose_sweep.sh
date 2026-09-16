@@ -212,6 +212,21 @@ now_ms() { date +%s%3N; }
 
 echo "sample,n,modules,admitted,mount_ms,reconcile_ms,total_ms,pkg_expected,pkg_actual,pkg_ok,alt_groups,alt_groups_bad,ld_expected,ld_actual,ld_ok,audit_ok,acct_expected,acct_ok,result" > "$CSV"
 
+# Emit a stub row whose label lands in `result`, WHATEVER the schema width is.
+# Every one of these used to hand-count commas, and when acct_expected/acct_ok
+# were added this session four of the six were not updated: NOT_ADMITTED landed
+# in acct_expected, COMPOSE_FAIL and RECONCILE_FAIL in audit_ok, REGEN_FAIL in
+# acct_ok, and `result` came out EMPTY on every failure row. A real composition
+# failure would have been filed as a blank result with its label sitting in an
+# account column. Derive the padding from the header so the schema can never
+# drift away from the writers again.
+CSV_NCOL=$(head -1 "$CSV" | awk -F',' '{print NF}')
+csv_stub() {            # csv_stub <idx> <n> <modules> <admitted> <result>
+    local pad; pad=$(printf ',%.0s' $(seq 5 $((CSV_NCOL - 1))))
+    printf '%d,%d,%s,%s%s,%s\n' "$1" "$2" "$3" "$4" "$pad" "$5" >> "$CSV"
+}
+
+
 # C3: integrity before anything else. A composed artefact that does not match
 # its own manifest invalidates every downstream measurement.
 log "verifying bundle integrity"
@@ -230,11 +245,11 @@ while IFS=$'\t' read -r N MODS; do
     # an inconsistent set, and must be labelled as such.
     tier1_admit "$W/tier1.log" "${SET[@]}"; ADM=$?
     if [ "$ADM" -eq 2 ]; then
-        printf '%d,%d,%s,broken,,,,,,,,,,,,,TIER1_BROKEN\n' "$IDX" "$N" "${SET[*]}" >> "$CSV"
+        csv_stub "$IDX" "$N" "${SET[*]}" broken TIER1_BROKEN
         FAILED=$((FAILED+1)); continue
     fi
     if [ "$ADM" -eq 1 ] && [ "$KNOWN_NEG" -eq 0 ]; then
-        printf '%d,%d,%s,no,,,,,,,,,,,,,NOT_ADMITTED\n' "$IDX" "$N" "${SET[*]}" >> "$CSV"
+        csv_stub "$IDX" "$N" "${SET[*]}" no NOT_ADMITTED
         printf '      tier-1 REJECT -- not composed (use --known-negative to force)\n'
         continue
     fi
@@ -262,7 +277,7 @@ while IFS=$'\t' read -r N MODS; do
     T1=$(now_ms)
 
     if [ "$OK" -eq 0 ]; then
-        printf '%d,%d,%s,%s,,,,,,,,,,,,COMPOSE_FAIL\n' "$IDX" "$N" "${SET[*]}" "$ADM_LABEL" >> "$CSV"
+        csv_stub "$IDX" "$N" "${SET[*]}" "$ADM_LABEL" COMPOSE_FAIL
         FAILED=$((FAILED+1)); unmount_all; continue
     fi
 
@@ -270,7 +285,7 @@ while IFS=$'\t' read -r N MODS; do
     if ! python3 "${HERE}/scripts/reconcile.py" --merged "$M" \
              --groups-out "$C/alt.groups" "${LAYERS[@]}" > "$C/reconcile.log" 2>&1; then
         warn "reconciliation failed at N=${N}"
-        printf '%d,%d,%s,%s,,,,,,,,,,,,RECONCILE_FAIL\n' "$IDX" "$N" "${SET[*]}" "$ADM_LABEL" >> "$CSV"
+        csv_stub "$IDX" "$N" "${SET[*]}" "$ADM_LABEL" RECONCILE_FAIL
         FAILED=$((FAILED+1)); unmount_all; continue
     fi
     REGEN_FAIL=0
@@ -285,7 +300,7 @@ while IFS=$'\t' read -r N MODS; do
     # still be recorded PASS.
     if [ "$REGEN_FAIL" -gt 0 ]; then
         warn "regeneration failed ${REGEN_FAIL} time(s) for ${SET[*]}"
-        printf '%d,%d,%s,%s,,,,,,,,,,,,,,REGEN_FAIL\n' "$IDX" "$N" "${SET[*]}" "$ADM_LABEL" >> "$CSV"
+        csv_stub "$IDX" "$N" "${SET[*]}" "$ADM_LABEL" REGEN_FAIL
         FAILED=$((FAILED+1)); unmount_all; continue
     fi
     T2=$(now_ms)
@@ -303,7 +318,7 @@ while IFS=$'\t' read -r N MODS; do
               --total-ms "$((T2-T0))" "${LAYERS[@]}" 2>>"$W/verify.err")
     if [ -z "$ROW" ]; then
         warn "verification crashed at N=${N}; see $W/verify.err"
-        printf '%d,%d,%s,%s,,,,,,,,,,,,VERIFY_CRASH\n' "$IDX" "$N" "${SET[*]}" "$ADM_LABEL" >> "$CSV"
+        csv_stub "$IDX" "$N" "${SET[*]}" "$ADM_LABEL" VERIFY_CRASH
         FAILED=$((FAILED+1)); unmount_all; continue
     fi
     printf '%s\n' "$ROW" >> "$CSV"
@@ -324,18 +339,25 @@ import csv, statistics, sys
 rows = list(csv.DictReader(open(sys.argv[1], encoding='utf-8')))
 byn = {}
 for r in rows: byn.setdefault(int(r['n']), []).append(r)
-print("\n    N   samples   pass   fail    mount ms   reconcile ms   total ms   packages")
+# "skipped" is its own column. Folding tier-1 refusals into "fail" made the
+# admission gate working correctly look like tier 2 breaking, and at N=27 it
+# reported 0 pass / 1 fail when the truth is that nothing was composed at all.
+print("\n    N   samples   composed   pass   fail   skipped    mount ms   reconcile ms   total ms   packages")
 for n in sorted(byn):
     rs = byn[n]
-    ok = [r for r in rs if r['result'] == 'PASS']
+    ok      = [r for r in rs if r['result'] == 'PASS']
+    skip    = [r for r in rs if r['result'] == 'NOT_ADMITTED']
+    composed = len(rs) - len(skip)
     def med(k):
         v = [int(r[k]) for r in rs if r.get(k)]
         return int(statistics.median(v)) if v else 0
     pk = [int(r['pkg_actual']) for r in rs if r.get('pkg_actual')]
-    print("  %3d   %7d %6d %6d %11d %14d %10d %10s"
-          % (n, len(rs), len(ok), len(rs)-len(ok), med('mount_ms'),
-             med('reconcile_ms'), med('total_ms'),
+    print("  %3d   %7d %10d %6d %6d %9d %11d %14d %10d %10s"
+          % (n, len(rs), composed, len(ok), composed - len(ok), len(skip),
+             med('mount_ms'), med('reconcile_ms'), med('total_ms'),
              "%d-%d" % (min(pk), max(pk)) if pk else "-"))
+    if composed == 0:
+        print("        ^ NO DATA at this N: every sample was refused by tier 1")
 # NOT_ADMITTED is tier 1 doing its job, not tier 2 failing. Listing the two
 # together under "failures" made a correct refusal look like a defect.
 skipped = [r for r in rows if r['result'] == 'NOT_ADMITTED']

@@ -1453,3 +1453,58 @@ Evaluation chapters — do not skip it.
   script; the cohort table is computed ad hoc from artefact sizes. If that table
   is going to be regenerated on every rebuild it should become one, and the
   computation is the six lines used here.
+
+## 2026-09-16 (tier 2 on the rebuilt catalogue: 81/81, and a CSV bug I introduced)
+- Tier-2 sweep on the rebuilt 38-module catalogue (37 usable, control excluded),
+  96 sampled compositions, seed 1. THE RESULT IS 81/81.
+        admitted and composed : 81   -- every one PASS across V1-V6
+        refused at tier 1     : 15   -- never composed
+        genuine failures      :  0
+  Checked directly from the CSV rather than from the summary: of the 81 rows
+  that were actually composed, zero have a failing pkg_ok, ld_ok, audit_ok or
+  acct_ok, and zero have alt_groups_bad != 0.
+- All 15 refusals contain either `fake-cuda` without `fake-nvidia-driver` (an
+  unsatisfied module-level requirement) or both MTAs (a declared conflict).
+  These are the adversarial modules doing exactly what they exist to do. The
+  gate refused them and the sweep declined to compose them.
+- BUG I INTRODUCED THIS SESSION, and it is the evidence-integrity kind again.
+  Adding acct_expected and acct_ok took the CSV schema from 17 to 19 columns.
+  Six writers emit stub rows for failure cases and every one of them HAND-COUNTS
+  COMMAS. I updated none of them:
+        NOT_ADMITTED   -> landed in column 17 (acct_expected)
+        COMPOSE_FAIL   -> column 16 (audit_ok)
+        RECONCILE_FAIL -> column 16 (audit_ok)
+        REGEN_FAIL     -> column 18 (acct_ok)
+  So EVERY failure row had an empty `result` and its label misfiled into an
+  account column. A real COMPOSE_FAIL would have been recorded as a blank result
+  with "COMPOSE_FAIL" sitting where an account verdict belongs.
+- The cruel part: the summary ALREADY had the right logic. It separates
+  NOT_ADMITTED from real failures, with a comment saying a correct refusal must
+  not look like a defect. That code keys on `result == 'NOT_ADMITTED'`, which
+  the misalignment left empty, so the separation silently did nothing and the
+  run listed 15 correct refusals under "failures:" with reason None. Correct
+  logic defeated by a data bug one layer down.
+- FIX: derive the padding from the header (`CSV_NCOL=$(head -1 "$CSV" | awk -F,
+  '{print NF}')`) and route all six writers through one `csv_stub` helper, so
+  the schema cannot drift away from its writers again. Fixture-tested including
+  a schema-drift case: add a column to the header and the label still lands in
+  `result`.
+- SECOND FIX, presentation: the per-N table counted refusals as failures. It now
+  reports composed / pass / fail / skipped separately, and says so loudly when a
+  row has no data at all. Replaying this run through the fixed summary:
+        N=2   28 composed, 28 pass, 0 fail,  2 skipped
+        N=3   26 composed, 26 pass, 0 fail,  4 skipped
+        N=5   17 composed, 17 pass, 0 fail,  3 skipped
+        N=10   7 composed,  7 pass, 0 fail,  3 skipped
+        N=20   3 composed,  3 pass, 0 fail,  2 skipped
+        N=27   0 composed -- NO DATA, every sample refused
+  The old table printed "0 pass / 1 fail" at N=27. The truth is that nothing was
+  composed there at all, which is a coverage hole rather than a failure.
+- COVERAGE HOLE, recorded and NOT fixed: the sampler draws uniformly and does
+  not avoid unsatisfiable sets, so the refusal rate climbs with N -- at N=27 of
+  37 modules a draw almost certainly contains fake-cuda, and whether it also
+  contains fake-nvidia-driver is close to a coin flip. With one sample at N=27
+  the high-N end of the cost-vs-N curve is empty. The sweep's own header still
+  claims "96 real compositions from N=2 to N=27"; it was 81, and the top of that
+  range has no data. Raising the sample count at high N is the fix, and it is a
+  sampling change rather than a bug fix, so it is written down rather than done.
