@@ -1198,3 +1198,69 @@ Evaluation chapters — do not skip it.
       base drift 0, not composable 36
   71 = 36 control + 35 fake-cuda + 1 MTA, less the one pair that is both.
   base drift is 0, not 36; the 36 was stale rows being misparsed.
+
+## 2026-09-16 (tier 3 on two database modules: the pack step shipped its own scratch)
+- Attempting the first account-reconciliation boot test, `base postgres mysql`,
+  which is the runtime counterpart to the class-7 work above. Two defects, both
+  in `11_boot_test.sh`, neither in the system under test.
+- FINDING 1: rsync died with ENOSPC. Not the host -- the target was the ext4
+  inside `disk.img`. Measured budget for the composed tree: base 121 MB,
+  postgres.upper 267 MB, mysql.upper 325 MB, pack-step upper 2.5 GB = ~3213 MB
+  into a 3072 MB image. It could not have succeeded.
+- ROOT CAUSE: the pack step runs `apt-get update` and installs the kernel in the
+  merged view, which RE-CREATES exactly the scratch SQUASH_EXCLUDES strips from
+  every artefact: 298 MB of indices in var/lib/apt/lists and 411 MB of .debs in
+  var/cache/apt/archives. config.sh already rules that this is build scaffolding
+  and not module content; the image shipped it anyway. 709 MB of a 3072 MB image
+  was scratch the design says must not exist.
+- FIX: `apt-get clean` plus removal of list/archive CONTENTS after the kernel
+  install, mirroring what 02_build_delta.sh already does after its own installs,
+  keeping the directories because apt needs them at runtime. Matching rsync
+  --exclude as belt-and-braces. Re-ran at --size-mb 6144: packed and copied clean.
+- Worth recording for the storage chapter: the kernel scaffolding writes 2.5 GB,
+  over 20x the 121 MB base tree, because linux-image-generic DEPENDS on
+  linux-firmware (302 MB), linux-modules-extra (61 MB) and the two microcode
+  packages. --no-install-recommends cannot avoid them; they are hard deps. Any
+  storage figure measured on a booted image rather than on artefacts would be
+  swamped by scaffolding belonging to no module. The artefact-based ratios
+  (5.70x small / 1.32x large / 2.49x whole) remain the defensible ones.
+- Also: 8 stale boot scratch dirs from 2026-09-03 held ~34 GB of disk images.
+  The script tells you to delete them and keeps evidence in results/ OUTSIDE the
+  deletable scratch, so the design is right; nobody had run the cleanup. Checked
+  /proc/self/mountinfo and losetup before deleting -- no live mounts, which also
+  confirms the new INT/TERM traps released everything on a real mid-run failure.
+- FINDING 2: the guest booted, ran 187.6 s, powered off, and the harness printed
+  NOTHING. `modfs-boottest.service: Failed with result 'signal'` is a red
+  herring: every known-good 09-03 run shows it too, because the harness ends in
+  `systemctl poweroff -i` and systemd kills it during the shutdown it requested.
+- The real signal is timing. The harness waits in two bounded stages, and the
+  arithmetic is exact:
+        good runs (nginx/apache):  5 + 0   + 60 + ~2 =  67 s, observed 67.2
+        this run  (postgres+mysql): 5 + 120 + 60 + ~2 = 185 s, observed 187.6
+  `timeout 120 systemctl is-system-running --wait` consumed its whole timeout
+  here where it returned instantly for a web server. The harness fires at
+  OnBootSec=5s, before multi-user.target, and two databases are slower to settle.
+- UNRESOLVED, and recorded as unresolved: the harness powers off only on its last
+  line, so reaching 187.6 s implies it ran to completion, yet not one of its ~15
+  output lines reached the serial console. Those two facts contradict. The
+  journal was volatile and died with the guest, so the log cannot settle it.
+- ROOT CAUSE OF THE AMBIGUITY, which is the part worth fixing: the harness is
+  silent for up to 180 s, so three different outcomes produce an identical empty
+  log -- the unit never started, the /dev/ttyS0 redirect failed, or it is still
+  waiting. That is an evidence defect in its own right, independent of which one
+  actually happened.
+- FIX: emit a `===MODFS-HARNESS-ALIVE=== uptime=` marker BEFORE any waiting, plus
+  a checkpoint after each wait stage, and teach the host parser to distinguish
+  "never started" from "started and stalled". Tested against three fixtures: the
+  real failed log still yields the old message; synthetic logs with the markers
+  correctly separate "never cleared its first wait" from "cleared waits then
+  died". The next run reads its own cause off the log instead of requiring one.
+- WHAT THE FAILED RUN NEVERTHELESS PROVES. The guest's own boot log records
+  `Started MariaDB 10.6.23 database server`, `Started PostgreSQL Cluster 14-main`,
+  `Finished PostgreSQL RDBMS` and `Reached target Multi-User System`, and both
+  stopped cleanly at shutdown. reconcile.log for the same run:
+        accounts: group 45, gshadow 45, passwd 23, shadow 23, subgid 2, subuid 2
+  Two packages that each create their own system users were merged into one
+  account database and both databases started against it. That is the class-7
+  runtime evidence. What is still missing is the FORMAL unit matrix and the
+  reverse-order pair (`base mysql postgres`), not the underlying result.

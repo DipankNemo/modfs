@@ -241,6 +241,18 @@ in_chroot "$M" apt-get update -qq </dev/null > "$B/apt.log" 2>&1 \
 in_chroot "$M" apt-get install -y -qq --no-install-recommends \
     linux-image-generic initramfs-tools iproute2 </dev/null >> "$B/apt.log" 2>&1 \
     || die2 "kernel install failed, see $B/apt.log"
+# The pack-step apt-get update/install re-creates exactly the scratch that
+# SQUASH_EXCLUDES strips from every artefact: 298 MB of package indices in
+# var/lib/apt/lists and 411 MB of .debs in var/cache/apt/archives. config.sh
+# already rules that this is build scaffolding and not module content, so it
+# must not ship in the image either -- 02_build_delta.sh drops it the same way
+# after its own installs. Leaving it in cost 709 MB of a 3072 MB image and was
+# where rsync hit ENOSPC. Keep the DIRECTORIES: apt needs them at runtime.
+log "dropping apt scratch the image must not carry"
+in_chroot "$M" apt-get clean </dev/null >/dev/null 2>&1 \
+    || die2 "apt-get clean failed in the merged view"
+rm -rf "$M/var/lib/apt/lists"/* "$M/var/cache/apt/archives"/*.deb
+
 # Back to what the modules actually ship, so the image carries no host DNS.
 rm -f "$M/etc/resolv.conf"
 ln -s ../run/systemd/resolve/stub-resolv.conf "$M/etc/resolv.conf"
@@ -292,18 +304,29 @@ cat > "$M/usr/local/sbin/modfs-boottest" <<'GUEST'
 # is the only channel the harness can read.
 exec > /dev/ttyS0 2>&1
 
+# Liveness marker, emitted BEFORE any waiting. Without it the harness is
+# silent for up to 180 s, which makes three very different outcomes look
+# identical in the serial log: the unit never started, the redirect to
+# /dev/ttyS0 failed, or the harness is simply still waiting. Run acct-pm
+# (base+postgres+mysql) powered off at 187.6 s having printed NOTHING, and
+# that ambiguity is the only reason the cause could not be read off the log.
+echo "===MODFS-HARNESS-ALIVE=== uptime=$(cut -d' ' -f1 /proc/uptime)"
+
 # The steady-state race: this used to be a startup oneshot ordered after
 # multi-user.target, so `is-system-running --wait` could never return -- the
 # harness was itself an unfinished job in the boot transaction. It is now
 # started by a timer OUTSIDE that transaction, so waiting is safe, but the
 # wait is still bounded rather than trusted.
 timeout 120 systemctl is-system-running --wait >/dev/null 2>&1
+rc=$?
+echo "MODFS wait-system rc=$rc uptime=$(cut -d' ' -f1 /proc/uptime)"
 i=0
 while [ "$i" -lt 60 ]; do
     n=$(systemctl list-jobs --no-legend --plain 2>/dev/null | grep -c . || echo 0)
     [ "$n" = "0" ] && break
     i=$((i + 1)); sleep 1
 done
+echo "MODFS wait-jobs iterations=$i uptime=$(cut -d' ' -f1 /proc/uptime)"
 
 echo "===MODFS-BOOTTEST-BEGIN==="
 echo "MODFS state: $(systemctl is-system-running 2>&1)"
@@ -414,6 +437,7 @@ mount "${LOOPDEV}p2" "$C/mnt/root" || die2 "cannot mount root"
 log "copying the composed tree"
 rsync -aHAX --numeric-ids \
       --exclude='/proc/*' --exclude='/sys/*' --exclude='/dev/*' --exclude='/run/*' \
+      --exclude='/var/lib/apt/lists/*' --exclude='/var/cache/apt/archives/*.deb' \
       "$M/" "$C/mnt/root/" > "$B/rsync.log" 2>&1 || die2 "rsync failed, see $B/rsync.log"
 
 # SQUASH_EXCLUDES drops proc, sys, dev, run, tmp and var/tmp from every
@@ -486,6 +510,15 @@ if '===MODFS-BOOTTEST-BEGIN===' not in serial:
         bail("QEMU hit the %ss timeout -- boot hung or never started." % timeout, tail)
     if not tail:
         bail("serial log is EMPTY: firmware never handed off, or no console.")
+    # The ALIVE marker separates "the unit never ran" from "the unit ran and
+    # stalled". Before it existed both looked like an empty serial log.
+    alive = re.search(r'===MODFS-HARNESS-ALIVE=== uptime=(\S+)', serial)
+    if alive:
+        waits = re.findall(r'MODFS wait-\S+ \S+ uptime=(\S+)', serial)
+        bail("the harness STARTED (t=%ss) but never reached its report.%s"
+             % (alive.group(1),
+                "  Last wait checkpoint: t=%ss." % waits[-1] if waits else
+                "  It never cleared its first wait."), tail)
     bail("the guest never reached the test harness.", tail)
 if '===MODFS-BOOTTEST-END===' not in serial:
     bail("harness started but did not finish -- guest died mid-test.",
