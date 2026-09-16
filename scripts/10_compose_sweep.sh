@@ -16,6 +16,9 @@
 #   V3  every alternatives group holds every candidate any layer offered
 #   V4  /etc/ld.so.cache is the union of the layers' caches
 #   V5  dpkg --audit is clean
+#   V6  the composed account databases (passwd, group, shadow, gshadow, subuid,
+#       subgid) are the exact SEMANTIC union of the layers, compared record by
+#       record rather than by line -- numeric uniqueness is not composition
 # and records mount, reconcile and total time so cost against N is measurable.
 #
 # The positive control is excluded: it is built from a different snapshot and
