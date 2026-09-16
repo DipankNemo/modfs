@@ -1406,3 +1406,50 @@ Evaluation chapters — do not skip it.
   measuring what the field implies, and no run before today could distinguish
   "the system settled" from "the system could not be observed settling". The
   acct-pm/acct-mp pair is the first evidence where that distinction is recorded.
+
+## 2026-09-16 (full rebuild: clean artefacts, 38 modules, storage re-measured like-for-like)
+- Base rebuilt from scratch and all 38 modules rebuilt with `08 --force`.
+  38 built, 0 skipped, 0 failed, 7 oversize (reported, not rejected). 19 minutes
+  for the whole catalogue -- I had estimated 2-4 hours from the boot test's
+  kernel install, which is dominated by linux-firmware and is not representative
+  of anything else in the pipeline.
+- THE LEAK IS GONE, verified rather than assumed. Before: base.dir carried
+  /etc/apt/apt.conf.d/99modfs (Aug 30), and it had spread unevenly -- present in
+  apache.upper (Aug 30) and postgres.upper (Sep 10), absent from nginx.upper.
+  After: absent from base and from all 38 uppers. Worth stating that this was
+  never cosmetic; the file sets
+        APT::Install-Recommends "false"; APT::Install-Suggests "false";
+  so a provisioned node would silently have had recommends disabled by a policy
+  that belonged to the build, not to the system.
+- pipdemo BUILDS NOW, and the catalogue is 38 rather than 37. It had been
+  failing since Sep 10 on the IFS=$'\t' empty-field collapse, where its
+  post_install landed in the snapshot variable and config.sh tried to derive
+  SOURCE_EPOCH from a pip command line. The emitter's '-'-for-empty fix works.
+  Consequence: every published tier-1 and tier-2 count is superseded, because
+  the pair count goes from 666 to 703.
+- STORAGE RE-MEASURED, and the previous table was not comparable. `08 --force`
+  does NOT rebuild the monolithic baselines, so the Sep 16 figures were being
+  compared against Aug 31 monoliths built on the LEAKED base. Rebuilt all six
+  with `02 --compare` first. Both halves now come from one system:
+        small adversarial (31)   272.8 MB  1524.3 MB  5.59x   (was 5.70x, N=30)
+        large realistic    (7)   792.8 MB  1043.1 MB  1.32x   (unchanged)
+        whole catalogue   (38)  1023.8 MB  2567.4 MB  2.51x   (was 2.49x, N=37)
+  pipdemo joining the small cohort at 15 MB is what moved 5.70 -> 5.59.
+- THE MODEL IS NOW CHECKED RATHER THAN ASSUMED. The monolithic column is
+  modelled as B + d. The six rebuilt monolithic artefacts measure it directly:
+        curl 43.0/43.4  jq 41.9/42.3  nc-traditional 41.6/42.0
+        webserver 62.3/62.8  pytools 67.4/67.6  emacs 78.3/78.7
+  Measured is consistently 0.2-0.9 % BELOW modelled, because squashfs compresses
+  one whole tree slightly better than a base and a delta compressed separately.
+  The model therefore mildly OVERSTATES the saving, by under 1 %. Small, but it
+  is a bias with a direction and a cause, and it should be stated as such rather
+  than left as an unexamined assumption.
+- Incidental reproducibility check, free: curl's delta came out 1.6 MB and jq's
+  552 KB in the `02 --compare` runs, byte-identical to what `08 --force` had
+  produced twenty minutes earlier from the same spec.
+- MY ERROR, recorded because it cost a cycle: I handed over
+  `03_analyse_overlap.sh` as an aggregate storage command. It is a PAIRWISE
+  overlap analyser taking two module names. There is no aggregate storage
+  script; the cohort table is computed ad hoc from artefact sizes. If that table
+  is going to be regenerated on every rebuild it should become one, and the
+  computation is the six lines used here.

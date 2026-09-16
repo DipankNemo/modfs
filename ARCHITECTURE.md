@@ -394,7 +394,7 @@ comparison build not yet run) → ~2.9×, growing per module.
 > **Superseded — see "Storage depends on the catalogue" below.** The figures
 > in this subsection describe the original 28-module catalogue of small
 > adversarial modules. Adding seven realistic modules changed the headline
-> ratio from 5.35× to 2.49×, and that change is itself the result.
+> ratio from 5.35× to 2.51×, and that change is itself the result.
 
 **Original catalogue, 28 modules** (small adversarial modules only), built in
 ~6 minutes:
@@ -459,22 +459,36 @@ reproducibility is now plausible but **untested**.
 
 ### Storage depends on the catalogue, not only on the method
 
-Re-measured at 37 built modules after adding `gcc`, `java`, `rust`, `llvm`,
-`postgres`, `mysql` and `docker`:
+Re-measured on 2026-09-16 against a **fully rebuilt catalogue** — base and all
+38 modules rebuilt on the same day from the same snapshot, and the six
+monolithic baselines rebuilt alongside them, so both halves of the comparison
+come from one system. The earlier table mixed Sep 16 deltas with Aug 31
+monoliths and is superseded:
 
 | Cohort | N | Stored | Monolithic | Ratio |
 |---|---:|---:|---:|---:|
-| small adversarial modules | 30 | 257.1 MB | 1 467.0 MB | **5.70×** |
+| small adversarial modules | 31 | 272.8 MB | 1 524.3 MB | **5.59×** |
 | large realistic modules | 7 | 792.8 MB | 1 043.1 MB | **1.32×** |
-| whole catalogue | 37 | 1 008.2 MB | 2 510.0 MB | **2.49×** |
+| whole catalogue | 38 | 1 023.8 MB | 2 567.4 MB | **2.51×** |
 
 The ratio is
 
     (N·B + Σd) / (B + Σd)
 
 so it tends to N as deltas shrink and to 1 as they grow. With B = 41.7 MB, a
-mean delta of 7.2 MB gives 5.70×; a mean delta of 107.3 MB gives 1.32×. The
+mean delta of 7.5 MB gives 5.59×; a mean delta of 107.3 MB gives 1.32×. The
 seven large modules are 78 % of all delta bytes and return almost nothing.
+
+The monolithic column is MODELLED as `B + d`, and the six rebuilt monolithic
+artefacts let that model be checked rather than assumed. Measured monolithic
+sizes come in **0.2–0.9 % below** the model across all six, because squashfs
+compresses one whole tree slightly better than a base and a delta compressed
+separately. The model therefore mildly OVERSTATES the saving, by under 1 %:
+
+| | curl | jq | nc-traditional | webserver | pytools | emacs |
+|---|---:|---:|---:|---:|---:|---:|
+| measured | 43.0 | 41.9 | 41.6 | 62.3 | 67.4 | 78.3 |
+| modelled | 43.4 | 42.3 | 42.0 | 62.8 | 67.6 | 78.7 |
 
 **This is the honest form of the storage claim.** The earlier 5.35× was a
 property of a catalogue deliberately built from tiny modules, not a property
