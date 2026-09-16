@@ -145,7 +145,13 @@ boot_cleanup() {
 # no record at all; that is precisely what C5 is meant to prevent.
 trap 'RC_TRAP=$?; boot_cleanup
       [ "${FINISHED:-0}" -eq 1 ] || finish ABORTED "$RC_TRAP"
-      cleanup' EXIT INT TERM
+      cleanup' EXIT
+# Same reasoning as lib.sh: record the outcome, release resources, then die
+# with the signal rather than returning into the middle of an image build.
+trap 'boot_cleanup; [ "${FINISHED:-0}" -eq 1 ] || finish INTERRUPTED 130
+      unmount_all; trap - EXIT INT; kill -s INT $$'  INT
+trap 'boot_cleanup; [ "${FINISHED:-0}" -eq 1 ] || finish TERMINATED 143
+      unmount_all; trap - EXIT TERM; kill -s TERM $$' TERM
 
 # ---- 0. admission --------------------------------------------------------
 # C3. Run A died inside APT because a tier-1-rejected set (the MTA pair) was
@@ -185,11 +191,17 @@ write_chroot_policy "$M"
 
 python3 "${HERE}/scripts/reconcile.py" --merged "$M" --groups-out "$C/alt.groups" \
         "${LAYERS[@]}" > "$B/reconcile.log" 2>&1 || die2 "reconciliation failed"
+REGEN_FAIL=0
 while read -r g; do
     [ -n "$g" ] || continue
-    in_chroot "$M" update-alternatives --auto "$g" >/dev/null 2>&1 </dev/null || true
+    in_chroot "$M" update-alternatives --auto "$g" >/dev/null 2>&1 </dev/null \
+        || { warn "update-alternatives --auto ${g} failed"; REGEN_FAIL=$((REGEN_FAIL+1)); }
 done < "$C/alt.groups"
-in_chroot "$M" ldconfig >/dev/null 2>&1 </dev/null || true
+in_chroot "$M" ldconfig >/dev/null 2>&1 </dev/null \
+    || { warn "ldconfig failed"; REGEN_FAIL=$((REGEN_FAIL+1)); }
+# The boot image must not be built on a half-reconciled tree.
+[ "$REGEN_FAIL" -eq 0 ] || { finish REGEN_FAIL 2
+    die2 "reconciliation regeneration failed ${REGEN_FAIL} time(s)"; }
 log "reconciled: $(grep -c . <<<"$(in_chroot "$M" dpkg-query -W -f '${binary:Package}\n' 2>/dev/null </dev/null)") packages"
 
 # ---- 2. kernel: scaffolding, into the image only -------------------------

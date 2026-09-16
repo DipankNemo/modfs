@@ -270,11 +270,21 @@ while IFS=$'\t' read -r N MODS; do
         printf '%d,%d,%s,%s,,,,,,,,,,,,RECONCILE_FAIL\n' "$IDX" "$N" "${SET[*]}" "$ADM_LABEL" >> "$CSV"
         FAILED=$((FAILED+1)); unmount_all; continue
     fi
+    REGEN_FAIL=0
     while read -r g; do
         [ -n "$g" ] || continue
-        in_chroot "$M" update-alternatives --auto "$g" >/dev/null 2>&1 </dev/null || true
+        in_chroot "$M" update-alternatives --auto "$g" >/dev/null 2>&1 </dev/null \
+            || REGEN_FAIL=$((REGEN_FAIL+1))
     done < "$C/alt.groups"
-    in_chroot "$M" ldconfig >/dev/null 2>&1 </dev/null || true
+    in_chroot "$M" ldconfig >/dev/null 2>&1 </dev/null || REGEN_FAIL=$((REGEN_FAIL+1))
+    # Regeneration is the step being verified. Swallowing its failure meant a
+    # composition whose alternatives or linker cache were never rebuilt could
+    # still be recorded PASS.
+    if [ "$REGEN_FAIL" -gt 0 ]; then
+        warn "regeneration failed ${REGEN_FAIL} time(s) for ${SET[*]}"
+        printf '%d,%d,%s,%s,,,,,,,,,,,,,,REGEN_FAIL\n' "$IDX" "$N" "${SET[*]}" "$ADM_LABEL" >> "$CSV"
+        FAILED=$((FAILED+1)); unmount_all; continue
+    fi
     T2=$(now_ms)
 
     # ---- collect what the composed system actually reports ----------------

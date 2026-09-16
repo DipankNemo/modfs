@@ -385,6 +385,8 @@ if rr:
     except ValueError:
         warn("malformed M_UID_RANGE %r; audit will treat every id as out of range" % rr)
 
+DEBIAN_DYNAMIC_MAX = 999        # Debian Policy 9.2.2: 100-999 dynamic system
+
 def classify(num):
     try:
         n = int(num)
@@ -394,9 +396,17 @@ def classify(num):
         return 'static-reserved'
     if uid_range and uid_range['start'] <= n <= uid_range['end']:
         return 'in-range'
+    # base has no window: it is the baseline every module inherits, built
+    # before partitioning applies, so its accounts legitimately sit in
+    # Debian's 100-999 dynamic system range. Calling those out-of-range
+    # flagged seven correct base accounts and would train the reader to
+    # ignore the audit.
+    if uid_range is None and n <= DEBIAN_DYNAMIC_MAX:
+        return 'base-dynamic'
     return 'out-of-range'
 
-audit = {'static-reserved': [], 'in-range': [], 'out-of-range': [], 'malformed': []}
+audit = {'static-reserved': [], 'in-range': [], 'base-dynamic': [],
+         'out-of-range': [], 'malformed': []}
 for n, rec in users.items():
     audit[classify(rec['uid'])].append('user %s=%s' % (n, rec['uid']))
 for n, rec in groups.items():
@@ -487,7 +497,7 @@ print("  accounts : %d user(s), %d group(s); %d unit(s) name an identity"
       % (len(users), len(groups), len(units)))
 if uid_range:
     print("  uid range: %d-%d" % (uid_range['start'], uid_range['end']))
-for kind in ('static-reserved', 'in-range'):
+for kind in ('static-reserved', 'in-range', 'base-dynamic'):
     if identity_audit[kind]:
         print("  audit    : %-15s %s" % (kind, ', '.join(identity_audit[kind])))
 for kind in ('out-of-range', 'malformed'):

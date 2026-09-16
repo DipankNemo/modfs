@@ -28,6 +28,10 @@ fi
 [ $# -ge 1 ] || die "usage: $0 [--version V] <name> [pkg...]   (packages required unless name is 'base')"
 NAME="$1"; shift
 PKGS=("$@")
+# C1 again: NAME reaches `rm -rf "${MOD_DIR}/${NAME}.dir"` below, so it is an
+# identifier, not free text.
+require_ident "$NAME" "module name"
+[ -n "$MOD_VERSION" ] && require_ident "$MOD_VERSION" "module version"
 
 W="${BUILD_DIR}/repro-${NAME}"
 SQSH="${MOD_DIR}/${NAME}.sqsh"

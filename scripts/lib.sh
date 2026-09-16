@@ -225,7 +225,21 @@ cleanup() {
     unmount_all
     return $rc
 }
-trap cleanup EXIT INT TERM
+
+# A handler that RETURNS lets the script carry on. With INT and TERM bound to
+# cleanup, Ctrl-C during a build tore every mount down and then continued --
+# writing into what was no longer a merged overlay, squashing the result, and
+# exiting 0 so a caller believed it succeeded. Clean up, restore the default
+# disposition, and re-raise so the process really dies with 130/143.
+on_signal() {            # on_signal <SIGNAME>
+    local sig="$1"
+    unmount_all
+    trap - EXIT "$sig"
+    kill -s "$sig" $$
+}
+trap cleanup EXIT
+trap 'on_signal INT'  INT
+trap 'on_signal TERM' TERM
 
 # ---- chroot plumbing ------------------------------------------------------
 # June's build only bound /dev and /dev/pts. Some maintainer scripts read
