@@ -1508,3 +1508,66 @@ Evaluation chapters — do not skip it.
   claims "96 real compositions from N=2 to N=27"; it was 81, and the top of that
   range has no data. Raising the sample count at high N is the fix, and it is a
   sampling change rather than a bug fix, so it is written down rather than done.
+
+## 2026-09-16 (THE BIG ONE: opaque directories silently delete other modules' files)
+- High-N boot: the 36-module maximal subset composed and booted in 189 s.
+  34/36 probes PASS, dpkg audit PASS. Three failures, three different kinds, and
+  the third invalidates an assumption the whole design rests on.
+- FAILURE 1 -- apache2.service, and it is a CONFLICT CLASS THE TAXONOMY LACKS.
+        (98)Address already in use: make_sock: could not bind to address [::]:80
+  nginx holds 0.0.0.0:80; apache2 cannot start. This is not a file collision, a
+  package conflict, or a declared conflict: apache2 and nginx coexist perfectly
+  as INSTALLED PACKAGES and cannot coexist as RUNNING SERVICES. Nothing in dpkg
+  metadata expresses it, so tier 1 admitted the pair and could never have done
+  otherwise. Call it class 8, runtime resource conflict; only tier 3 can see it.
+  It was ALREADY VISIBLE on 09-03 -- m3-nginx-apache and m4-apache-nginx both
+  recorded degraded + failed-unit apache2.service and it was never diagnosed.
+  m4 put apache in the TOP layer and apache still lost, so layer order does not
+  decide this; the startup race does, which makes it nondeterministic in
+  principle. Both runs happened to have nginx win.
+- FAILURE 2 -- fake-cuda, a PROBE defect, not a composition defect. `sl` is in
+  the artefact at /usr/games/sl and no other module ships /usr/games, so nothing
+  shadowed it. The probe is `command -v sl` and systemd services run with a PATH
+  that excludes /usr/games. The module is fine; the probe is wrong.
+- FAILURE 3 -- pytools: ModuleNotFoundError: No module named 'numpy', with 1314
+  numpy paths sitting in pytools.sqsh. CONFIRMED CAUSE:
+        pyyaml.upper/usr/lib/python3   trusted.overlay.opaque="y"
+        pytools.upper/usr/lib/python3  trusted.overlay.opaque="y"
+  An opaque directory tells OverlayFS to IGNORE every lower layer at that path.
+  Layers are last-wins, pyyaml sits above pytools, so pyyaml's opaque
+  /usr/lib/python3 erased pytools' entire dist-packages tree. requests survived
+  only because pip put it in /usr/local/lib/python3.10/dist-packages, a
+  different directory.
+- THE SCOPE IS SYSTEMIC, not an edge case. Swept every upper:
+        869  opaque markers in total
+        456  distinct directories
+        178  claimed by 2 or more modules  <- each one is silent file loss
+         79  of those outside /usr/share/doc|bug|man, i.e. functional
+  Worst: /usr/share/readline (9 modules), /usr/lib/sasl2 (8),
+  /usr/lib/x86_64-linux-gnu/perl, /usr/share/perl, /etc/perl (7 each),
+  /usr/share/applications (6), /usr/share/binfmts (5), /usr/lib/python3.10 (4).
+- THIS CONTRADICTS A DOCUMENTED DESIGN ASSUMPTION. config.sh says:
+        trusted.overlay.opaque "y" -- SEMANTIC. A directory replaced wholesale.
+        Assumption B in ARCHITECTURE section 3 exists to prove this survives. Keep.
+  Preserving opaque is right IF the marker means what that comment says. It does
+  not. /usr/share/doc/sl is not a deliberate wholesale replacement; these markers
+  are incidental to how dpkg and apt create and recreate directories during a
+  build. We preserved them faithfully and thereby preserved a systemic bug.
+- WHY NOTHING CAUGHT IT. Tier 1 reads metadata. Tier 2's V1-V6 check dpkg status,
+  alternatives, ld.so.cache, dpkg --audit and account databases. NOT ONE CHECKS
+  FILE VISIBILITY. dpkg status correctly says python3-numpy is installed; the
+  files are simply not visible in the merged view. The 36-module set passed tier
+  1 and tier 2 and still lost numpy.
+- WORSE, IT IS DATA-DEPENDENT AND THEREFORE SILENT. /usr/lib/python3.10 is opaque
+  in four modules including vim, which sits at the top; that one is HARMLESS only
+  because vim's layer happens to carry the complete libpython3.10-stdlib, so
+  nothing is missing. The same mechanism is benign when the top layer is a
+  superset and destructive when layers hold different subsets. That is the worst
+  possible failure profile: it depends on which modules you picked and in which
+  order, and it fails silently.
+- NOT YET FIXED. The candidate remedies are (a) strip opaque markers at squash
+  time, which loses genuine wholesale replacement, (b) detect colliding opaque
+  directories at tier 1 and reject or warn, which is cheap and needs no rebuild,
+  or (c) a V7 in tier 2 asserting that every file present in any layer is visible
+  in the merged view, which would have caught this directly. (b) and (c) are
+  complementary and neither is written yet.
