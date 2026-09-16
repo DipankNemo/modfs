@@ -1264,3 +1264,52 @@ Evaluation chapters — do not skip it.
   account database and both databases started against it. That is the class-7
   runtime evidence. What is still missing is the FORMAL unit matrix and the
   reverse-order pair (`base mysql postgres`), not the underlying result.
+
+## 2026-09-16 (the harness was racing the serial getty for its own file descriptor)
+- The instrumentation from the previous entry paid for itself on the first run:
+  "the harness STARTED (t=6.07s) but never reached its report. It never cleared
+  its first wait." That settles two of the three ambiguities immediately -- the
+  unit DID start, and the /dev/ttyS0 redirect DID work, because the marker
+  reached the serial console.
+- But the arithmetic contradicts "never cleared its first wait":
+        6.07 (alive) + 120 (timeout) + 60 (drain) + ~2 (report) = 188
+        observed power down                                      = 188.2
+  The harness only calls `systemctl poweroff -i` on its LAST line, so reaching
+  188.2 s proves it ran to completion. It executed every echo. Exactly one of
+  them -- the first -- reached the log.
+- ROOT CAUSE: the harness did `exec > /dev/ttyS0 2>&1` and held that ONE fd for
+  its whole run. serial-getty@ttyS0.service sets TTYVHangup=yes on
+  TTYPath=/dev/ttyS0, so systemd performs a virtual hangup on that terminal,
+  which invalidates every OTHER process's open fd to it. After the hangup the
+  harness's writes fail EIO, and a shell `echo` to a dead fd says nothing.
+- Why it is a RACE, and why two databases lost it: serial-getty is Type=idle.
+  systemd logs "Started Serial Getty" early but DELAYS the exec -- and therefore
+  the vhangup -- until the boot transaction settles. nginx/apache settle fast,
+  the vhangup fired before the harness opened at t=5s, and the fd was clean.
+  base+postgres+mysql keep the transaction busy past t=6s, so the harness opened
+  and wrote FIRST, and had the fd hung up under it a moment later.
+  Log evidence for the ordering, and it is unambiguous:
+        good: "modfs-guest login: ===MODFS-BOOTTEST-BEGIN==="  (prompt, then us)
+        bad:  ALIVE at line 642, login prompt at line 654       (us, then prompt)
+- CORRECTION to my first reading: I attributed the vhangup to agetty's -R flag.
+  Wrong. agetty does have -R/--hangup, but serial-getty@.service does not pass
+  it; the vhangup comes from systemd's own TTYVHangup= directive. Same mechanism,
+  different actor. Checked against the unit file rather than assumed.
+- FIX, two parts:
+  1. Write to /dev/console, not /dev/ttyS0. systemd's own messages were never
+     affected precisely because systemd writes to /dev/console, and no getty
+     owned it here.
+  2. Re-open the console immediately BEFORE the report. The waits are exactly
+     the window a delayed vhangup lands in, so the rule is: never carry a fd
+     across the wait and into the report.
+- CAVEAT recorded rather than glossed: console-getty.service also declares
+  TTYPath=/dev/console with TTYVHangup=yes. It is not active in this guest (zero
+  mentions in the serial log), so /dev/console is safe HERE by configuration,
+  not by construction. Part 2 of the fix is what makes the report robust even if
+  that changes, which is why it is worth its six lines.
+- GENERAL LESSON for the evaluation chapter: this bug was invisible for two runs
+  and cost an afternoon, and its entire difficulty was that the failure channel
+  WAS the reporting channel. A harness that reports over a resource it does not
+  own cannot report its own failure to own it. The liveness marker did not fix
+  anything -- it made the system able to describe its own failure, which is what
+  turned an unexplainable empty log into a ten-minute diagnosis.

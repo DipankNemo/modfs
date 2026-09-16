@@ -302,7 +302,18 @@ cat > "$M/usr/local/sbin/modfs-boottest" <<'GUEST'
 #!/bin/sh
 # Runs inside the booted guest. Everything goes to the serial console, which
 # is the only channel the harness can read.
-exec > /dev/ttyS0 2>&1
+#
+# /dev/console, NOT /dev/ttyS0. agetty calls vhangup() on its tty while it sets
+# up, which invalidates every OTHER process's open fd to that terminal. This
+# script holds one fd for its whole run, so it was racing the serial getty:
+# whoever touched ttyS0 first won. nginx/apache runs happened to open after
+# agetty had settled and were fine; base+postgres+mysql shifted boot timing by
+# about a second, opened FIRST, and had its fd hung up under it. The symptom is
+# brutal to diagnose -- the first write lands, every later write fails EIO in
+# silence, and the run looks like a harness that never started. systemd's own
+# messages were never affected because systemd writes to /dev/console. No getty
+# owns /dev/console, so nothing vhangups it.
+exec > /dev/console 2>&1
 
 # Liveness marker, emitted BEFORE any waiting. Without it the harness is
 # silent for up to 180 s, which makes three very different outcomes look
@@ -327,6 +338,14 @@ while [ "$i" -lt 60 ]; do
     i=$((i + 1)); sleep 1
 done
 echo "MODFS wait-jobs iterations=$i uptime=$(cut -d' ' -f1 /proc/uptime)"
+
+# Re-open the console immediately before the report. The waits above are where
+# a TTYVHangup lands -- serial-getty is Type=idle, so its vhangup fires
+# whenever the boot transaction finally settles, which is exactly the window we
+# spend waiting. A hung-up fd fails EIO in silence, so the one thing we must
+# never do is carry a fd ACROSS that window and into the report. This costs
+# nothing and makes the report independent of who hung up what while we waited.
+exec > /dev/console 2>&1
 
 echo "===MODFS-BOOTTEST-BEGIN==="
 echo "MODFS state: $(systemctl is-system-running 2>&1)"
