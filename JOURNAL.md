@@ -2478,3 +2478,181 @@ uncoordinated copies.
      numbers above -- it cannot be pinned, and pinning is the thesis.
 
 NOTHING IMPLEMENTED. No new module, no catalogue change, no code change.
+
+## 2026-09-17 (base fattening, part 2: RESULTS -- and the break-even is not a node count)
+
+Full rebuild against the fat base: 38 of 38 modules, 0 failed, 13 minutes
+(18:19:12 -> 18:32:17). All 38 artefacts verify against the sha256 in their own
+manifests. Evidence preserved at /srv/modfs/results/fatbase/.
+
+### The base
+
+        thin base.sqsh   41 717 760 B =  41.7 MB   113 packages
+        fat  base.sqsh  155 172 864 B = 155.2 MB   166 packages
+        dB              113 455 104 B = 113.5 MB   (3.72x)
+
+### Per-module delta, and the predictions
+
+EVERY ONE OF THE SEVEN PREDICTIONS HELD. Recorded before the build: "gcc and
+postgres should shrink hard, llvm and rust noticeably, mysql a little, and java
+and docker essentially not at all."
+
+        module        thin MB   fat MB  saved MB  saved %   pkgs t/f
+        gcc              84.0     14.4      69.6    82.9     47/10
+        llvm            128.2     61.5      66.6    52.0     47/17
+        rust            175.5    117.4      58.1    33.1     45/10
+        postgres         82.1     29.2      53.0    64.5     29/11
+        mysql            56.6     44.3      12.2    21.6     39/26
+        java            141.6    141.1       0.5     0.3     31/29
+        docker           83.1     83.1       0.0     0.0     13/10
+
+gcc drops from 84.0 MB to 14.4 MB and stops being an oversize module at all
+(the build report's oversize list goes from 5 to 4: java, rust, llvm, docker).
+
+### The unplanned result: the small catalogue benefited more than the design did
+
+The shared set was derived from the SEVEN LARGE MODULES ONLY, so the small
+modules were expected to pay dB and get nothing. Eight of them did much better:
+
+        apache      28.1 ->  4.1  (-85.3 %)    dnsutils  16.0 -> 2.1  (-87.1 %)
+        memcached   10.3 ->  0.6  (-94.2 %)    pgclient  12.1 -> 2.0  (-83.4 %)
+        webserver   21.0 ->  6.8  (-67.7 %)    git       17.1 -> 7.0  (-59.3 %)
+        emacs       37.0 -> 23.3  (-37.2 %)    gawk       3.1 -> 0.7  (-77.1 %)
+
+Cause: perl, perl-modules-5.34, libperl5.34, libicu70, libxml2, libreadline8,
+libedit2, ucf and netbase entered the shared set through gcc/postgres/mysql/llvm,
+and they are used far more widely than by those four. 24 of 38 modules shrank,
+totalling 360.5 MB.
+
+### And a tax I did not predict: every delta carries a bigger dpkg status
+
+14 modules got BIGGER, by 3-15 % each (tens of KB; -0.4 MB in total). Measured
+cause, identical in every one of them:
+
+        /var/lib/dpkg/status in the upperdir  111 618 B -> 162 627 B   (+51 009 B)
+        whole upperdir                      1 994 342 B -> 2 173 750 B (+179 408 B)
+
+apt rewrites /var/lib/dpkg/status, so OverlayFS copies the WHOLE file up into
+every delta. A base with 53 more packages means 51 009 more bytes of status in
+every module that touches apt at all, plus extended_states and friends. This is
+a PER-MODULE TAX PROPORTIONAL TO BASE'S PACKAGE COUNT, and it is the term that
+eventually bounds how fat a base can usefully get. At 38 modules it is 1.9 MB
+uncompressed and irrelevant; it is linear in N x |base|, so it is worth naming.
+
+### Cohort ratios -- and one convention has to be rejected
+
+        cohort              N   Sd thin -> fat      stored thin -> fat
+        small adversarial  31   231.0 -> 131.1      272.8 ->  286.2   (+13.5)
+        large realistic     7   751.0 -> 491.0      792.7 ->  646.2  (-146.6)
+        whole catalogue    38   982.1 -> 622.0     1023.8 ->  777.2  (-246.6)
+
+The monolithic column MUST stay fixed between the two worlds. A monolithic image
+is built for a use case; fattening OUR base does not change what an independent
+builder would put in a `jq` image. Keeping the published monolithic figures:
+
+        cohort              thin      fat
+        small adversarial   5.59x -> 5.33x     WORSE
+        large realistic     1.32x -> 1.61x     better
+        whole catalogue     2.51x -> 3.30x     better
+
+The thin column reproduces section 7's published 5.59 / 1.32 / 2.51 and the
+monolithic figures 1524.3 / 1043.1 / 2567.3 EXACTLY, which is the check that the
+measurement path is the same one.
+
+REJECTED CONVENTION, recorded so nobody re-derives it and believes it. Section
+7's formula (N*B + Sd)/(B + Sd), applied self-consistently inside the fat world,
+gives 17.26x / 2.44x / 8.39x. Those numbers are meaningless here: B appears N
+times in the numerator, so making the base fatter inflates the baseline it is
+being compared against. A monolithic `jq` image would never contain the GCC
+toolchain. Any fat-base ratio quoted in the thesis must use the FIXED monolithic
+numerator.
+
+### THE BREAK-EVEN
+
+A node's flattened image is B + sum of its modules' deltas (section 7: the
+saving is server-side storage and assembly; 11_boot_test flattens the overlay
+into an ext4 root). So a node deploying set S pays
+
+        delta(S) = dB - sum(saving(m) for m in S),      dB = 113.5 MB
+
+paid by EVERY node, including ones using none of the toolchain.
+
+**(1) No single-module node can ever win, and this is structural, not empirical.**
+
+        best single module: gcc, saving 69.6 MB, against dB 113.5 MB
+                            -> still loses by 43.8 MB
+        modules whose own saving exceeds dB: NONE
+
+  The reason is the definition of the shared set. A package is in it because it
+  appears in TWO OR MORE modules; dB is the cost of ALL of them; one module
+  carries only the subset it happened to use. So sigma(m) < dB for every m by
+  construction, unless a single module carries essentially the whole shared set
+  -- which the ">= 2" rule forbids. **Choosing the shared set by "appears in two
+  or more modules" GUARANTEES that a one-module node loses.**
+
+**(2) Two toolchain modules is the smallest winning workload.**
+
+        gcc + llvm        136.3 MB > dB     (k=2, the smallest such set)
+        gcc + rust        127.7 MB > dB
+        llvm + rust       124.7 MB > dB
+        postgres + mysql   65.2 MB < dB     -- loses
+
+**(3) The fleet condition.** n_T nodes run a toolchain workload saving sigma
+each; n_O nodes use none of it and pay +dB each. Fattening wins when
+
+        n_T * (sigma - dB) > n_O * dB    ->   share of fleet p* = dB / sigma
+
+        workload            sigma MB    p* (share of fleet that must run it)
+        any one module      <= 69.6     IMPOSSIBLE -- sigma <= dB
+        llvm + rust            124.7    91.0 %
+        gcc + rust             127.7    88.9 %
+        gcc + llvm             136.3    83.3 %
+        gcc + rust + llvm      194.3    58.4 %
+        all seven large        260.0    43.6 %
+
+**SO THE ANSWER TO "HOW MANY NODES" IS: THAT IS THE WRONG VARIABLE.** The
+per-node arithmetic is decided by the SHAPE of the workload, not the size of the
+fleet. A fleet of a million nodes each running gcc alone never breaks even,
+because every one of those nodes individually costs 43.8 MB more. Only nodes
+running two or more of {gcc, rust, llvm} beat dB at all, and then between 58 %
+and 91 % of the fleet must be such nodes.
+
+**(4) The server-side answer is different, and it needs no node count.**
+
+        sum of all 38 module savings = 360.0 MB   vs   dB = 113.5 MB
+        stored total 1 023.8 MB -> 777.2 MB, a fall of 246.6 MB (-24.1 %)
+
+  Fattening is an UNCONDITIONAL win for server-side storage, and section 7 already
+  says server-side storage and assembly is what the project claims. Under the
+  claim the thesis actually makes, fattening wins outright; under a per-node
+  transfer metric it needs most of the fleet to be multi-toolchain nodes. THE
+  THESIS SHOULD STATE WHICH METRIC IT IS CLAIMING, because the two give opposite
+  answers for the same build.
+
+### Validation: the fat modules still work
+
+Tier 1 on the fat tree: gcc+llvm ACCEPT; all seven large modules together ACCEPT.
+07_smoke_test.sh base gcc llvm rust postgres mysql: 13 passed, 0 failed.
+verify_compose.py at N=8 (base + all seven large): PASS, 279 packages, every
+column clean. And the STRONG probes from today's audit, which is the check that
+matters, all pass on the fat base:
+        gcc compiles and runs a C program                       rc=0
+        clang -c then llvm-nm reads the symbol                  rc=0
+        rustc compiles, links and runs                          rc=0
+        javac + java round trip                                 rc=0
+        postgres server binary + getent + file owner + su       rc=0
+        mariadbd + getent + file owner + su                     rc=0
+        dockerd + containerd + runc + getent group docker       rc=0
+A smaller delta that stopped working would be worthless; it did not.
+
+### What this measurement does NOT show
+
+- THE SHARED SET IS AN ORACLE. It was chosen knowing exactly which seven modules
+  would be built. A real deployment picks base content before it knows the
+  catalogue, so 360.0 MB is an UPPER BOUND on what set selection can achieve.
+- ONE HOST, ONE SNAPSHOT, ONE COMPRESSION SETTING.
+- The obvious follow-up, stated rather than run: derive the shared set over the
+  WHOLE 38-module catalogue instead of the seven large ones. Section (1) above
+  predicts what that changes -- to let a single-module node win, the base must
+  hold packages that nearly every module uses, which is a different rule from
+  ">= 2 of the large seven". That is a new experiment, not this one.
