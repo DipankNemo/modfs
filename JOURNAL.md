@@ -1846,3 +1846,277 @@ Evaluation chapters — do not skip it.
   duration_s straight out of result.json. A third bundle this morning reads
   2142 s and is deliberately NOT used -- it is the interactive boot session,
   which measures how long I left a shell open, not the test.
+
+## 2026-09-17 (base fattening, part 1: the 53/32/31/24/23 numbers re-derived, and the fat base built)
+
+- FIRST, THE OLD NUMBERS. Section 7's sharing figures were flagged as possibly
+  stale. Re-derived from the manifests of the current (2026-09-16 rebuild)
+  catalogue, over the seven large modules gcc/java/rust/llvm/postgres/mysql/docker:
+        distinct packages across the 7 : 166   (251 instances)
+        appear in >= 2 modules         :  53
+        appear in >= 3 modules         :  32
+        appear in >= 4 modules         :   0
+        gcc+rust 31   gcc+llvm 24   llvm+rust 23
+  Every published figure reproduces exactly. They are NOT stale.
+- The ">= 4 is zero" line is new and it changes how the result should be read.
+  "The shared toolchain" is not one cluster, it is THREE disjoint ones:
+        gcc+rust+llvm     C toolchain: binutils, libc6-dev, gcc-11, linux-libc-dev
+        gcc+postgres+mysql perl + gdbm
+        llvm+postgres+mysql libedit / libbsd / libmd
+  Nothing is shared by four or more of the seven. java (2 shared packages) and
+  docker (3) are effectively disjoint from the rest of the catalogue.
+- SIZE, NOT COUNT, IS WHAT PAYS. 53 packages says nothing about bytes, so the
+  shared set was priced against the pinned snapshot with apt-cache (indices
+  only, nothing installed):
+        53 shared packages, installed       378.0 MB   (debs 95.9 MB)
+        of which libllvm14 109.5, gcc-11 54.0, libicu70 35.3, libperl5.34 29.1
+  Three packages are 53 % of the shared set.
+- PER-MODULE SHARE OF THE SHARED SET, uncompressed installed bytes:
+        module    pkgs  shared   total MB  sharedMB   share%
+        gcc         47      37      263.7     227.9    86.4
+        java        31       2      280.1       1.0     0.4
+        rust        45      35      556.3     162.3    29.2
+        llvm        47      30      481.9     240.2    49.8
+        postgres    29      18      269.7     197.2    73.1
+        mysql       39      13      219.0      52.8    24.1
+        docker      13       3      282.2       0.2     0.1
+        shared bytes counted per instance : 881.6 MB
+        stored once in a fat base         : 378.0 MB
+        dedup headroom (upper bound)      : 503.6 MB uncompressed
+  PREDICTION RECORDED BEFORE THE BUILD: gcc and postgres should shrink hard,
+  llvm and rust noticeably, mysql a little, and java and docker essentially not
+  at all. If java and docker do shrink, something in my model is wrong.
+- METHOD. A SECOND artefact tree at MODFS_ROOT=/srv/modfs-fat so /srv/modfs is
+  never touched; base built by the same 01_build_base.sh from the same snapshot
+  with the 53 shared packages appended to the four defaults. /srv/modfs/build
+  cleaned first (2.9 MB of tier-1 pair scratch, archived to the session
+  scratchpad before deletion; resolved path checked to be under
+  /srv/modfs/build and /proc/self/mountinfo checked for mounts underneath).
+  Space: 65 GB free against a 5.6 GB real tree. Fits with room to spare.
+- FAT BASE BUILT, and one result is already worth having:
+        thin base.sqsh   41 717 760 B =  41.7 MB   113 packages
+        fat  base.sqsh  155 172 864 B = 155.2 MB   166 packages
+        dB = +113.5 MB compressed, 3.72x   rootfs 461 MB
+  166 - 113 = 53 EXACTLY. apt pulled in no extra package: the >=2 shared set is
+  already dependency-closed against base. That is not something the count 53
+  predicted, and it matters for the analysis -- the fat base contains the
+  shared set and nothing else, so dB is attributable entirely to it.
+- 378 MB installed compresses to 113.5 MB of artefact, a factor of 3.33.
+- Catalogue rebuild of all 38 modules against the fat base is running.
+
+## 2026-09-17 (probe quality audit: nine demonstrated false positives and a second harness-measures-itself defect)
+
+- THE QUESTION. fake-cuda's probe fails although the module is fine; apache's
+  passes although the service is dead. Both are measurement defects. So:
+  across all 38 probes, does the probe prove the module WORKS, or only that a
+  file exists or a config parses?
+- CLASSIFICATION USED (four levels, by what the probe actually executes):
+        A  existence only     `command -v X`     -- never executes the payload
+        B  binary loads       `X --version`      -- ELF loads, ld.so resolves,
+                                                    main() reaches a printf
+        C  config parses      `nginx -t`         -- B, plus reads /etc
+        D  does the job       `import numpy`     -- B, plus loads the module's
+                                                    own data/plugins and runs
+  Counted over the catalogue: A = 7, B = 26, C = 2, D = 3.
+  So 33 of 38 probes never touch anything the module is FOR.
+- NINE DEMONSTRATED FALSE POSITIVES. Not argued -- each was run against a real
+  composition that deliberately EXCLUDES the module owning the probe. Every
+  line below is a reproduction (private mount namespace, squashfs layers
+  mounted read-only, reconcile.py + ldconfig exactly as 07 does):
+
+        probe owner      probe                      composed set            rc
+        original-awk     command -v awk             base                     0
+        original-awk     command -v awk             base gawk                0
+        gawk             awk --version              base mysql               0
+        postgres         psql --version             base pgclient            0
+        pgclient         psql --version             base postgres            0
+        nc-openbsd       command -v nc              base nc-traditional      0
+        nc-traditional   command -v nc              base nc-openbsd          0
+        mta-msmtp        command -v sendmail        base mta-nullmailer      0
+        mta-nullmailer   command -v sendmail        base mta-msmtp           0
+        curl             curl --version             base control-oldsnap     0
+
+  rc=0 means the probe passed with its own module entirely absent.
+- THE MECHANISM IS THE SAME EVERY TIME and it is worth naming: the probe tests
+  a SHARED NAME, not the module's own artefact. `/usr/bin/awk`,
+  `/usr/bin/nc` and `/usr/sbin/sendmail` are alternatives or diversion link
+  names owned by whichever provider wins; `/usr/bin/psql` is literally owned by
+  both postgres and pgclient (both get it from postgresql-client-common);
+  `curl` is the same binary in the control as in the module. A probe on a
+  shared name cannot identify its module BY CONSTRUCTION.
+- A MEASUREMENT I DID NOT EXPECT: base alone already carries
+  /usr/bin/awk -> /etc/alternatives/awk -> /usr/bin/mawk, so original-awk's
+  probe passes on a 113-package base with no catalogue module present at all.
+  That is the weakest probe in the catalogue.
+- AND ONE I GOT WRONG BEFORE TESTING: I expected `awk --version` to pass on
+  base alone too. It exits 2 -- jammy's mawk (1.3.4.20200120-3) has no
+  --version, though the host's newer mawk does. gawk's probe therefore needs a
+  composed sibling that ships a GNU awk to become a false positive, and mysql
+  is one: mariadb-server depends on gawk, so /usr/bin/gawk is owned by the
+  mysql module as well as the gawk module.
+- pgclient CANNOT BE PROBED AT ALL, and this is a fact about the catalogue
+  rather than about the probe. Of the 1 978 paths pgclient owns, 1 976 are also
+  owned by postgres; the two that are not are
+  /usr/share/doc/postgresql-client/{changelog.gz,copyright}. pgclient's file
+  set is a SUBSET of postgres's, so no runtime probe can distinguish them.
+  Recorded as a limitation, not given a replacement.
+- SECOND HARNESS-MEASURES-ITSELF DEFECT, and this one is live:
+
+        $ sudo ./scripts/07_smoke_test.sh base apache
+        F4  [FAIL] apache: apache2ctl configtest
+            mktemp: failed to create directory via template
+                    '/var/lock/apache2.XXXXXXXXXX': No such file or directory
+        RESULT: 4 passed, 1 failed  --  BROKEN
+
+  The module is fine. `/var/lock -> /run/lock`; SQUASH_EXCLUDES drops `run`
+  from every artefact and mount_chroot_fs only mkdir's /run, so /run/lock does
+  not exist in a chroot. apache2ctl is a WRAPPER that creates a lock directory
+  before calling apache2. Isolated exactly:
+        apache2ctl configtest                          rc=1
+        install -d -m 1777 /run/lock && apache2ctl ...  rc=0
+        . /etc/apache2/envvars && apache2 -t            rc=0
+  In tier 3 the same probe PASSES, because systemd creates /run/lock during
+  boot. So apache's probe reports the module broken under 07 and healthy under
+  11 -- identical module, identical composition, opposite verdicts. This is
+  fake-cuda's defect in the other direction and it means stage 07 has never
+  been run green on any set containing apache.
+- fake-cuda reproduced exactly as the earlier entry describes, with the numbers
+  this time: /etc/environment carries /usr/games, systemd's DefaultEnvironment
+  is unset so units get the compiled-in PATH without it,
+  `command -v sl` rc=127 under that PATH, `test -x /usr/games/sl` rc=0.
+- THE DANGEROUS HALF IS THE FALSE POSITIVES, and the postgres pair shows why.
+  Composing base+postgres+mysql WITHOUT reconciliation reproduces the class-5
+  account defect (mysql's /etc/passwd wins outright):
+        probe                                    reconciled   unreconciled
+        psql --version                    (now)      rc=0         rc=0
+        mariadbd --version                (now)      rc=0         rc=0
+        getent passwd postgres            (proposed) rc=0         rc=2
+        test "$(stat -c %U /var/lib/postgresql)" = postgres       rc=0  rc=1
+        su -s /bin/sh postgres -c true    (proposed) rc=0         rc=1
+  The current probes are IDENTICAL in both columns. They cannot see the defect
+  that section 4 spends its longest subsection on. The proposed ones separate
+  them cleanly. That is the whole case for changing the probes: not that
+  `--version` is inelegant, but that it has no discriminating power over the
+  failure classes this project actually produces.
+
+## 2026-09-17 (probe audit part 2: the 38 replacements, all run before proposing)
+
+- EVERY replacement below was executed inside a real composition before being
+  written down. 33 proposed probes were run in ONE 37-layer composition
+  (everything except mta-nullmailer, which conflicts with mta-msmtp and was run
+  separately): 33 of 33 exit 0. Nothing here is untested.
+- Also checked as YAML, since the probe is a plain scalar in modules.yaml:
+  every string round-trips, but TWO are not safe as plain scalars and must be
+  quoted when they go into the file -- `pyyaml` (contains `'a: 1'`) and
+  `sqlite` (contains `:memory:` and `values(1);select`). A `: ` inside a plain
+  scalar silently reparses as a nested mapping.
+
+  KEY: class A existence only / B binary loads / C config parses / D does the job.
+  verdict WEAK-FP = demonstrated false positive, WEAK-FN = demonstrated false
+  negative, WEAK = proves less than the module's function, OK = keep.
+
+        module        cls verdict  proposed probe (tested, exits 0)
+        vim            B  WEAK     real edit + `update-alternatives --list editor`
+                                   must contain /usr/bin/vim.basic
+        emacs          B  WEAK     emacs --batch --eval '(princ (emacs-version))'
+                                   + editor candidate /usr/bin/emacs
+                                   [--version needs only the ELF; --batch needs
+                                    the dumped image under /usr/share/emacs]
+        gawk           B  WEAK-FP  gawk 'BEGIN{print substr("modfs",1,5)}' + awk
+                                   candidate /usr/bin/gawk
+        original-awk   A  WEAK-FP  original-awk 'BEGIN{print "ok"}' + awk
+                                   candidate /usr/bin/original-awk
+        nc-openbsd     A  WEAK-FP  /bin/nc.openbsd -h 2>&1 | grep -q OpenBSD
+        nc-traditional A  WEAK-FP  /bin/nc.traditional -h | grep -qi 'connect to somewhere'
+        webserver      C  WEAK     nginx -t && nginx -T >/dev/null
+                                   [-T proves every `include` resolved, which is
+                                    a file-VISIBILITY test, the V7 failure mode]
+        apache         C  WEAK-FN  apache2ctl configtest && apache2ctl -t -D
+                                   DUMP_MODULES | grep -q mpm_
+                                   [see the harness fix below -- the probe was
+                                    not the thing that was wrong]
+        mta-msmtp      A  WEAK-FP  msmtp --version && readlink -f
+                                   /usr/sbin/sendmail | grep -q msmtp
+        mta-nullmailer A  WEAK-FP  nullmailer-inject --help && dpkg -S
+                                   /usr/sbin/sendmail | grep -q '^nullmailer:'
+                                   [nullmailer's sendmail is a REAL FILE, not a
+                                    symlink, so readlink cannot discriminate it]
+        pytools        D  OK       strengthen: numpy.linalg.det(eye(3)) == 1,
+                                   which exercises liblapack3 -> libgfortran5,
+                                   the exact class-6 chain; + pip3 --version,
+                                   since python3-pip was requested and never probed
+        pyyaml         D  OK       strengthen: yaml.safe_load('a: 1') == {'a': 1}
+        gcc            B  WEAK     compile AND RUN a C program
+                                   [exercises cpp headers, cc1, as, ld, crt,
+                                    libc6-dev -- `gcc --version` touches none]
+        java           B  WEAK     javac + java a HelloWorld
+        rust           B  WEAK     rustc -o + run + cargo --version
+        llvm           B  WEAK     clang -c then llvm-nm | grep main
+        postgres       B  WEAK-FP  server binary /usr/lib/postgresql/14/bin/postgres
+                                   + getent passwd postgres + stat -c %U
+                                   /var/lib/postgresql = postgres + su postgres
+        mysql          B  WEAK     mariadbd + getent passwd mysql + stat %U
+                                   /var/lib/mysql + su mysql
+        docker         B  WEAK     dockerd + containerd + runc + getent group docker
+        fake-nvidia-driver A WEAK  hello | grep -qi hello
+        fake-cuda      A  WEAK-FN  test -x /usr/games/sl
+        pipdemo        D  OK       keep
+        control-oldsnap B WEAK-FP  KEEP, cannot be fixed -- see limitations
+        curl           B  WEAK-FP  curl -sS file:///etc/hostname | grep -q .
+                                   [curl's file:// scheme is a real transfer, offline]
+        wget           B  WEAK     KEEP -- wget has no file:// scheme, so there is
+                                   no offline functional probe. Stated, not hidden.
+        git            B  WEAK     init, commit --allow-empty, log
+        jq             B  WEAK     echo '{"a":1}' | jq -e '.a==1'
+        rsync          B  WEAK     rsync a file and cmp it
+        tmux           B  WEAK     tmux -f /dev/null new-session -d + kill-server
+        htop           B  WEAK     KEEP -- htop has no batch mode
+        socat          B  WEAK     socat -u FILE:... CREATE:... and cmp
+        zstd           B  WEAK     compress/decompress round trip
+        sqlite         B  WEAK     sqlite3 :memory: create/insert/select  (QUOTE IT)
+        tcpdump        B  WEAK     tcpdump --version + getent passwd tcpdump
+        dnsutils       B  WEAK     dig -f /dev/null && dig -v  (marginal gain, said so)
+        pgclient       B  WEAK-FP  KEEP, UNPROBEABLE -- see limitations
+        redis          B  WEAK     redis-server --version + getent passwd redis
+                                   + stat %U /var/lib/redis = redis
+        memcached      B  WEAK     memcached --version + getent passwd memcache
+
+- THE APACHE DIAGNOSIS CHANGED WHEN I TESTED THE FIX, and the corrected version
+  is more useful. My first proposal was to bypass apache2ctl with
+  `. /etc/apache2/envvars && apache2 -t`. It passed on base+apache and then
+  FAILED in the 37-layer run:
+        apache2: Syntax error on line 80 of /etc/apache2/apache2.conf:
+                 DefaultRuntimeDir must be a valid directory
+  The first result was an artefact of test ORDER -- an earlier command in the
+  same overlay had already created the directory. The real story:
+        /run is in SQUASH_EXCLUDES, so NO artefact carries /run content
+        mount_chroot_fs only mkdir's /run, and mounts nothing on it
+        apache needs /run/lock (apache2ctl) and /var/run/apache2 (DefaultRuntimeDir)
+        a BOOTED system has systemd-tmpfiles create these; a chroot does not
+  So this is a HARNESS defect, not a probe defect, and the fix belongs beside
+  ldconfig and update-alternatives --auto in the reconcile step:
+        systemd-tmpfiles --create        rc=0, creates /run/{lock,log,sendsigs.omit.d}
+        then apache2ctl configtest       rc=0
+  Measured in that order. /run content is DERIVED STATE regenerated by the tool
+  that owns it -- exactly the argument section 4 already makes for
+  /etc/ld.so.cache and /etc/alternatives. With `systemd-tmpfiles --create` run
+  first, apache's ORIGINAL probe passes unchanged, and so does the strengthened
+  one. Recommendation: add the tmpfiles step to 07 (and to 04/10's compose
+  path), and keep apache2ctl.
+- TWO PROBES CANNOT BE FIXED AND SHOULD BE RECORDED AS LIMITATIONS:
+  * pgclient -- its file set is a subset of postgres's (1 976 of 1 978 shared
+    paths; the two exceptions are changelog.gz and copyright). No runtime probe
+    can distinguish them. Nothing to propose.
+  * control-oldsnap -- it is `curl` from a different snapshot. Both builds
+    report `curl 7.81.0`; only the Ubuntu revision differs, which curl does not
+    print. The control is validated by tier-1 REJECTION, not by its probe, so
+    this costs nothing -- but the probe should not be read as identifying it.
+- STRUCTURAL FINDING WORTH A LINE IN THE EVALUATION. One `probe` string serves
+  two environments that do not have the same capabilities: 07 runs it in a
+  chroot with policy-rc.d blocking daemons and no systemd; 11 runs it inside a
+  booted system as a systemd unit. fake-cuda fails in 11 and passes in 07;
+  apache fails in 07 and passes in 11. Both are the same bug -- a single field
+  describing a check whose meaning depends on where it runs. Service HEALTH is
+  already covered separately and correctly by 11's /etc/modfs-units matrix, so
+  the probe's job should be defined as the environment-independent functional
+  check, and that is how every replacement above is written.
