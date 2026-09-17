@@ -1717,3 +1717,132 @@ Evaluation chapters — do not skip it.
 - LESSON worth keeping for the evaluation: this is the second failure today
   where the harness, not the system under test, set the limit -- after the
   observer-is-the-job wait. Both were invisible while N stayed small.
+
+## 2026-09-17 (the high-N gap: the sampler was drawing against odds it could not see)
+
+- THE GAP. Tier 2 had ZERO composed samples at N=27 and nothing above it. The
+  previous session recorded this as a coverage hole and deliberately left it
+  ("raising the sample count at high N is the fix, and it is a sampling change
+  rather than a bug fix, so it is written down rather than done"). Raising the
+  count alone would not have been enough, and the reason is the interesting
+  part.
+- DIAGNOSIS, and it is arithmetic rather than opinion. The catalogue has
+  exactly two constraints: `mta-msmtp` excludes `mta-nullmailer` (a declared
+  conflict carried only by the virtual name `mail-transport-agent`), and
+  `fake-cuda` requires `fake-nvidia-driver`. Count the N-subsets of the 37
+  usable modules that satisfy both:
+        N=2    630 / 666          94.6 % admissible
+        N=10   2.6e8 / 3.5e8      74.2 %
+        N=20   8.5e9 / 1.6e10     53.3 %
+        N=27   1.3e8 / 3.5e8      38.1 %
+        N=36   2 / 37              5.4 %
+        N=37   0 / 1               0 %   <- the catalogue cannot compose whole
+  A uniform draw at high N almost always sweeps up both mail agents. So the
+  admissible density decays from 95 % to 5 % across the range, and the plan
+  allocated its FEWEST samples exactly where acceptance was LOWEST -- one draw
+  at N=27, P(admitted) = 0.38. P(the row comes out empty) = 0.62. The empty row
+  was not bad luck; it was the modal outcome.
+- THE FOSSIL, and this is the part worth putting in the Evaluation chapter.
+  `27:1` was never a sample. On 09-02 the catalogue held exactly 27 usable
+  modules, so "the single N=27" was a CENSUS of the whole catalogue -- one
+  deterministic set, guaranteed admissible, and that is how it produced the
+  622 ms figure that sat in section 7 for two weeks. The catalogue then grew to
+  38 and the plan string never moved, so a census silently became a one-draw
+  random sample of 27-of-37. Nothing failed, nothing warned; a measurement
+  changed meaning underneath a constant. Worth stating as a class of error:
+  a parameter that encodes "all of them" as a literal number rots the moment
+  the population changes.
+- FIX: `scripts/sample_sets.py`, a constraint-aware draw. The model PROPOSES,
+  tier 1 still DECIDES -- every set still goes through 05_check.sh before
+  anything is mounted, so a model error is recorded NOT_ADMITTED rather than
+  composed on the model's word.
+- THE DESIGN POINT THAT MATTERS: a rejected pair is not an exclusion edge.
+  fake-cuda is rejected against 35 of its 36 siblings and still belongs in the
+  largest admitted set the catalogue has. The pair sweep cannot tell "these two
+  cannot coexist" from "this one needs something that pair lacks". So the model
+  reads `requires` from the manifests (section 5), uses it to EXPLAIN
+  rejections, and only the unexplained residue becomes an edge. On the real
+  catalogue: 36 rejections among usable modules, 35 explained, exactly 1 edge
+  learned (mta-msmtp + mta-nullmailer). The --maximal-subset search made this
+  same mistake in August and its comment says so; the sampler would have
+  repeated it.
+- Exclusions are MEASURED, not declared: the one edge this catalogue has
+  appears in no module manifest, because it is a package-level Conflicts
+  expressed through a virtual name. It exists in the pair verdicts or nowhere,
+  so stage 10 runs a tier-1 pair sweep (~21 s at 8 jobs) and feeds it in.
+  `--pairs` reuses an earlier one.
+- At the top of the range the sampler ENUMERATES rather than samples: whichever
+  of the set or its COMPLEMENT is small enough to walk. At N=36 of 37 that is
+  37 candidates to filter, not a search. It therefore reports EXACT availability
+  and refuses to spin: "N=36: asked for 5, only 2 admissible sets exist",
+  "N=37 INFEASIBLE". The old sampler computed availability as C(37,N), counting
+  sets that could never be admitted.
+- TESTED BEFORE RUNNING, three ways. (1) The model's exact counts (630, 7141,
+  12596, 69, 2) were derived independently by hand-combinatorics first and
+  agree exactly. (2) A synthetic 6-module fixture with one exclusion and one
+  requirement: 4 rejections explained, 1 edge learned, exactly the 2 correct
+  N=5 sets drawn, N=6 infeasible. (3) All 132 sets of a trial plan put through
+  05_check.sh: 132 admitted, 0 rejected. Reproducibility re-verified: same seed
+  twice is byte-identical, a different seed is not.
+- RESULT: 152 compositions, N=2 to N=36, **152 PASS, 0 fail, 0 refused**, 3m13s.
+  Ten samples at N=27 where there were none, and both N=36 sets. Every check
+  column clean in all 152: dpkg status the exact union, no alternatives group
+  short a candidate, ld.so.cache EXACTLY the union in 152/152, dpkg --audit
+  clean, accounts the semantic union, V7 visibility clean.
+- COST MODEL RE-MEASURED against the full range:
+        old   total = 115 + 18.8 x N    R2 = 0.94    96 compositions, top = census
+        new   total = 148 + 19.9 x N    R2 = 0.954   152 compositions, N=2..36
+  The SLOPE SURVIVES (+6 %), which is the real vindication of the old
+  measurement -- it had the shape right off one top-end point. The intercept
+  moves +29 %, and the old model is LOW at every N (+1 % to +16 %).
+- A quadratic term is worth nothing: -0.003 N^2, R2 gain 0.0000. Composition
+  cost is linear in N all the way to the ceiling, so the linearity claim was
+  not an artefact of a short range. Layer count explains cost better than
+  package count (R2 0.954 vs 0.935), which fits the mechanism: N buys loop
+  mounts, not packages.
+- AND ONE SETTLED THING IS NOW UNSETTLED. 09-02 recorded "mount time is the
+  part that scales; reconciliation is nearly flat". Split over the full range:
+        mount     =  21.5 +  6.7 x N     R2 = 0.980
+        reconcile = 126.2 + 13.2 x N     R2 = 0.907
+  Reconciliation carries TWO-THIRDS of the per-module slope and grows 410 ms
+  across the range against mount's 222 ms. The intercepts and slopes sum to the
+  total fit exactly (21.5+126.2 = 147.7, 6.7+13.2 = 19.9), so the split is
+  consistent. If tier 2 ever needs to be cheaper, reconcile.py is the target.
+- TIER 1'S COST FIGURE WAS NOT COMPARABLE TO THE ONE BESIDE IT. Section 6 gave
+  tier 1 as a flat 28 ms, from "3 654 checks in 102 s, 8 jobs" -- that is
+  THROUGHPUT at 8 workers, tabulated against tier 2's single-stream LATENCY.
+  Measured the same way on the same 152 sets, sequentially: 89 ms at N=2,
+  398 ms at N=36, tier1 = 101 + 9.6 x N (R2 = 0.854). Tier 1 also scales with
+  N, which a flat number hid entirely.
+- CONSEQUENCE, and it sharpens the methodology argument rather than denting it:
+  like for like, tier 2 is 2.03x tier 1 at BOTH ends of the range. The tiers
+  the method leans on are a factor of TWO apart, not an order of magnitude.
+  The real cliff is tier 3 at 189-204 s for N=36 -- 230-250x tier 2. Stratified
+  sampling is justified for BOOT testing and is a convenience for composition,
+  which is what section 6 already argued; the corrected numbers make the case
+  stronger.
+- INDEPENDENT ARITHMETIC CROSS-CHECK replicated at the top of the range, the
+  same one done at N=27 in September: the 36 modules of sample 151 contribute
+  527 package instances collapsing to 278 distinct, and the composed system
+  reports 391 = base's 113 + 278. Dependency sharing is 1.90x at N=36 (it was
+  1.5x at N=27 in the 27-module catalogue).
+- TWO LIMITS STATED RATHER THAN GLOSSED. (1) Within-N spread is ~164 ms,
+  about 8 modules' worth of slope, so the model predicts the MEAN and no
+  individual composition to better than roughly +-150 ms. (2) At N=36 only two
+  admissible sets exist and they differ by one module, so the 4 ms spread there
+  measures the machine, not the catalogue -- high-N "samples" necessarily
+  overlap and are not independent draws. Conditioning the sample on
+  admissibility is the right thing for a cost model (only admitted sets are
+  ever composed) but it must be said out loud.
+- Evidence: new CSV at /srv/modfs/logs/compose-sweep.csv; the previous
+  uniform-sampler run preserved first at
+  /srv/modfs/results/tier2/compose-sweep-2026-09-17-uniform-sampler.csv,
+  because it is the evidence OF the gap and the default --out would have
+  overwritten it -- which is exactly how the 96-sample CSV was lost on 09-02.
+- ONE MORE FIGURE I CHANGED AND SHOULD FLAG. Section 6 gave tier 3 as "~8 min
+  end-to-end, measured once", a number with NO provenance anywhere in this
+  journal. Replaced with the two N=36 boot bundles that do have provenance:
+  189 s (maxsub-20260916T154758Z) and 204 s (maxsub-20260917T075714Z), both
+  duration_s straight out of result.json. A third bundle this morning reads
+  2142 s and is deliberately NOT used -- it is the interactive boot session,
+  which measures how long I left a shell open, not the test.

@@ -358,23 +358,40 @@ scratch and `05_check.sh` no longer requires root.
 Exhaustive validation is infeasible: jammy has ~65 000 binary packages, so pairs
 alone are ~2×10⁹. Three tiers exploit the cost asymmetry:
 
-| Tier | Operation | Cost | Feasible |
+| Tier | Operation | Cost (one call, N=2 → N=36) | Feasible |
 |---|---|---|---|
-| 1 | Metadata check | **28 ms** measured (3 654 checks in 102 s, 8 jobs) | thousands |
-| 2 | Compose + verify | **155 ms** at N=2, **622 ms** at N=27, measured | thousands — all 351 pairs in ≈55 s |
-| 3 | QEMU boot test | ~8 min end-to-end, measured once | tens |
+| 1 | Metadata check | **89 ms → 398 ms** measured, 152 sets | thousands |
+| 2 | Compose + verify | **181 ms → 808 ms** measured, 152 compositions | thousands — all 666 pairs in ≈2 min (extrapolated) |
+| 3 | QEMU boot test | **189–204 s** at N=36, measured twice | tens |
 
 **The original cost estimates were wrong, and the correction matters.** Tier 2
-was assumed to cost ~10 s per composition; it costs 155 ms — **64× cheaper**.
-Composition time is linear in N:
+was assumed to cost ~10 s per composition; it costs 181 ms at N=2 — **55×
+cheaper**. Both cheap tiers are linear in N, re-measured 2026-09-17 over 152
+compositions spanning the full admissible range N=2…36:
 
-    total = 115 ms + 18.8 ms × N        (R² = 0.94, 96 compositions)
+    tier 2:  total = 148 ms + 19.9 ms × N     (R² = 0.954, 152 compositions)
+    tier 1:  total = 101 ms +  9.6 ms × N     (R² = 0.854, 152 checks)
 
-So the cost asymmetry this methodology rests on is *not* between tiers 1 and 2,
-which are within one order of magnitude of each other. It is between tier 2 and
-tier 3, which is 100× more expensive still. Stratified sampling is justified for
-boot testing; for composition it is a convenience, not a necessity — exhaustive
-tier-2 coverage of all pairs is affordable and should be reported as such.
+A quadratic term adds **nothing** (−0.003 N², R² gain 0.0000), so the linear
+form is not an artefact of a short range: it holds to the largest N the
+catalogue admits.
+
+> **Tier 1's cost was previously stated as a flat 28 ms, and that number was
+> not comparable to the one beside it.** It came from 3 654 checks in 102 s
+> *at 8 jobs* — throughput, not latency — and was tabulated against tier 2's
+> single-stream latency. Measured the same way, sequentially and on the same
+> 152 sets, tier 1 costs 89 ms at N=2 and 398 ms at N=36. Tier 1 also *scales*
+> with N, which a flat figure hid.
+
+The correction sharpens the argument here rather than undermining it. Like
+for like, **tier 2 costs almost exactly 2× tier 1 at every N** (2.03× at N=2,
+2.03× at N=36): the asymmetry this methodology rests on is *not* between
+tiers 1 and 2, which are a factor of two apart, not an order of magnitude. It
+is between tier 2 and tier 3, which is **230–250×** more expensive still
+(808 ms against 189 s and 204 s, the two measured N=36 boots). Stratified
+sampling is justified for boot testing; for composition it is a convenience,
+not a necessity — exhaustive tier-2 coverage of all pairs is affordable and
+should be reported as such.
 
 **Admission order is a rule, not a convention:**
 
@@ -390,15 +407,50 @@ requires `--known-negative`, which records the expected rejection and reports
 Build 30–40 small modules once; check all pairs and triples exhaustively;
 compose a stratified sample; boot-test the interesting cases. Tier 1 is
 `09_run_combinations.sh`; tier 2 is `10_compose_sweep.sh`, which samples
-96 sets — 30 pairs, 30 triples, 20 at N=5, 10 at N=10, 5 at N=20 and the
-single N=27 — and verifies each composed system against its own layers rather
-than against metadata. Sampling is seeded, so the sample set is reproducible. Module selection
-is **adversarial** — chosen to provoke classes — not representative.
+152 sets — 30 pairs, 30 triples, 20 at N=5, 10 each at N=10, 15, 20, 25, 27
+and 30, then 6, 4 and 2 at N=33, 35 and 36, where the admissible space runs
+out — and verifies each composed system against its own layers rather than
+against metadata. Sampling is seeded, so the sample set is reproducible.
+Module selection is **adversarial** — chosen to provoke classes — not
+representative.
 
-The catalogue is `specs/modules.yaml`: 27 modules, each carrying the class it
-exists to provoke and a `probe` command that must exit 0 inside a composed
-chroot. 27 modules is 351 pairs and 2 925 triples. Tier 1 needs no root and no
-build tree — only the manifests — so the whole sweep parallelises freely.
+**The sample must be drawn against the constraints, not filtered by them.**
+Sampling was uniform over N-subsets until 2026-09-17, which works only while
+almost every draw happens to be admissible. It does not survive scale: of all
+uniform N-subsets of the 37 usable modules, 94.6 % are admissible at N=2,
+38.1 % at N=27 and 5.4 % at N=36, because a large random subset almost always
+sweeps up both mail-transport agents. The plan then allocated its *fewest*
+samples where acceptance was *lowest* — one draw at N=27 — so the top of the
+cost-vs-N curve had a 0.62 probability of coming out empty, and did.
+`sample_sets.py` now draws sets that satisfy the constraint model by
+construction. Two properties of it matter:
+
+- **Exclusions are measured, not declared.** The model learns them from a real
+  tier-1 pair sweep, because the one exclusion this catalogue has is expressed
+  only through a virtual package name and appears in no module manifest.
+- **A rejected pair is not automatically an exclusion.** `fake-cuda` is
+  rejected against 35 of 36 siblings and still belongs in the largest admitted
+  set, because the driver it requires is in there too. Requirements (§5)
+  *explain* 35 of the 36 rejections; only the unexplained residue becomes an
+  edge. Conflating the two would have banished `fake-cuda` from every high-N
+  sample — the same error the `--maximal-subset` search made and corrected.
+
+The model only **proposes**. Tier-1 admission still runs on every set before
+anything is mounted, so a set the model gets wrong is recorded `NOT_ADMITTED`,
+never composed on the model's word. In the 2026-09-17 run the two agreed on
+all 152 sets.
+
+The catalogue is `specs/modules.yaml`: 38 modules — 37 usable plus the
+positive control — each carrying the class it exists to provoke and a `probe`
+command that must exit 0 inside a composed chroot. 37 usable modules is 666
+pairs and 7 770 triples. Tier 1 needs no root and no build tree — only the
+manifests — so the whole sweep parallelises freely.
+
+**The catalogue cannot be composed whole, by construction.** It contains a
+deliberate conflict pair, so the largest admissible set is **36 of 37**
+modules and there are exactly **two** such sets. N=37 is not a gap in the
+evidence; it is infeasible, and the sampler reports it as such rather than
+drawing sets that tier 1 will refuse.
 
 Baseline: monolithic, one image per use case.
 
@@ -577,26 +629,90 @@ same space is **344 admitted, 7 rejected**. Stage `10` no longer composes a
 rejected set without `--known-negative`, and labels such runs
 `KNOWN_NEGATIVE`.
 
-Above N=2 the coverage is a stratified sample, 96 real compositions from N=2
-to N=27: **96 passed, 0 failed**.
-Every composed system's dpkg status was the exact union of its layers, every
-alternatives group held every candidate any layer offered, `/etc/ld.so.cache`
-was exactly the union in all 96, and `dpkg --audit` was clean throughout.
+Above N=2 the coverage is a stratified sample. Re-run 2026-09-17 against a
+constraint-aware sampler (§6): **152 real compositions from N=2 to N=36, 152
+passed, 0 failed, 0 refused**. Every composed system's dpkg status was the
+exact union of its layers, every alternatives group held every candidate any
+layer offered, `/etc/ld.so.cache` was exactly the union in all 152, `dpkg
+--audit` was clean throughout, and no layer's files were invisible in the
+merged view (V7).
 
-| N | samples | packages (median) | alt groups | cache libs | total ms |
-|---|---|---|---|---|---|
-| 2 | 30 | 128 | 5–13 | 97–119 | 155 |
-| 3 | 30 | 132 | 5–14 | 96–142 | 173 |
-| 5 | 20 | 159 | 5–19 | 114–150 | 200 |
-| 10 | 10 | 191 | 6–20 | 127–178 | 281 |
-| 20 | 5 | 245 | 8–22 | 173–188 | 519 |
-| 27 | 1 | 281 | 23 | 205 | 622 |
+| N | samples | packages (median) | alt groups | cache libs | mount ms | reconcile ms | total ms |
+|---|---|---|---|---|---|---|---|
+| 2 | 30 | 142 | 42–44 | 100–148 | 32 | 144 | 181 |
+| 3 | 30 | 150 | 42–45 | 100–185 | 38 | 164 | 204 |
+| 5 | 20 | 175 | 42–45 | 118–173 | 50 | 173 | 225 |
+| 10 | 10 | 224 | 42–46 | 127–192 | 83 | 223 | 305 |
+| 15 | 10 | 261 | 43–49 | 166–240 | 122 | 317 | 440 |
+| 20 | 10 | 297 | 43–49 | 207–232 | 161 | 355 | 517 |
+| 25 | 10 | 325 | 44–49 | 198–247 | 186 | 475 | 667 |
+| 27 | 10 | 348 | 45–50 | 226–261 | 201 | 475 | 674 |
+| 30 | 10 | 364 | 47–50 | 236–266 | 225 | 522 | 751 |
+| 33 | 6 | 373 | 48–50 | 254–268 | 233 | 534 | 794 |
+| 35 | 4 | 383 | 48–50 | 256–268 | 246 | 571 | 817 |
+| 36 | 2 | 387 | 49–50 | 264–268 | 254 | 554 | 808 |
 
-The union grows sub-linearly in N because modules share dependencies: the 27
-modules contribute 256 package instances that collapse to 168 distinct
-packages, a factor of 1.5. At N=27 the composed system holds 281 packages —
-exactly base's 113 plus those 168, which the composition reproduces from the
-artefacts alone. Nothing above N=3 had ever been composed before this sweep.
+**This table replaces one whose top row was a fossil.** The previous version
+ended `27 | 1 | 281 | 23 | 205 | 622`, measured on 2026-09-02 when the
+catalogue held exactly 27 usable modules — so "the single N=27" was not a
+sample at all but a **census of the whole catalogue**, one deterministic set.
+The catalogue then grew to 37 usable modules and that plan point silently
+became a one-draw random sample of 27-of-37, with a 0.62 probability of being
+refused. In the last run before this one it was refused, and the row read
+zero. The old 622 ms figure describes a 27-module catalogue that no longer
+exists, not a 27-module *composition* in the present one, which costs 674 ms.
+
+The union grows sub-linearly in N because modules share dependencies, and the
+arithmetic cross-check holds at the top of the range as it did at N=27: the 36
+modules of sample 151 contribute **527 package instances that collapse to 278
+distinct** new packages, a sharing factor of **1.90**, and the composed system
+holds **391 packages — exactly base's 113 plus those 278**, reproduced from the
+artefacts alone. The composition and the manifest arithmetic agree from two
+independent measurements at the largest set the catalogue admits.
+
+**The cost model, re-measured.** The previous model was `115 + 18.8 × N`
+(R² = 0.94), fitted on 2026-09-02 over 96 compositions whose top point was the
+single census set described above — so one point carried the entire top of the
+range. (The most recent run before this one, still using the uniform sampler,
+composed 81 of its 96 planned sets and reached only N=20.) Over 152
+compositions reaching N=36:
+
+    total = 148 ms + 19.9 ms × N        (R² = 0.954, 152 compositions)
+
+The **slope survives** — 18.8 → 19.9 ms per module, +6 % — so the old
+measurement's shape was right. The intercept moves 115 → 148 ms, +29 %, and
+the old model is **low at every single N**, by between +1 % (N=10) and +16 %
+(N=2), +8 % at N=27 and +2 % at N=36. A quadratic term is worthless (−0.003 N², R² gain 0.0000): composition
+cost is genuinely linear in the number of layers, all the way to the ceiling.
+Cost is better explained by layer count than by package count (R² 0.954 vs
+0.935 fitting the same totals against the composed package count), which is
+what one would expect if the per-layer loop mount, not the package
+arithmetic, is what N buys.
+
+Splitting the total re-opens a settled question:
+
+    mount     =  21.5 ms +  6.7 ms × N      (R² = 0.980)
+    reconcile = 126.2 ms + 13.2 ms × N      (R² = 0.907)
+
+**"Mount time is the part that scales; reconciliation is nearly flat" was
+wrong.** Reconciliation carries **two-thirds of the per-module slope** and
+grows by 410 ms across the range against mount's 222 ms. The earlier reading
+came from a range that stopped at N=20 in a smaller catalogue; reconciliation
+is the cost that matters as N grows, and it is the obvious target if tier 2
+ever needs to be cheaper.
+
+Two honest limits on the fit:
+
+- **It predicts the mean, not a composition.** Within-N spread is ~164 ms
+  (median across N with ≥4 samples) — worth about **8 modules** of slope. No
+  individual composition's time is predictable to better than roughly
+  ±150 ms; the model is for capacity planning, not for scheduling.
+- **The top of the range is near-deterministic, and its variance is not
+  meaningful.** At N=36 only two admissible sets exist and they differ by a
+  single module, so the 4 ms spread there measures the machine, not the
+  catalogue. High-N samples are drawn from a small admissible space and
+  necessarily overlap heavily; the N=36 row is two points, not two
+  independent draws.
 
 ---
 

@@ -5,10 +5,15 @@
 #
 #   sudo ./scripts/10_compose_sweep.sh
 #   sudo ./scripts/10_compose_sweep.sh --seed 7 --plan 2:5,3:5
+#   sudo ./scripts/10_compose_sweep.sh --pairs /srv/modfs/logs/combinations.csv
 #
 # Tier 1 (09_run_combinations.sh) has thousands of data points but never
 # mounts anything. Tier 2 had four, all at N<=3, while the design promises
-# arbitrary N. This closes that gap: 96 real compositions from N=2 to N=27.
+# arbitrary N. This closes that gap with real compositions from N=2 to the
+# largest N the catalogue admits, which the sampler computes rather than
+# assumes. (An earlier version of this header claimed "96 compositions from
+# N=2 to N=27". It was 81, and the top of that range held nothing at all --
+# see the sample-plan section for why.)
 #
 # Per composition it verifies:
 #   V1  reconciliation completed
@@ -33,12 +38,22 @@ source "${HERE}/scripts/lib.sh"
 die2() { printf '\033[1;31m[FAIL]\033[0m %s\n' "$*" >&2; exit 2; }
 [ "$(id -u)" -eq 0 ] || die2 "must run as root (mounts + chroot)"
 
-SEED=1; PLAN="2:30,3:30,5:20,10:10,20:5,27:1"; CSV="${LOG_DIR}/compose-sweep.csv"
+# The default plan reaches the TOP of the range, which is 36 -- not 37, because
+# the catalogue contains a deliberate conflict pair and so cannot be composed
+# whole, and not 27, which is where this plan used to stop. "27:1" was not a
+# sample at all when it was written: the catalogue then held exactly 27 usable
+# modules, so N=27 was a CENSUS of one deterministic set. The catalogue grew to
+# 37 and that plan point silently became a 27-of-37 random draw of a single
+# sample. High N now gets enough samples to fit a line through.
+SEED=1
+PLAN="2:30,3:30,5:20,10:10,15:10,20:10,25:10,27:10,30:10,33:6,35:4,36:2"
+CSV="${LOG_DIR}/compose-sweep.csv"; PAIRS=""
 KNOWN_NEG=0; MAXSUB=0; SUBSET_OUT="${RESULTS_DIR}/maximal-subset.txt"
 while [ $# -gt 0 ]; do
     case "$1" in
         --seed) [ $# -ge 2 ] || die2 "--seed needs a value"; SEED="$2"; shift 2 ;;
         --plan) [ $# -ge 2 ] || die2 "--plan needs a value"; PLAN="$2"; shift 2 ;;
+        --pairs) [ $# -ge 2 ] || die2 "--pairs needs a value"; PAIRS="$2"; shift 2 ;;
         --out)  [ $# -ge 2 ] || die2 "--out needs a value";  CSV="$2";  shift 2 ;;
         --known-negative) KNOWN_NEG=1; shift ;;
         --maximal-subset) MAXSUB=1; shift ;;
@@ -63,11 +78,13 @@ reset_workdir "$W"
 # CONFIRMED with one n-ary tier-1 run, because "no rejecting pair" is not by
 # itself a proof for the whole set.
 if [ "$MAXSUB" -eq 1 ]; then
-    PAIRCSV="$W/pairs.csv"
-    log "computing pair verdicts to order the search"
-    "${HERE}/scripts/09_run_combinations.sh" --max-n 2 --jobs "${JOBS:-8}" \
-        --out "$PAIRCSV" > "$W/pairs.log" 2>&1 \
-        || die2 "pair sweep failed, see $W/pairs.log"
+    PAIRCSV="${PAIRS:-$W/pairs.csv}"
+    if [ -z "$PAIRS" ]; then
+        log "computing pair verdicts to order the search"
+        "${HERE}/scripts/09_run_combinations.sh" --max-n 2 --jobs "${JOBS:-8}" \
+            --out "$PAIRCSV" > "$W/pairs.log" 2>&1 \
+            || die2 "pair sweep failed, see $W/pairs.log"
+    fi
 
     # Pair verdicts ORDER the search; they no longer decide it. Treating every
     # rejected pair as an undirected conflict edge is invalid once positive
@@ -148,57 +165,42 @@ mkdir -p "$(dirname "$CSV")" 2>/dev/null || true
 # ---- sample plan ----------------------------------------------------------
 # Seeded, so the sampled sets are reproducible: an evaluation that cannot be
 # re-run is not evidence.
+#
+# The draw is CONSTRAINT-AWARE (sample_sets.py). It used to be uniform, which
+# works while nearly every draw is admissible and silently stops working when
+# it is not: at N=27 of 37 modules only 38 % of uniform draws satisfy the
+# catalogue's constraints, and the plan asked for exactly one sample there, so
+# the top of the cost-vs-N curve came out EMPTY 62 % of the time -- and did.
+#
+# The sampler PROPOSES, tier 1 still DECIDES. Every set is put through
+# 05_check.sh below exactly as before, so a set the model gets wrong is
+# recorded NOT_ADMITTED rather than composed on the model's word.
 SAMPLES="$W/samples.txt"
-python3 - "${SPEC_DIR}/modules.yaml" "$MOD_DIR" "$SEED" "$PLAN" "$SAMPLES" <<'PY' || die2 "cannot build the sample plan"
-import itertools, json, os, random, sys, yaml
-spec, mod_dir, seed, plan, out = sys.argv[1:6]
-
-doc = yaml.safe_load(open(spec, encoding='utf-8')) or {}
-mods = []
-for m in (doc.get('modules') or []):
-    n = m.get('name')
-    if not n or n == 'base':
-        continue
-    if m.get('snapshot'):            # the positive control: excluded by design
-        continue
-    if os.path.exists(os.path.join(mod_dir, n + '.sqsh')):
-        mods.append(n)
-mods.sort()
-if len(mods) < 2:
-    sys.stderr.write("fewer than 2 usable modules\n"); sys.exit(2)
-
-rng = random.Random(int(seed))
-rows, skipped = [], []
-for part in plan.split(','):
-    n_s, _, c_s = part.partition(':')
-    n, want = int(n_s), int(c_s)
-    if n > len(mods):
-        skipped.append("N=%d (only %d modules)" % (n, len(mods))); continue
-    total = 1
-    for k in range(n): total = total * (len(mods) - k) // (k + 1)
-    take = min(want, total)
-    seen, picked = set(), []
-    if total <= 20000:               # small space: sample exactly, no rejection loop
-        allc = list(itertools.combinations(mods, n))
-        rng.shuffle(allc)
-        picked = allc[:take]
-    else:
-        while len(picked) < take:
-            c = tuple(sorted(rng.sample(mods, n)))
-            if c in seen: continue
-            seen.add(c); picked.append(c)
-    for c in picked: rows.append((n, list(c)))
-
-with open(out, 'w', encoding='utf-8') as f:
-    for n, c in rows:
-        f.write("%d\t%s\n" % (n, ' '.join(c)))
-print("  modules usable      : %d  (control excluded)" % len(mods))
-print("  compositions planned: %d" % len(rows))
-for s in skipped: print("  SKIPPED %s" % s)
-PY
-
 require_uint "$SEED" 0 4294967295 "--seed"
+
+# Exclusions are MEASURED, not assumed. The mail-transport-agent conflict is
+# declared only through a virtual package name, so no module manifest records
+# it; it exists in the pair verdicts or it exists nowhere. ~20 s at 8 jobs, and
+# --pairs reuses an earlier sweep rather than repeating it.
+if [ -z "$PAIRS" ]; then
+    PAIRS="$W/pairs.csv"
+    log "measuring pair verdicts for the sampler's constraint model"
+    "${HERE}/scripts/09_run_combinations.sh" --max-n 2 --jobs "${JOBS:-8}" \
+        --out "$PAIRS" > "$W/pairs.log" 2>&1 \
+        || die2 "pair sweep failed, see $W/pairs.log"
+fi
+[ -f "$PAIRS" ] || die2 "no pair verdicts at ${PAIRS}"
+
+python3 "${HERE}/scripts/sample_sets.py" \
+    --spec "${SPEC_DIR}/modules.yaml" --mod-dir "$MOD_DIR" \
+    --seed "$SEED" --plan "$PLAN" --pairs "$PAIRS" --out "$SAMPLES" \
+    || die2 "cannot build the sample plan"
 TOTAL=$(wc -l < "$SAMPLES")
+# An empty plan is a broken run, not a clean one: every plan point was
+# infeasible or unsatisfiable, and reporting "0 failed" over no compositions
+# is exactly the kind of vacuous pass this sweep exists to avoid.
+[ "$TOTAL" -gt 0 ] || die2 "the plan produced NO sets -- nothing would be composed
+       check the NOTE lines above: every requested N may be infeasible"
 log "tier-2 sweep: ${TOTAL} compositions, seed ${SEED}"
 
 # do_mount() dies on failure, which would abort the whole sweep; a failed
