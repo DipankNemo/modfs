@@ -2257,3 +2257,224 @@ Evaluation chapters — do not skip it.
       string-joining, which is what let the host's /etc answer for the guest's;
   (3) count every missing name, not the first three per directory, so the CSV
       column measures the damage rather than the number of directories touched.
+
+## 2026-09-17 (an eighth false negative, found while setting up the kernel spike)
+
+- A fixture that ships `/lib/modules/5.15.0-185-generic/updates/dkms/attdrv.ko`
+  as a REAL directory tree makes the composed system unable to execute
+  anything, and V7 is clean.
+        base layout:  bin -> usr/bin, lib -> usr/lib, lib64 -> usr/lib64,
+                      sbin -> usr/sbin      (jammy is merged-/usr)
+        the module's real `lib` DIRECTORY outranks base's `lib` SYMLINK, so
+        /lib/x86_64-linux-gnu/ld-linux-x86-64.so.2 is unreachable and every
+        binary fails to start.
+        tier 1                  -> ACCEPT, 0 errors
+        verify_compose.py       -> FAIL, but look at WHICH columns:
+                                   pkg 113 expected / 0 actual, ld 96 / 0,
+                                   and vis_missing=0, VIS_OK=1
+  V7 is satisfied because the NAME `lib` is still present in the merged root
+  listing, and `os.walk` does not follow symlinks, so V7 never descends
+  through base's `lib` and never looks at a single file under it. Tier 2
+  caught this only INCIDENTALLY -- V2 and V4 collapsed because the chroot
+  could not run `dpkg-query` or `ldconfig` at all. A module that broke
+  something less central would have passed everything.
+- STATED PRECISELY, because this is the sentence the Evaluation chapter needs:
+  V7's guarantee is "every name in every layer appears in the merged listing
+  of its parent directory". That is satisfied by a composition which cannot
+  execute one binary.
+- NOT A LIVE DEFECT IN THE CATALOGUE, and the reason is worth recording.
+  Measured across postgres, webserver, docker, gcc and mysql: no module
+  upperdir contains a real `lib` directory at all -- top-level entries are
+  etc, run, tmp, usr, var. When apt writes /lib/systemd/system/..., the kernel
+  resolves base's `lib -> usr/lib` symlink BEFORE the copy-up, so the
+  upperdir receives usr/lib/... Anything installed THROUGH dpkg is therefore
+  safe by construction. The hazard is confined to content placed outside dpkg
+  -- which is exactly the route a hand-built DKMS artefact or a tarball
+  would take, and exactly what task 4 is about.
+
+## 2026-09-17 (feasibility spike: kernel-module modules -- what actually blocks CUDA/TensorFlow)
+
+All figures measured against the pinned snapshot 20260701T000000Z with
+apt-cache / `apt-get install -s` over a dpkg status file copied from base, so
+every closure is what the package would ADD ON TOP OF BASE. Nothing installed.
+
+### 1. Where the kernel enters. Confirmed, with one correction to the premise.
+
+- CONFIRMED: no module and not base carries a kernel, headers, modules or
+  dkms. Checked every one of the 38 manifests plus base.json; base's only
+  `linux`-ish packages are libselinux1 and util-linux.
+- CONFIRMED: `11_boot_test.sh` installs `linux-image-generic initramfs-tools
+  iproute2` into the MERGED view at pack time (line 256), AFTER composition and
+  reconciliation, and the comment says so: "kernel: scaffolding, into the image
+  only".
+- CORRECTION, and it changes the problem. The kernel IS pinned. The merged view
+  carries base's /etc/apt/sources.list, which points at the snapshot, so at this
+  generation `linux-image-generic` resolves deterministically to
+        linux-image-generic 5.15.0.185.166 -> linux-image-5.15.0-185-generic
+  What is missing is not pinning but a RECORD and an ASSERTION: the resolved ABI
+  appears in NO manifest, and nothing checks that the kernel a pack step
+  installs is the ABI a driver was built against. So the blocker is not "there
+  is no kernel to build against" -- it is "the ABI is decided at the last stage
+  and written down nowhere".
+- AND THE ORDERING IS IN OUR FAVOUR. Composition happens first, kernel second,
+  so the kernel's postinst runs depmod inside the merged chroot and would index
+  .ko files already present in composed lower layers. NOT TESTED end to end --
+  the direct test needs a real 432 MB kernel install in the pack step, which I
+  did not run. What WAS tested is the failure mode above: the .ko must land
+  under /usr/lib/modules/<ABI>/, never a real /lib/modules/<ABI>/.
+
+### 2. The three options, assessed against the existing architecture.
+
+**(a) Pin a kernel into the BASE.** Least invasive of the three, and it is the
+only one that IMPROVES the reproducibility claim rather than denting it: the
+ABI stops being a pack-time accident and becomes a recorded property of
+base.json, checkable by tier 1 like any other package.
+        full `linux-image-generic` closure   28 pkgs  1663.3 MB installed
+              of which linux-firmware        1142.7 MB
+              of which linux-modules-extra    352.8 MB
+        MINIMAL pinned kernel                13 pkgs   142.1 MB installed
+              (linux-image-5.15.0-185-generic + linux-modules-…-generic
+               + initramfs-tools; no firmware, no modules-extra)
+        linux-headers-generic                 4 pkgs   103.8 MB installed
+Cost: base grows 142.1 MB installed ~ 45 MB stored (calibration below), and
+section 2's rule forces a rebuild of base and all 38 siblings -- about 2 h,
+measured today. Note the firmware is the elephant, not the kernel: dropping
+linux-firmware and modules-extra takes the closure from 1663 MB to 142 MB.
+
+**(b) DKMS at compose time.** Most invasive, and it breaks two load-bearing
+claims at once. Section 5: "Verification only, never search ... composition
+afterwards is linear checking." A compile at compose time is not checking.
+Section 6: tier 2 costs `148 ms + 19.9 ms x N`; an nvidia DKMS build is minutes,
+so the cost model does not survive. And section 8's byte-reproducibility took
+four separate fixes; a compiler invoked at compose time reintroduces exactly
+the class of non-determinism that was removed (build paths, parallelism,
+timestamps) at a stage where there is no artefact to hash. Recommend against.
+
+**(c) Prebuilt modules against a pinned ABI.** This is the one to take, and the
+reason is that UBUNTU HAS ALREADY DONE IT. At this snapshot:
+        linux-modules-nvidia-535-generic              5.15.0-185.195
+        linux-modules-nvidia-535-5.15.0-185-generic   5.15.0-185.195
+        linux-objects-nvidia-535-5.15.0-185-generic   5.15.0-185.195
+  The version IS the kernel ABI, and it matches what `linux-image-generic`
+  resolves to at the same snapshot. No DKMS, no headers, no compiler, and the
+  whole thing is inside the pin. Combine with (a) and a driver module's delta
+  is just the objects and the firmware.
+
+### 3. Three statements in specs/modules.yaml are wrong and should be corrected.
+
+The fake-cuda note says real CUDA is impossible here for three reasons. Two of
+them do not hold at this snapshot:
+
+  "it lives in NVIDIA's repository, which has no snapshot service, so it cannot
+   be pinned"
+        WRONG for the driver and the toolkit. Ubuntu restricted/multiverse
+        carries nvidia-driver-390 through nvidia-driver-595 and
+        nvidia-cuda-toolkit 11.5.1-1ubuntu1, all inside the pinned snapshot.
+        RIGHT for cuDNN (libcudnn8 is not in the archive at all) and for any
+        CUDA newer than 11.5.
+
+  "its driver is a DKMS kernel module while base ships no kernel"
+        WRONG. The prebuilt linux-modules-nvidia-535-generic exists, pinned,
+        built against exactly this snapshot's ABI. DKMS is one packaging
+        choice, not the only one.
+
+  "it is 3-4 GB against a 256 MB catalogue"
+        RIGHT ONLY FOR THE FULL TOOLKIT, and the catalogue figure is stale
+        (256 MB was the 28-module catalogue; it is 1 023.8 MB now).
+
+### 4. The cost driver, measured.
+
+CALIBRATION FIRST, so installed bytes can be compared with stored bytes.
+Measured over the 21 real catalogue modules above 5 MB, apt Installed-Size
+against the built .sqsh:
+        median 3.28x   mean 3.19x   range 1.87x (gawk) - 4.81x (memcached)
+        AGGREGATE 3 061.4 MB installed -> 969.6 MB stored = 3.16x
+The .deb download column is an independent cross-check: it is xz-compressed and
+runs about 2.9x on these package sets, so the two estimates bracket each other.
+
+        item                                    pkgs  installed   .deb   stored
+                                                            MB      MB   est MB
+        ------------------------------------------------------------------------
+        catalogue today (38 modules, measured)     -        -       -   1 023.8
+        base today (measured)                      -        -       -      41.7
+        ------------------------------------------------------------------------
+        kernel as stage 11 installs it now        28   1 663.3   432.3     ~526
+        minimal pinned kernel, no firmware        13     142.1    37.0      ~45
+        linux-headers-generic                      4     103.8    15.3      ~33
+        ------------------------------------------------------------------------
+        nvidia-driver-535, full (DKMS + GL)      146   1 383.3   482.1     ~438
+        linux-modules-nvidia-535-generic          17     346.3   136.0     ~110
+            (drags the kernel in; with (a) it does not)
+        linux-objects-nvidia-535-…-generic         7     154.5    61.7      ~49
+        libnvidia-compute-535 + nvidia-utils-535   2     176.5    41.1      ~56
+        ------------------------------------------------------------------------
+        nvidia-cuda-toolkit, full (with -dev)     75   4 150.5 1 448.7  ~1 313
+            of which nvidia-cuda-dev alone       1 920.9 MB installed
+        CUDA RUNTIME only (no -dev)                8   1 368.1   507.0     ~433
+        ------------------------------------------------------------------------
+
+READ OFF THAT TABLE:
+- A realistic GPU DRIVER module is ~105 MB stored (objects 49 + compute/utils
+  56), which is 10 % of the present catalogue. Affordable.
+- The FULL CUDA toolkit at ~1 313 MB stored is LARGER THAN THE ENTIRE
+  CATALOGUE, and 46 % of it is nvidia-cuda-dev -- headers and static libs that
+  a deployed node does not need.
+- CUDA runtime only is ~433 MB stored: 42 % of the catalogue, one module. Big,
+  but it is the same order as the seven large modules put together (751 MB) and
+  would not dominate the way the full toolkit would.
+
+### 5. TensorFlow: the number, and the reason it is the wrong question.
+
+Not in the Ubuntu archive at any snapshot -- `python3-tensorflow` and
+`tensorflow` do not exist; the nearest archive ML stack is python3-torch 1.8.1,
+which is from 2021. So the size had to come from PyPI metadata (one read-only
+metadata request per package, nothing downloaded or installed):
+
+        tensorflow 2.21.0, cp310 manylinux x86_64 wheel      572.2 MB
+        its 20 declared runtime dependencies, wheels total    62.1 MB
+            largest: libclang 26.5, numpy 18.5, grpcio 7.2, h5py 5.1
+        TOTAL DOWNLOAD (compressed wheels)                   634.3 MB
+
+Those are COMPRESSED wheel sizes; unpacked is larger and was not measured.
+Even at the download figure, one TensorFlow module is 62 % of the present
+1 023.8 MB catalogue, and the earlier rejection was arithmetically right.
+
+BUT THE SIZE IS THE SECOND PROBLEM, NOT THE FIRST. TensorFlow ships only as a
+PyPI wheel, and PyPI has no snapshot service. The whole method rests on section
+2's first sentence -- "every build draws from one fixed archive snapshot" -- and
+a pip install cannot. It would also be invisible to every check in the project,
+which is the defect `pipdemo` exists to MEASURE: 1 601 of pipdemo's 3 337 files
+(48 %) appear in no class-4 sidecar because they are not package-owned. A
+TensorFlow module would be that defect at 600 MB instead of 15 MB.
+Two further mismatches, for the record: TF 2.21 needs CUDA 12.x at runtime and
+the archive has 11.5; and TF's own GPU wheels bundle NVIDIA libraries again
+through pip, so the driver module and the TF module would ship two
+uncoordinated copies.
+
+### 6. Scoped plan, in order, with what each step buys.
+
+  1. RECORD THE ABI. Have the pack step write the resolved kernel version into
+     the run bundle's result.json, and have 06 record it for base once step 2
+     lands. Cheap, no rebuild, and it closes the "decided at the last stage,
+     written down nowhere" gap on its own.
+  2. PIN THE MINIMAL KERNEL INTO BASE (option a). +142.1 MB installed / ~45 MB
+     stored; forces a full catalogue rebuild (~2 h). Do it at the SAME TIME as
+     any base-fattening change so the rebuild is paid once.
+  3. ADD A `kernel_abi` PRECONDITION TO 05_check.sh alongside parent/snapshot/
+     suite/arch. A module carrying kernel objects declares the ABI it was built
+     for; the set is rejected if it disagrees with base's. This is exactly the
+     shape of the existing PRE check and needs no new machinery.
+  4. BUILD `nvidia-driver` AS AN ORDINARY DELTA from
+     linux-modules-nvidia-535-generic + libnvidia-compute-535 + nvidia-utils-535
+     (~105 MB stored once the kernel is in base). No DKMS, no compose-time
+     build, no change to the composition model at all.
+  5. ASSERT THE PATH. Add to 02_build_delta.sh's existing precondition
+     assertions: refuse any upperdir containing a real top-level `lib`, `bin`,
+     `sbin` or `lib64` directory. One `test -d`, and it prevents the
+     merged-/usr failure above, which no static check catches.
+  6. CUDA RUNTIME ONLY as a second module (~433 MB stored). Explicitly exclude
+     nvidia-cuda-dev, which is 46 % of the toolkit and is build-time content.
+  7. TENSORFLOW: do NOT make it a module. Record it as out of scope with the
+     numbers above -- it cannot be pinned, and pinning is the thesis.
+
+NOTHING IMPLEMENTED. No new module, no catalogue change, no code change.
