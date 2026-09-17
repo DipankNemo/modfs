@@ -1626,3 +1626,37 @@ Evaluation chapters — do not skip it.
 - STILL TO DO: rebuild so the artefacts actually lose the markers, then re-run
   tier 2 (V7 should be clean) and re-run the 36-module boot, where numpy should
   now import.
+
+## 2026-09-17 (opaque fix verified end to end: numpy is back)
+- Rebuilt the catalogue with opaque stripping, re-ran tier 2, re-ran the
+  36-module boot. The fix holds at every level.
+- ARTEFACTS: every module's SquashFS xattr table is now 25 bytes -- an empty
+  table plus overhead -- uniformly, including modules that previously carried
+  dozens of markers (apache 48, gcc 77, llvm 79). 869 markers, gone at source.
+- TIER 2 with V7: 96 samples, 81 composed, 81 PASS, vis_ok=1 on every one, zero
+  compositions with invisible files. Also confirms yesterday's CSV fix: the
+  21-column schema holds and the 15 tier-1 refusals now land as NOT_ADMITTED in
+  the `result` column instead of being reported as failures with reason None.
+  vis_ok is blank rather than 0 for those 15, which is correct -- they were
+  never composed, so there was nothing to check.
+- TIER 3, the direct test, 37 modules (base + the 36-module maximal subset),
+  204 s:
+        MODFS PROBE pytools PASS      <- numpy imports; it vanished before
+        MODFS PROBE pyyaml  PASS
+        MODFS PROBE pipdemo PASS
+        35 probes PASS, 1 FAIL
+  The three Python modules that were fighting over /usr/lib/python3 now coexist.
+  This is the whole arc closed: observed as an unexplained ModuleNotFoundError,
+  diagnosed to trusted.overlay.opaque by xattr, measured across the catalogue
+  (456 directories, 178 contested), argued from evidence rather than assumption
+  (zero in base, zero whiteouts, zero non-base parents, zero file collisions),
+  fixed with one line at source, guarded by a build-time assertion, and proven
+  by a check that would have caught it on day one.
+- TWO FAILURES REMAIN, both known and NEITHER a composition defect:
+    * fake-cuda -- probe is `command -v sl`; systemd's PATH excludes /usr/games
+      where the binary actually lives. A probe defect. modules.yaml edit.
+    * apache2.service -- cannot bind :80 against nginx. Class 8, runtime
+      resource conflict. Not fixable by composition: the packages coexist, the
+      services cannot, and it is a startup race so it is nondeterministic.
+  Both are honest results worth keeping in the evaluation rather than patching
+  away: one shows probe quality matters, the other is a genuine taxonomy gap.
