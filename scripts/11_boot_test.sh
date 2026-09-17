@@ -31,13 +31,14 @@ source "${HERE}/scripts/lib.sh"
 die2() { printf '\033[1;31m[FAIL]\033[0m %s\n' "$*" >&2; exit 2; }
 [ "$(id -u)" -eq 0 ] || die2 "must run as root (mounts, chroot, loop devices)"
 
-NAME=""; TIMEOUT=600; MEM=2048; IMG_MB=3072; KNOWN_NEG=0; EXPECT="all-green"
+NAME=""; TIMEOUT=600; MEM=2048; IMG_MB=3072; KNOWN_NEG=0; EXPECT="all-green"; INTERACTIVE=0
 while [ $# -gt 0 ]; do
     case "$1" in
         --name)    [ $# -ge 2 ] || die2 "--name needs a value";    NAME="$2"; shift 2 ;;
         --timeout) [ $# -ge 2 ] || die2 "--timeout needs a value"; TIMEOUT="$2"; shift 2 ;;
         --mem)     [ $# -ge 2 ] || die2 "--mem needs a value";     MEM="$2"; shift 2 ;;
         --size-mb) [ $# -ge 2 ] || die2 "--size-mb needs a value"; IMG_MB="$2"; shift 2 ;;
+        --interactive) INTERACTIVE=1; shift ;;
         --known-negative) KNOWN_NEG=1; EXPECT="tier-1 rejection"; shift ;;
         --expect) [ $# -ge 2 ] || die2 "--expect needs a value"; EXPECT="$2"; shift 2 ;;
         -*) die2 "unknown option: $1" ;;
@@ -443,8 +444,25 @@ AccuracySec=1s
 WantedBy=timers.target
 TIMER
 mkdir -p "$M/etc/systemd/system/timers.target.wants"
-ln -sf ../modfs-boottest.timer \
-       "$M/etc/systemd/system/timers.target.wants/modfs-boottest.timer"
+if [ "$INTERACTIVE" -eq 1 ]; then
+    # EXPLORATION MODE, not a test. The harness ends in `systemctl poweroff`, so
+    # arming it here would shut the machine down seconds after you reached a
+    # prompt. Leave the unit on disk (handy for running it by hand) but do not
+    # arm the timer, and autologin root on both consoles: the guest has no root
+    # password, so without this there is no way in.
+    log "interactive: harness NOT armed, autologin on tty1 and ttyS0"
+    for u in getty@tty1 serial-getty@ttyS0; do
+        mkdir -p "$M/etc/systemd/system/${u}.service.d"
+        cat > "$M/etc/systemd/system/${u}.service.d/autologin.conf" <<'AL'
+[Service]
+ExecStart=
+ExecStart=-/sbin/agetty --autologin root --noclear %I $TERM
+AL
+    done
+else
+    ln -sf ../modfs-boottest.timer \
+           "$M/etc/systemd/system/timers.target.wants/modfs-boottest.timer"
+fi
 printf 'modfs-guest\n' > "$M/etc/hostname"
 # Without this systemd waits 90 s for a root fs entry that does not exist.
 printf 'LABEL=modfsroot / ext4 defaults 0 1\n' > "$M/etc/fstab"
@@ -494,11 +512,13 @@ cp "$STUB" "$C/mnt/esp/EFI/BOOT/BOOTX64.EFI"
 cp "$M/boot/vmlinuz-${KVER}"    "$C/mnt/esp/modfs/vmlinuz"
 cp "$M/boot/initrd.img-${KVER}" "$C/mnt/esp/modfs/initrd.img"
 printf 'default modfs\ntimeout 0\nconsole-mode max\n' > "$C/mnt/esp/loader/loader.conf"
+INTERACTIVE_CONSOLE=""
+[ "$INTERACTIVE" -eq 1 ] && INTERACTIVE_CONSOLE="console=tty0 "
 cat > "$C/mnt/esp/loader/entries/modfs.conf" <<ENTRY
 title   modfs composed system
 linux   /modfs/vmlinuz
 initrd  /modfs/initrd.img
-options root=LABEL=modfsroot rw console=ttyS0,115200 systemd.log_target=console panic=10
+options root=LABEL=modfsroot rw ${INTERACTIVE_CONSOLE}console=ttyS0,115200 systemd.log_target=console panic=10
 ENTRY
 
 sync
@@ -511,6 +531,41 @@ cp "$OVMF_VARS" "$VARS" 2>/dev/null || die2 "no OVMF vars template"
 ACCEL=tcg; [ -w /dev/kvm ] && ACCEL=kvm
 log "booting under QEMU (accel=${ACCEL}, timeout ${TIMEOUT}s)"
 : > "$SERIAL"
+if [ "$INTERACTIVE" -eq 1 ]; then
+    # No timeout and no -no-reboot: you decide when it ends. Close the window or
+    # type `poweroff`. Serial is still captured, so the run bundle is a complete
+    # record of an exploratory session too.
+    QDISP="gtk"
+    [ -n "${DISPLAY:-}${WAYLAND_DISPLAY:-}" ] || { QDISP="vnc"; log "no DISPLAY; serving VNC on :1 -- connect to localhost:5901"; }
+    log "interactive boot: close the window or run 'poweroff' to end"
+    if [ "$QDISP" = "gtk" ]; then
+        qemu-system-x86_64 \
+            -machine q35,accel="${ACCEL}" -m "$MEM" -smp 2 \
+            -drive if=pflash,format=raw,unit=0,readonly=on,file="$OVMF_CODE" \
+            -drive if=pflash,format=raw,unit=1,file="$VARS" \
+            -drive file="$IMG",format=raw,if=virtio \
+            -display gtk -serial "file:$SERIAL" \
+            > "$B/qemu.log" 2>&1
+    else
+        qemu-system-x86_64 \
+            -machine q35,accel="${ACCEL}" -m "$MEM" -smp 2 \
+            -drive if=pflash,format=raw,unit=0,readonly=on,file="$OVMF_CODE" \
+            -drive if=pflash,format=raw,unit=1,file="$VARS" \
+            -drive file="$IMG",format=raw,if=virtio \
+            -vnc :1 -serial "file:$SERIAL" \
+            > "$B/qemu.log" 2>&1
+    fi
+    QRC=$?
+    log "qemu exited ${QRC}"
+    echo
+    echo " serial log: ${SERIAL}"
+    echo " disk image: ${IMG}  (scratch; delete with: rm -rf ${C})"
+    echo " run bundle: ${B}"
+    echo
+    echo " interactive session -- NO VERDICT. This composes and boots the set for"
+    echo " exploration; it does not verify it. Use a normal run for evidence."
+    exit 0
+fi
 timeout --foreground "$TIMEOUT" qemu-system-x86_64 \
     -machine q35,accel="${ACCEL}" -m "$MEM" -smp 2 \
     -drive if=pflash,format=raw,unit=0,readonly=on,file="$OVMF_CODE" \

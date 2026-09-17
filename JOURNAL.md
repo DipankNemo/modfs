@@ -1660,3 +1660,29 @@ Evaluation chapters — do not skip it.
       services cannot, and it is a startup race so it is nondeterministic.
   Both are honest results worth keeping in the evaluation rather than patching
   away: one shows probe quality matters, the other is a genuine taxonomy gap.
+
+## 2026-09-17 (fake-cuda's probe measures the harness, not the module)
+- Settled what the fake-cuda failure actually means, with evidence:
+        /usr/games/sl   -rwxr-xr-x  26568 bytes   -- installed and executable
+        login shell PATH (/etc/environment) INCLUDES /usr/games
+        systemd service PATH (compiled default)  OMITS /usr/games
+  The module is correct. `sl` runs for any human who logs in. The probe is
+  `command -v sl`, the harness runs as a systemd service, and so the probe was
+  measuring the HARNESS'S ENVIRONMENT rather than the module. A false negative.
+- Worth keeping in the evaluation rather than quietly fixing, because the same
+  weakness in the other direction is the dangerous one: a probe that asks the
+  wrong question can report SUCCESS for something broken just as easily. The
+  honest fix is `test -x /usr/games/sl` or invoking it by absolute path, and it
+  is a modules.yaml edit, not a code change.
+- Added `11_boot_test.sh --interactive` so a composed set can be explored by
+  hand: the harness unit is left on disk but NOT armed (it ends in poweroff, so
+  arming it would shut the machine down seconds after reaching a prompt), root
+  is autologged in on tty1 and ttyS0 (the guest has no root password, so there
+  is otherwise no way in), console=tty0 is added so the window shows the boot,
+  and QEMU runs with a gtk display, falling back to VNC :1 with no DISPLAY.
+  It prints NO VERDICT and says so: it composes and boots for exploration, it
+  does not verify. Post-freeze, but a debugging tool rather than an evaluation
+  feature.
+- Expectation to record: the composed system has no desktop environment, so the
+  window is a text console in a window, not a GUI. The catalogue is deliberately
+  a server catalogue.
