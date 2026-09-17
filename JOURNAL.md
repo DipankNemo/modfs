@@ -2120,3 +2120,140 @@ Evaluation chapters — do not skip it.
   already covered separately and correctly by 11's /etc/modfs-units matrix, so
   the probe's job should be defined as the environment-independent functional
   check, and that is how every replacement above is written.
+
+## 2026-09-17 (attacking the checkers: seven false negatives, six of which V7 passes)
+
+- METHOD. A synthetic artefact tree at MODFS_ROOT=<scratch>/attack holding a
+  copy of the real base plus hand-built modules (squashfs artefact + manifest +
+  class-4 sidecar, written by a fixture generator). Tier 1 is the REAL
+  05_check.sh; composition and verification are the REAL reconcile.py and
+  verify_compose.py, called exactly as 10_compose_sweep.sh calls them. Every
+  finding below is a reproduction, not an argument.
+
+- FN-1  DEBCONF CONTENT LOSS -- no synthetic metadata needed at all.
+        ./scripts/05_check.sh postgres java            -> ACCEPT, 0 errors
+        compose base+postgres+java, verify_compose.py  -> PASS, vis_ok=1
+        /var/cache/debconf/config.dat: base 14 151 B, postgres 25 180 B,
+        java 14 470 B -- all three DIFFER; merged == java's, byte for byte.
+  postgres' debconf database is gone and every checker is green. Section 4
+  already quantifies this (7 of 37 modules carry a diverging config.dat,
+  231 of 666 pairs affected) but records it as "last-wins"; this is the
+  demonstration that nothing detects it. Class 4 cannot: debconf paths appear
+  in ZERO sidecars, measured across all five modules that carry them.
+
+- FN-2b  V7 DEFEATED BY A RELATIVE SYMLINK. Module `atta` ships
+  /usr/lib/attlib/data.bin (1 048 576 B). Module `attsymrel` ships
+  /usr/lib/attlib as a symlink to `attdecoy`, plus /usr/lib/attdecoy/data.bin
+  (6 B).
+        tier 1                       -> ACCEPT
+        verify_compose.py            -> PASS, vis_missing=0, vis_ok=1
+        merged /usr/lib/attlib/data.bin  -> 6 bytes, content "decoy"
+  This is EXACTLY the failure V7 was written for -- a whole directory of one
+  module's files replaced, under /usr/lib, so that the payload is gone -- and
+  V7 does not see it. V7 compares DIRECTORY ENTRY NAMES. The decoy was built
+  to carry the same name, so the name check is satisfied.
+
+- FN-2c  V7 RESOLVES ABSOLUTE SYMLINKS AGAINST THE HOST'S ROOT, so its verdict
+  is not a function of the artefacts. Module `atte` ships
+  /usr/lib/attetc/{passwd,group}; module `atthost` ships /usr/lib/attetc as a
+  symlink to the ABSOLUTE path /etc.
+        verify_compose.py            -> PASS, vis_ok=1
+        merged /usr/lib/attetc/passwd -> the composed system's /etc/passwd
+  verify_compose.py runs on the HOST and does
+  `os.listdir(os.path.join(merged, rel))`, so the kernel resolved `/etc`
+  against the host root. The host has /etc/passwd and /etc/group, the names
+  matched, V7 passed. Had the symlink pointed somewhere the host lacks, V7
+  would have reported the directory absent -- which is what the earlier
+  absolute-symlink variant did. So V7's answer on any symlinked path depends
+  on the machine running the check, in BOTH directions: a false negative when
+  the host happens to have matching names, a false positive when it does not.
+  That breaks "an artefact plus its manifest is self-sufficient".
+
+- FN-3  CLASS 4 IS DEFEATED BY ONE LINE OF MANIFEST. Two modules own
+  /usr/bin/atttool and /etc/att/conf from different packages.
+        atta + attbplain  (nothing declared)         -> REJECT, 2 collisions
+        atta + attbrepl   (BYTE-IDENTICAL artefact,
+                           manifest adds Replaces: att-a)
+                                                     -> ACCEPT
+                          "2 collision(s) SUPPRESSED as legitimate"
+        composed: atttool prints B, /etc/att/conf says owner=attb
+        verify_compose.py                            -> PASS, vis_ok=1
+  The artefacts are identical; only the metadata changed. `replaces_pkg` is
+  tried in BOTH directions and a bare Replaces with no Breaks/Conflicts is
+  enough. Debian only permits that overwrite when the other package is being
+  removed or upgraded, never for two packages installed side by side. This is
+  audit finding H3, now with a reproduction.
+
+- FN-4  CLASS 7 IS DEFEATED BY A MANIFEST THAT UNDERSTATES ITS ARTEFACT.
+  `attu1` and `attu2` each write an /etc/passwd entry at uid 2500 -- `alpha`
+  and `beta` -- and each declares `accounts: {users:{}, groups:{}}`.
+        tier 1   -> ACCEPT, "22 user(s), 43 group(s), no id reused [OK]"
+        tier 2   -> PASS, acct_ok=1
+        composed: getent passwd alpha -> 2500
+                  getent passwd beta  -> 2500
+                  /var/lib/attu2/state, created BY beta, reads owner=alpha
+  The memcached/redis defect of section 4, reproduced, with every checker
+  green. Class 7 reads the manifest; nothing binds the manifest to the
+  artefact (audit finding H1).
+
+- FN-4b  AND IT DOES NOT NEED A FORGED MANIFEST. `attu3` allocates gamma=2500
+  and records it HONESTLY. `attu4` allocates nothing and ships a file owned by
+  the NUMBER 2500 -- the way a tarball, or a pip install preserving ownership,
+  does. Its empty `accounts` is entirely truthful.
+        tier 1 -> ACCEPT, "no id reused [OK]"      tier 2 -> PASS
+        /var/lib/attu4/state reads owner=gamma:gamma
+  ROOT CAUSE, and it is one sentence: class 7 compares ACCOUNT RECORDS, but
+  ownership on disk is a NUMBER, and no check ever looks at the numeric owners
+  of the files a module ships. `identity_audit` audits the accounts a module
+  created against its UID window; it does not audit file ownership.
+  MEASURED ON THE REAL CATALOGUE: every file owner in all 38 module upperdirs
+  maps either to a base account or to an account the module itself declares.
+  So this is LATENT, not live -- and pipdemo already does the dpkg-blind half
+  of it. Cheap fix, stated not implemented (code freeze): have 06 record the
+  set of uids/gids appearing as file owners, and have class 7 compare those.
+
+- FN-5  A MODULE WITH NO FILES CAN CHANGE WHICH BINARY WINS. `attp1` offers
+  candidates ed-a (priority 100) and ed-b (50) for link /usr/bin/atteditor.
+  `attp2` owns ZERO paths and ships one file: an alternatives registry entry
+  re-declaring ed-a at priority 1.
+        tier 1 -> ACCEPT      tier 2 -> PASS, alt_bad=0
+        update-alternatives --query attedit -> Best: /usr/bin/ed-b
+        /usr/bin/atteditor -> ED-B
+  reconcile.py does `e['alts'][path] = (prio, smap)` -- later layer wins, no
+  comparison. V3's invariant is "no group is short a candidate"; it says
+  nothing about WHICH candidate wins. In the real catalogue this is the
+  vim/emacs `editor` group and the gawk/original-awk `awk` group.
+
+- FN-6  TIER 2 CANNOT SEE VERSION SKEW AT ALL. Real artefacts, no fixtures:
+        ./scripts/05_check.sh curl control-oldsnap
+            -> REJECT: snapshot precondition + FIVE class-2 skews
+               (curl, libcurl4, libldap-2.5-0, libnghttp2-14, libssh-4)
+        compose base+curl+control-oldsnap, verify_compose.py
+            -> PASS: 123==123 packages, alt_bad=0, ld_ok=1, audit clean,
+               acct_ok=1, vis_ok=1 -- every column green
+  V2 does `expected.add(pkg.split(':')[0])`: it compares package NAME SETS.
+  reconcile.py does detect the divergence and PRINTS it, but does not add it
+  to `problems`, so it exits 0. Stage 10's admission gate is therefore not a
+  convenience -- it is load-bearing, because tier 2 has no independent view of
+  versions whatsoever. That is worth saying plainly next to the claim that
+  tier 2 "verifies each composed system against its own layers rather than
+  against metadata": for class 2 it does not, and cannot.
+
+- THE COMMON ROOT, and it is one sentence per checker:
+        05_check.sh   trusts the manifest, which nothing binds to the artefact
+        reconcile.py  resolves every conflict by LAST-WINS and reports only a
+                      subset of what it resolved
+        verify_compose V7 compares NAMES; V2 compares NAMES; V3 compares
+                      MEMBERSHIP; none compares CONTENT, TYPE or PRIORITY
+  Six of the seven reproductions pass V7. V7 is a real improvement -- it
+  catches the opaque-marker class it was built for -- but it is a check that
+  the right NAMES are present, and it is being read as a check that the right
+  FILES are present.
+- CONCRETE STRENGTHENING FOR V7, stated not implemented (code freeze):
+  (1) compare (type, size) as well as name for regular files, and a content
+      digest for the small non-package-owned set; (2) never traverse a symlink
+      on the merged side -- use os.lstat, and open the merged root once and
+      resolve every path relative to it (openat/O_NOFOLLOW) instead of
+      string-joining, which is what let the host's /etc answer for the guest's;
+  (3) count every missing name, not the first three per directory, so the CSV
+      column measures the damage rather than the number of directories touched.
