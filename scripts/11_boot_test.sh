@@ -553,13 +553,22 @@ if [ "$INTERACTIVE" -eq 1 ]; then
     [ -n "${DISPLAY:-}${WAYLAND_DISPLAY:-}" ] || { QDISP="vnc"; log "no DISPLAY; serving VNC on :1 -- connect to localhost:5901"; }
     log "interactive boot: close the window or run 'poweroff' to end"
     if [ "$QDISP" = "gtk" ]; then
+        # -serial mon:stdio, NOT file:. The first interactive run autologged
+        # root successfully -- onto the SERIAL console, which file: makes
+        # write-only, so there was a live root shell nobody could type into,
+        # while the gtk window showed tty1 with the kernel and systemd logging
+        # over the top of it. Put the shell in the terminal that launched this,
+        # where typing works, and keep the window for watching the boot.
+        # (mon:stdio also means Ctrl-A X quits QEMU.)
+        log "shell is HERE in this terminal; the window shows the video console"
+        log "quit with Ctrl-A then X, or type 'poweroff' in the guest"
         qemu-system-x86_64 \
             -machine q35,accel="${ACCEL}" -m "$MEM" -smp 2 \
             -drive if=pflash,format=raw,unit=0,readonly=on,file="$OVMF_CODE" \
             -drive if=pflash,format=raw,unit=1,file="$VARS" \
             -drive file="$IMG",format=raw,if=virtio \
-            -display gtk -serial "file:$SERIAL" \
-            > "$B/qemu.log" 2>&1
+            -display gtk -serial mon:stdio \
+            2> "$B/qemu.log"
     else
         qemu-system-x86_64 \
             -machine q35,accel="${ACCEL}" -m "$MEM" -smp 2 \
