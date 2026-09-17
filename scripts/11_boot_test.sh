@@ -181,10 +181,24 @@ for m in "${MODULES[@]}"; do
     sq="${MOD_DIR}/${m}.sqsh"; [ -f "$sq" ] || die2 "missing artefact ${sq}"
     mp="$C/ro_${m}"; mkdir -p "$mp"
     do_mount -o loop,ro "$sq" "$mp"
-    LOWERS=("$mp" "${LOWERS[@]}"); LAYERS+=("${m}=${mp}")
+    LOWERS=("ro_${m}" "${LOWERS[@]}"); LAYERS+=("${m}=${mp}")
 done
-do_mount -t overlay overlay \
-    -o "lowerdir=$(IFS=:; echo "${LOWERS[*]}"),upperdir=${C}/upper,workdir=${C}/work" "$M"
+# RELATIVE lowerdir names, mounted from inside $C. The kernel caps mount DATA at
+# one page (4096 bytes) and overlay packs every lower layer into that one string,
+# so absolute paths make the ceiling depend on how deep the scratch directory
+# happens to sit. A 37-module set auto-named from its own module list produced an
+# 83-character run directory and a 4319-byte option string, and failed -- while
+# the identical set under `--name maxsub` came to 2213 bytes and worked.
+# Composability must not depend on the length of a directory name. Relative
+# names cost ~13 bytes per layer instead of ~112: the same set is now 419 bytes,
+# moving the ceiling from roughly 35 layers to several hundred.
+OPTS="lowerdir=$(IFS=:; echo "${LOWERS[*]}"),upperdir=upper,workdir=work"
+if [ "${#OPTS}" -ge 4096 ]; then
+    die2 "overlay options are ${#OPTS} bytes, over the kernel's 4096-byte limit, at ${#MODULES[@]} layers. Shorten module names or compose in stages."
+fi
+( cd "$C" && mount -t overlay overlay -o "$OPTS" merged ) \
+    || die2 "overlay mount failed: ${#OPTS} bytes of options, ${#MODULES[@]} layers"
+track_mount "$M"
 mount_chroot_fs "$M"
 write_sources_list "$M"
 write_chroot_policy "$M"

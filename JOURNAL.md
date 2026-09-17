@@ -1686,3 +1686,34 @@ Evaluation chapters — do not skip it.
 - Expectation to record: the composed system has no desktop environment, so the
   window is a text console in a window, not a GUI. The catalogue is deliberately
   a server catalogue.
+
+## 2026-09-17 (composability must not depend on the length of a directory name)
+- `11_boot_test.sh --interactive` on the 36-module set failed at the overlay
+  mount. Not the new flag: the run was AUTO-NAMED, and the auto name is built
+  from the module list.
+- ROOT CAUSE, measured: the kernel caps mount DATA at one page, 4096 bytes, and
+  OverlayFS packs every lower layer into that single option string.
+        auto-named run dir: 83 chars -> option string 4319 bytes -> FAILS
+        --name maxsub                -> option string 2213 bytes -> works
+  The identical 37-layer set succeeds or fails depending on how long its scratch
+  directory happens to be. That is an absurd property for a system whose whole
+  claim is composability at arbitrary N, and it is invisible until it bites: the
+  earlier maxsub runs passed purely because `--name maxsub` is short.
+- FIX: build the lowerdir list from RELATIVE names and mount from inside $C.
+  OverlayFS resolves lower paths against the caller's CWD, so a layer costs ~13
+  bytes instead of ~112.
+        same 37-layer set: 4319 bytes -> 419 bytes
+        ceiling: roughly 35 layers -> several hundred
+  Verified that relative lowerdirs actually mount, under `unshare -rm`: two
+  layers with relative names merge correctly and both files are visible.
+- Also added an explicit pre-flight check. A 4096-byte kernel limit reached
+  through a mount(8) failure produces "wrong fs type, bad option, bad
+  superblock" and a 4000-character error message that says nothing about length.
+  It now dies with the byte count and the layer count instead.
+- Not a problem in the other composing scripts, and worth recording WHY: tier 2
+  uses build/csweep/c, 04 uses build/compose, 07 uses build/smoke -- all short
+  and fixed. Only 11 names its scratch per run, which is why only 11 hit this.
+  Their ceilings are around 110 layers, well past the 38-module catalogue.
+- LESSON worth keeping for the evaluation: this is the second failure today
+  where the harness, not the system under test, set the limit -- after the
+  observer-is-the-job wait. Both were invisible while N stayed small.
