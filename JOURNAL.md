@@ -2795,3 +2795,27 @@ class-7 numeric check was verified to fire on an attack and never asked what
 happens when the field is absent. debconf was verified to merge and never got a
 check that the merge did not lose anything. Each of those is the positive
 direction only, and every finding in this round is in the negative one.
+
+## 2026-09-18 (round 2, part 5: the attacks are now regression tests)
+
+- `tests/round2_attacks.py`, 11 cases, 11 correct, unprivileged, no artefacts
+  needed. Like `tests/v7_attacks.py` it EXECUTES THE REAL CODE -- V7's block is
+  pulled out of verify_compose.py by source index and the debconf merge is
+  imported from reconcile.py -- so it cannot drift from what ships.
+- Three kinds of case, and the third is why they live in one file.
+    FIXED       R2-4 reconciled path wiped, R2-5 whiteout, R2-6 Name-less
+                stanza, R2-7 three-way attribution. Fails if the defect returns.
+    CONTROL     an ordinary last-wins override, a legitimately reconciled
+                registry whose merged content matches no layer, Owners unioning,
+                templates.dat continuation lines. Every hardening in this
+                project has had to prove it does not fire on correct input, and
+                these keep proving it.
+    KNOWN OPEN  R2-2 same-size substitution, R2-2 sparse hole, R2-3 node-type
+                collapse. The expected value is today's BEHAVIOUR, not today's
+                wish, so the suite is green -- and the day someone closes one of
+                them this file fails and names it, instead of the limitation
+                quietly vanishing from the evidence with nothing to notice.
+- That last category is the thing the 17 September attack session did not have.
+  Its fixtures were not preserved and had to be rebuilt on 18 September to test
+  the fix, which is recorded in that entry. An open finding with no test is a
+  sentence in a journal; with a test it is a fact the build keeps checking.
