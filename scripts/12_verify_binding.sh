@@ -40,7 +40,7 @@
 # produces", not "is the extractor correct". A logic error in 06 is invisible to
 # this stage and always will be.
 #
-# Exit: 0 every manifest matches, 1 at least one does not, 2 the runner broke.
+# Exit: 0 complete requested coverage, 1 missing/mismatched bundle, 2 invalid request/runner.
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 source "${HERE}/config.sh"
@@ -60,15 +60,24 @@ for m in "${WANT[@]}"; do valid_ident "$m" || die2 "invalid module name: '$m'"; 
 # defect -- the positive control is built from another snapshot and records it.
 PLAN="${BUILD_DIR}/binding.tsv"
 mkdir -p "$BUILD_DIR"
-python3 - "$SPEC" > "$PLAN" <<'PY'
+if ! python3 - "$SPEC" "${WANT[@]}" > "$PLAN" <<'PY'
 import sys, yaml
 spec = yaml.safe_load(open(sys.argv[1], encoding='utf-8'))
+names = [m['name'] for m in spec['modules']]
+if not names or len(set(names)) != len(names) or 'base' in names:
+    raise ValueError('empty or duplicate catalogue')
+unknown = set(sys.argv[2:]) - set(names) - {'base'}
+if unknown:
+    raise ValueError('unknown requested modules: ' + ', '.join(sorted(unknown)))
 dflt = spec.get('defaults') or {}
 for m in spec['modules']:
     print("%s\t%s\t%s" % (m['name'],
                           m.get('version') or dflt.get('version') or '1.0',
                           m.get('snapshot') or '-'))
 PY
+then
+    die2 "cannot construct binding plan"
+fi
 
 want_this() {            # want_this <name>
     [ "${#WANT[@]}" -eq 0 ] && return 0
@@ -76,7 +85,11 @@ want_this() {            # want_this <name>
     return 1
 }
 
-log "re-deriving every manifest from its artefact"
+if [ "${#WANT[@]}" -eq 0 ]; then
+    log "re-deriving complete catalogue (base and every module)"
+else
+    log "re-deriving requested subset: ${WANT[*]}"
+fi
 OK=0; BAD=0; ABSENT=0
 FAILED=()
 
@@ -140,5 +153,9 @@ if [ "$BAD" -gt 0 ]; then
     echo " REJECT -- at least one manifest does not describe its artefact"
 fi
 echo "========================================================================"
-[ "$BAD" -eq 0 ] && [ "$BUNDLE_RC" -eq 0 ] || exit 1
+if [ "$ABSENT" -gt 0 ] || [ "$OK" -eq 0 ]; then
+    echo " REJECT -- requested coverage is incomplete or empty"
+fi
+[ "$BAD" -eq 0 ] && [ "$BUNDLE_RC" -eq 0 ] && \
+    [ "$ABSENT" -eq 0 ] && [ "$OK" -gt 0 ] || exit 1
 exit 0

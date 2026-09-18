@@ -2917,3 +2917,13 @@ direction only, and every finding in this round is in the negative one.
   Re-derived all original bundles: 39 matched, 0 mismatched, bytes verified.
   No catalogue metadata refresh or artefact change was needed. Logs: M2-*.log
   under /srv/modfs/build/codex-fixes-20260918.
+
+## 2026-09-18 (independent-review corrections M3: binding coverage)
+- Stage 12 rejects unknown requested names or malformed/empty catalogues with
+  exit 2. Missing requested manifests and zero checked coverage fail with exit
+  1. Output distinguishes a requested subset from the complete catalogue.
+- Added 7 coverage regressions. BEFORE: all 7 fail (6 wrong success statuses,
+  plus the valid subset missing its scope label). AFTER: 7/7 pass, including
+  a real curl re-derivation and mixed present/missing requests.
+- Existing attacks: V7 4/4; round2 11/11. bash -n passed. Logs M3-before.log
+  and M3-after.log are under /srv/modfs/build/codex-fixes-20260918.
