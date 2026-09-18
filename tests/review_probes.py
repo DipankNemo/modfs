@@ -65,4 +65,21 @@ class PostgresTests(unittest.TestCase):
             p = probe(merged, 'postgres')
             self.assertNotEqual(p.returncode, 0, 'broken server passed its catalogue probe')
 
+class ZstdTests(unittest.TestCase):
+    def test_repeatable(self):
+        with composition('zstd') as merged:
+            for attempt in range(2):
+                p = probe(merged, 'zstd')
+                self.assertEqual(p.returncode, 0, 'attempt %d: %s' % (attempt, p.stderr))
+
+    def test_existing_temporary_files_untouched(self):
+        with composition('zstd') as merged:
+            paths = [merged/'tmp'/n for n in ('z1', 'z1.zst', 'z2')]
+            for path in paths:
+                path.write_text('existing user data')
+            p = probe(merged, 'zstd')
+            self.assertEqual(p.returncode, 0, p.stderr)
+            for path in paths:
+                self.assertEqual(path.read_text(), 'existing user data')
+
 if __name__ == '__main__': unittest.main(verbosity=2)

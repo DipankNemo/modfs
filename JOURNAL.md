@@ -2937,3 +2937,12 @@ direction only, and every finding in this round is in the negative one.
   2/2 pass. Scratch and logs retained under /srv/modfs/build (M4-*.log in the
   correction evidence directory). Original SquashFS files remain unchanged.
 - Existing attacks rerun: V7 4/4, round2 11/11. Python compilation passed.
+
+## 2026-09-18 (independent-review corrections L1: repeatable zstd probe)
+- zstd now uses a private mktemp directory and removes only its three files on
+  exit. Repeating it does not collide with previous output or overwrite an
+  unrelated /tmp/z1, z1.zst or z2. Test chroots and deletions stay under build.
+- Added 2 real base+zstd regressions: repeat execution and pre-existing sentinel
+  files. BEFORE: 2 failures; AFTER: 2/2 pass (4/4 combined probe tests).
+- Existing attacks rerun: V7 4/4, round2 11/11; Python compilation passed.
+  Evidence: codex-fixes-20260918/L1-{before,after}.log.
