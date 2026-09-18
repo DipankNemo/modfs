@@ -160,7 +160,7 @@ modules:
     provokes: shared-toolchain
   - name: postgres
     packages: [postgresql]
-    probe: 'test -x /usr/lib/postgresql/14/bin/postgres && getent passwd postgres >/dev/null && [ "$(stat -c %U /var/lib/postgresql)" = postgres ]'
+    probe: '/usr/lib/postgresql/14/bin/postgres --version >/dev/null && getent passwd postgres >/dev/null && [ "$(stat -c %U /var/lib/postgresql)" = postgres ]'
     provokes: service-account
     note: allocates a system account; with ranges in place it must not collide.
   - name: mysql
@@ -284,7 +284,11 @@ modules:
 
   - name: zstd
     packages: [zstd]
-    probe: 'printf data > /tmp/z1 && zstd -q -o /tmp/z1.zst /tmp/z1 && zstd -dq -o /tmp/z2 /tmp/z1.zst && cmp /tmp/z1 /tmp/z2'
+    probe: >-
+      d=$(mktemp -d /tmp/modfs-zstd.XXXXXX) || exit 1;
+      trap 'rm -f "$d/input" "$d/compressed" "$d/output"; rmdir "$d"' EXIT;
+      printf data > "$d/input" && zstd -q -o "$d/compressed" "$d/input" &&
+      zstd -dq -o "$d/output" "$d/compressed" && cmp "$d/input" "$d/output"
     provokes: benign-overlap
   - name: sqlite
     packages: [sqlite3]

@@ -192,11 +192,8 @@ verify_bundle() {        # verify_bundle <module...>
 import hashlib, json, os, sys
 mod_dir, mods = sys.argv[1], sys.argv[2:]
 
-def bind_digest(doc, fields):
-    payload = {k: doc.get(k) for k in fields}
-    return hashlib.sha256(json.dumps(payload, sort_keys=True,
-                                     separators=(',', ':'),
-                                     ensure_ascii=True).encode('utf-8')).hexdigest()
+sys.path.insert(0, os.path.join(os.environ['MODFS_SRC'], 'scripts'))
+from manifest_binding import validate_manifest, load_sidecar
 
 def file_sha256(path):
     h = hashlib.sha256()
@@ -225,31 +222,12 @@ for m in mods:
     if file_sha256(sq) != art['sha256']:
         print("  integrity: %s DIGEST MISMATCH" % m); bad += 1; continue
 
-    # ---- the manifest describes THIS artefact ---------------------------
-    b = doc.get('binding') or {}
-    if not b.get('fields_sha256'):
-        print("  integrity: %s manifest carries no binding;"
-              " re-run 06_extract_metadata.sh" % m); bad += 1; continue
-    if b.get('artifact_sha256') != art.get('sha256'):
-        print("  integrity: %s binding names artefact %s, manifest records %s"
-              % (m, str(b.get('artifact_sha256'))[:16], str(art.get('sha256'))[:16]))
-        bad += 1; continue
-    if bind_digest(doc, b.get('fields') or []) != b['fields_sha256']:
-        print("  integrity: %s MANIFEST BINDING MISMATCH -- a bound field was"
-              " edited or removed since extraction" % m); bad += 1; continue
-    if b.get('source') != 'artifact':
-        print("  integrity: %s manifest was derived from the BUILD TREE, not the"
-              " artefact (binding.source=%r)" % (m, b.get('source'))); bad += 1; continue
-    side = os.path.join(mod_dir, m + '.files.json.zst')
-    if b.get('sidecar_sha256'):
-        try:
-            raw = __import__('subprocess').run(['zstd', '-dcq', side],
-                                               capture_output=True, check=True).stdout
-        except Exception as exc:
-            print("  integrity: %s cannot read class-4 sidecar (%s)" % (m, exc))
-            bad += 1; continue
-        if hashlib.sha256(raw).hexdigest() != b['sidecar_sha256']:
-            print("  integrity: %s SIDECAR DIGEST MISMATCH" % m); bad += 1; continue
+    try:
+        validate_manifest(doc)
+        load_sidecar(doc, os.path.join(mod_dir, m + '.files.json.zst'), m)
+    except ValueError as exc:
+        print("  integrity: %s BINDING MISMATCH: %s" % (m, exc))
+        bad += 1
 sys.exit(1 if bad else 0)
 VBPY
 }

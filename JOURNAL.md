@@ -2819,3 +2819,223 @@ direction only, and every finding in this round is in the negative one.
   Its fixtures were not preserved and had to be rebuilt on 18 September to test
   the fix, which is recorded in that entry. An open finding with no test is a
   sentence in a journal; with a test it is a fact the build keeps checking.
+
+## 2026-09-18 (independent-review corrections H1: mandatory binding policy)
+- H1 fixed: tier 1 now hashes the decompressed class-4 sidecar before using it.
+  Both consumers require a well-formed sidecar_sha256; omission/empty values no
+  longer disable integrity checking. Binding stays outside BIND_FIELDS, but its
+  schema and complete field coverage are mandatory consumer policy.
+- Shared manifest_binding.py supplies that policy and BIND_FIELDS to 05, 06 and
+  verify_bundle. Missing bindings, reduced/resealed coverage, wrong source and
+  invalid digests fail closed. This does not add authenticity/signatures.
+- Added tests/review_binding.py: 8 real-bundle-copy cases, each exercised against
+  tier 1 and verify_bundle. BEFORE: 10 failing consumer subtests. AFTER: 8/8
+  tests, all 16 consumer assertions pass. Original bundles remain unchanged.
+- Existing attacks rerun after the change: V7 4/4; round2 11/11, including the
+  root-only whiteout case. bash -n and Python compilation passed. Stage 12
+  re-derived curl through the shared extractor: 1 matched, bytes verified.
+- Logs and retained scratch: /srv/modfs/build/codex-fixes-20260918/H1-*.log.
+  No published CSV was overwritten. Full evaluation follows the ordered fixes.
+
+## 2026-09-18 (independent-review corrections H2: verify debconf contents)
+- V8 now independently parses complete records in all three debconf databases.
+  It compares exact field values, unions Owners as sets, and fails on missing,
+  extra, duplicate or malformed records/fields and disagreeing layer values.
+  The verifier does not call the merge parser to compute its expectation.
+- Added 8 DebconfTests in tests/review_verification.py. Executed against the
+  saved pre-fix verifier: 6 failures, 2 controls pass. New verifier: 8/8 pass.
+  Corrected my test's initial exit-code assumption: this helper emits FAIL in
+  CSV while returning 0 for a completed observation. No exit contract changed.
+- Real base+curl+pyyaml+postgres+java+zstd composition: baseline PASS (148 debconf
+  records); replacing both databases with Name-only records now yields FAIL,
+  dbc_ok=0. The review's original identical-PASS-row attack is caught.
+- Existing suites after this change: V7 4/4, round2 11/11. Python compilation
+  passed. Evidence: /srv/modfs/build/codex-fixes-20260918/H2-{before,after,real}.log.
+
+## 2026-09-18 (independent-review corrections H3: symlink target visibility)
+- V7 records each symlink's target text using readlink, without resolving or
+  traversing it. Matching any offered layer target remains legal, consistent
+  with V7's existing last-wins allowance. Alteration diagnostics print targets.
+- Added 5 SymlinkTests: BEFORE 2 failed (same-length and different-length
+  substitutions); AFTER all 5 pass. Controls cover identical relative and
+  absolute/dangling targets and a target legitimately offered by another layer.
+- Real review composition: baseline PASS; python3 -> no-such-python now FAIL,
+  vis_missing=1, vis_ok=0. The independent chroot execution still exits 127.
+- Combined new verifier tests 13/13; existing V7 4/4 and round2 11/11; Python
+  compilation passed. Logs: codex-fixes-20260918/H3-{before,after,real}.log.
+  Same-size REGULAR-file content substitution remains explicitly out of scope.
+
+## 2026-09-18 (independent-review corrections H4: complete account verification)
+- V6 now checks all six account files: exact record schemas, all fields, numeric
+  identity/range/age fields, extra and duplicate accounts, membership equality,
+  subordinate ranges, and the expected mode/uid/gid. Sensitive field values are
+  never printed. Symlink account databases are rejected without reading them.
+- Policy is explicit: members/ranges are sets; non-identity fields and file
+  attributes follow the existing highest-layer merge policy. Identity-field
+  disagreement is an error. This verifies that policy; it does not claim that
+  choosing between conflicting password/home/shell values is order-independent.
+- Added 16 AccountTests. BEFORE: 11 failures, 5 controls pass. AFTER: 16/16;
+  combined verifier regression suite 29/29. Controls include member/range order,
+  member union and a declared non-identity override. Both attack suites rerun:
+  V7 4/4, round2 11/11. Python compilation passed.
+- Real six-layer baseline PASS; the malformed/world-readable shadow attack now
+  FAILs with acct_ok=0. Its acct_expected is now 134 (previously 132): the two
+  subordinate-ID records formerly omitted by V6 are finally counted. This is a
+  definition/coverage change, not an added account or an artefact modification.
+- Evidence: codex-fixes-20260918/H4-{before,after,real}.log. Published CSVs have
+  not yet been overwritten; the final evaluation will report this count change.
+
+## 2026-09-18 (independent-review corrections M1: preserve manual requests)
+- extended_states now makes manual installation in any layer prevail over
+  automatic installation in another. Manual state is inferred from complete
+  dpkg status minus automatic flags, not from positive automatic stanzas alone.
+  Missing delta extended_states inherits base flags; an empty final result is
+  written explicitly so stale automatic flags cannot survive.
+- Measured an input detail before implementing: mysql has five automatic
+  records with APT Architecture=amd64 but dpkg Architecture=all. Flags therefore
+  match by package name in this project's single-architecture scope, retaining
+  APT's original architecture when writing. No multiarch claim is added.
+- Added 5 extended-state tests: BEFORE 2 fail, 3 controls pass; AFTER 5/5 pass.
+  Cases cover both sibling orders, auto-only packages, inherited flags, arch=all
+  and clearing stale state. Existing suites: V7 4/4; round2 11/11. Compile passed.
+- Real base+rsync+mysql still tier-2 PASS; showauto rsync is empty, showmanual
+  lists rsync, and apt-get -s autoremove mariadb-server no longer lists Remv
+  rsync. No package transaction was performed. Evidence: M1-{before,after,real}
+  logs under /srv/modfs/build/codex-fixes-20260918.
+
+## 2026-09-18 (independent-review corrections M2: inherited identities)
+- Extraction now includes changed inherited UID/primary-GID/group-GID records,
+  and records removals when a replacement database omits a parent identity.
+  Missing delta databases still inherit base. Tier 1 rejects numeric changes
+  and explicit removals; legitimate group-member additions remain accepted.
+- Added 7 real-artefact repacking tests. BEFORE: 5 failures, 2 controls pass.
+  AFTER: 7/7 pass. Every repacked bundle was honestly extracted and successfully
+  re-derived with stage 12 before checking admission. Initial test scaffolding
+  used sidecar symlinks rejected by zstd; corrected to copies before the recorded
+  before/after comparison. Negative cases require an identity diagnostic.
+- Both existing suites passed again: V7 4/4, round2 11/11. Shell syntax passed.
+  Re-derived all original bundles: 39 matched, 0 mismatched, bytes verified.
+  No catalogue metadata refresh or artefact change was needed. Logs: M2-*.log
+  under /srv/modfs/build/codex-fixes-20260918.
+
+## 2026-09-18 (independent-review corrections M3: binding coverage)
+- Stage 12 rejects unknown requested names or malformed/empty catalogues with
+  exit 2. Missing requested manifests and zero checked coverage fail with exit
+  1. Output distinguishes a requested subset from the complete catalogue.
+- Added 7 coverage regressions. BEFORE: all 7 fail (6 wrong success statuses,
+  plus the valid subset missing its scope label). AFTER: 7/7 pass, including
+  a real curl re-derivation and mixed present/missing requests.
+- Existing attacks: V7 4/4; round2 11/11. bash -n passed. Logs M3-before.log
+  and M3-after.log are under /srv/modfs/build/codex-fixes-20260918.
+
+## 2026-09-18 (independent-review corrections M4: execute PostgreSQL)
+- PostgreSQL's probe now executes the server's --version command before its
+  account and state-directory checks. This establishes that the server loads;
+  it does not claim a running database or successful SQL transactions.
+- Added 2 real base+postgres composition tests. BEFORE: broken-server case
+  fails (probe incorrectly succeeds); original-server control passes. AFTER:
+  2/2 pass. Scratch and logs retained under /srv/modfs/build (M4-*.log in the
+  correction evidence directory). Original SquashFS files remain unchanged.
+- Existing attacks rerun: V7 4/4, round2 11/11. Python compilation passed.
+
+## 2026-09-18 (independent-review corrections L1: repeatable zstd probe)
+- zstd now uses a private mktemp directory and removes only its three files on
+  exit. Repeating it does not collide with previous output or overwrite an
+  unrelated /tmp/z1, z1.zst or z2. Test chroots and deletions stay under build.
+- Added 2 real base+zstd regressions: repeat execution and pre-existing sentinel
+  files. BEFORE: 2 failures; AFTER: 2/2 pass (4/4 combined probe tests).
+- Existing attacks rerun: V7 4/4, round2 11/11; Python compilation passed.
+  Evidence: codex-fixes-20260918/L1-{before,after}.log.
+
+## 2026-09-18 (independent-review corrections L2: Replaces policy rationale)
+- Correction to the historical "FN-3 FIXED" rationale: dpkg DOES allow partial
+  file takeover with Replaces alone while both packages remain installed.
+  Breaks/Conflicts are not required for that operation. ModFS still rejects the
+  collision conservatively because it does not model ownership transfer or
+  installation order. The checker now says so; no admission rule was relaxed.
+- Added 1 real-dpkg regression: independently installed A and B into sibling
+  overlays, squashed/extracted both, then installed A followed by B together.
+  Both stay installed, B owns visible shared contents, dpkg --audit is empty;
+  ModFS rejects the sibling collision with the corrected policy explanation.
+  BEFORE: 1 failure (missing explanation); AFTER: 1 pass. This is a rationale
+  correction, not a new claim that arbitrary Replaces overlays are safe.
+- V7 4/4, round2 11/11; shell syntax and Python compilation passed. Evidence:
+  codex-fixes-20260918/L2-{before,after}.log and retained replaces-review-* roots.
+
+## 2026-09-18 (independent-review corrections L3: measurement provenance)
+- Canonical account claims now say set-equal under the tested reversal, NOT
+  byte-equal. Removed the unconditional order-independence claim; highest-layer
+  non-identity account fields remain an explicit order-sensitive policy.
+- Separated historical cost generations. The round-2 table already published
+  203–1090 ms and fit 160.7 + 27.01 N; its own split is 18.9 + 8.03 N mount and
+  141.8 + 18.98 N reconcile. The earlier 148 + 27.2 N remains labelled against
+  its preserved pre-round2 CSV. Neither includes verification. Withdrew the
+  mixed-generation 2x / 230–250x comparisons and stale 19.9-slope discussion.
+- Dated the three historical reproducibility hashes to JOURNAL's 2026-08-22
+  sample. Acknowledged the retained 17 September fat-base experiment without
+  claiming to rebuild it. Removed adjacent obsolete debconf-open / two-total-
+  boot-run wording. Documented corrected H1/V6/V7 boundaries without claiming
+  a new performance measurement. No final-run numbers substituted into tables.
+- Added 7 documentation regression contracts. BEFORE: 7 failures; AFTER: 7/7
+  pass. These check wording and fit arithmetic, not runtime or performance.
+  V7 4/4, round2 11/11; Python compilation and git diff --check passed.
+- Before final evaluation, copied all 7 /srv/modfs/logs/*.csv files plus SHA256
+  inventory to /srv/modfs/results/review-fixes-2026-09-18-before. Its round-2
+  CSV hash is b383725ee699bde86ebeaba74ec344694e7e6e383233a772c3c17cf197fe64df.
+
+## 2026-09-18 (independent-review corrections: final evaluation)
+- All eleven findings H1–H4, M1–M4 and L1–L3 have separate correction commits.
+  No finding was withdrawn. L2 corrects policy rationale, not collision admission;
+  L3 corrects documentation, not runtime behaviour. Every finding has a new
+  regression exercised before and after its correction, as recorded above.
+- Final combined regression run: 68/68 tests pass. Final attacks: V7 4/4 and
+  round2 11/11, run as root so the whiteout check executes. All scripts/*.sh
+  pass bash -n; scripts/*.py and tests/review_*.py compile. Stage 12 confirms
+  all 39 original manifests and artefact digests, with zero mismatches/absences.
+- Tier 1: ./scripts/09_run_combinations.sh --max-n 2 --jobs 8 --keep-reports
+  produced 630 ACCEPT / 73 REJECT of 703. Every CSV field in every row equals
+  the preserved pre-correction CSV. --keep-reports avoids the runner deleting
+  check logs outside build; it does not change admission or the combination set.
+- Tier 2: ./scripts/10_compose_sweep.sh --pairs /srv/modfs/logs/combinations.csv
+  completed the default 152-set plan: 152 PASS, 0 failed, 0 refused. --pairs
+  reuses the just-completed sweep instead of invoking its log-deleting runner
+  again. The sample sets and their order match the preserved CSV exactly.
+- The ONLY non-timing tier-2 column that moved is acct_expected: 105/152 rows
+  increased because H4 counts subuid/subgid records. Deltas by number of rows:
+  +0:47, +2:32, +4:18, +6:20, +8:14, +10:12, +12:9. All other verification
+  values, package counts, debconf counts and verdicts are unchanged.
+- New measured composition-only fit (same CSV definition, verification excluded):
+      total     = 185.777569 + 26.375549 N ms  R2=0.861008
+      mount     =  24.021723 +  7.870310 N ms  R2=0.955699
+      reconcile = 161.755846 + 18.505239 N ms  R2=0.787894
+  total equals mount+reconcile on all 152 rows. The prior round-2 total was
+  160.696749 + 27.013002 N (R2=0.969692); the earlier published pre-round2
+  fit was 148.285629 + 27.200303 N. These numbers MOVED. M1 adds source-status
+  scans during reconciliation, while H2–H4 verification runs outside this
+  timer. One rerun cannot separate the code cost from host/timing variance;
+  no causal percentage or new full-tier latency claim is justified. The less
+  stable fit is reported as measured. ARCHITECTURE retains identified historical
+  measurements rather than silently replacing them with this run.
+- Smoke: ./scripts/07_smoke_test.sh base <the 36 names in maximal-subset.txt>
+  passed 75 checks, failed 0, skipped 1 (base has no probe), executed all 36
+  module probes. This is the existing maximal set excluding control-oldsnap
+  and mta-nullmailer. A fresh n-ary tier-1 check also ACCEPTed the full set.
+- My first smoke wrapper accidentally exported host TMPDIR into the guest;
+  Rust could not create /srv/modfs/build/codex-fixes-20260918/rustc* there.
+  That run reported 74/1/1. Removing TMPDIR at the chroot boundary and rerunning
+  the UNCHANGED smoke script/probes produced 75/0/1. This was my harness error,
+  not a ModFS finding; both logs are preserved, not replaced.
+- All cleanup ran through a guard printing resolved targets and checking
+  /proc/self/mountinfo for mounts at/below them, refusing anything outside a
+  child of /srv/modfs/build. The unchanged Git probe's /tmp/g was separately
+  resolved and checked under the build chroot before execution. No live mounts
+  remain anywhere under /srv/modfs/build. No deletion occurred outside build.
+- Storage re-derived again: small 5.588457900x, large 1.315747051x, all
+  2.507699632x; the published rounded 5.59x / 1.32x / 2.51x are unchanged.
+  These remain modelled monolithic comparisons, not new monolith builds.
+- Durable evidence: /srv/modfs/results/review-fixes-2026-09-18-before contains
+  all 7 original CSVs and hashes. review-fixes-2026-09-18-after contains the
+  final CSVs, exact subset, implementation commit, before/after/final logs,
+  comparison JSON, run guards and SHA256 inventory. Working scratch remains
+  /srv/modfs/build/codex-fixes-20260918. No QEMU or full rebuild was requested
+  in this correction pass, and neither is claimed.

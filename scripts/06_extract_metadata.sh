@@ -399,8 +399,8 @@ else:
 # this catalogue independently allocate uid 103 / gid 104 to four different
 # names, so whichever lands on top silently redefines the others' ownership.
 #
-# Only names the module ADDS relative to its parent are recorded -- the same
-# contribution model the package list uses. Password hashes are deliberately
+# Record additions, changed numeric identities and explicit removals. A delta
+# without an account file inherits its parent; absence is not deletion. Password hashes are deliberately
 # NOT stored: verifying that a shadow record exists needs the name only.
 def colon_table(tree, rel, key_at, want):
     out = {}
@@ -436,10 +436,10 @@ own_u, own_g, own_sh, own_gsh = account_view(tree)
 par_u, par_g, par_sh, par_gsh = account_view(parent_tree) if parent_tree else ({}, {}, set(), set())
 
 users = {n: {'uid': v['uid'], 'gid': v['gid']}
-         for n, v in own_u.items() if n not in par_u}
+         for n, v in own_u.items() if n not in par_u or v != par_u[n]}
 groups = {n: {'gid': v['gid'],
               'members': [x for x in v['members'].split(',') if x]}
-          for n, v in own_g.items() if n not in par_g}
+          for n, v in own_g.items() if n not in par_g or v['gid'] != par_g[n]['gid']}
 # FILE OWNERS, as NUMBERS. Class 7 compares account RECORDS, but ownership on
 # disk is a number, and until now nothing looked at the numeric owners of the
 # files a module actually ships. Reproduced 2026-09-17 WITHOUT any forged
@@ -463,6 +463,14 @@ accounts = {'users': dict(sorted(users.items())),
             'gshadow': sorted(own_gsh - par_gsh),
             'file_uids': sorted(file_ids['uids']),
             'file_gids': sorted(file_ids['gids'])}
+
+# Only an explicit replacement database can remove inherited identities.
+for kind, rel, own, inherited in (('users', 'etc/passwd', own_u, par_u),
+                               ('groups', 'etc/group', own_g, par_g)):
+    if os.path.lexists(os.path.join(tree, rel)):
+        removed = sorted(set(inherited) - set(own))
+        if removed:
+            accounts['removed_' + kind] = removed
 
 # ---- post-build identity audit ------------------------------------------
 # Prevention is not proof. Every account the module created must be either a
@@ -646,17 +654,8 @@ else:
 # `accounts` and `units`; PRE reads parent/snapshot/suite/arch/version; class 6
 # reads `packages` and `removed`; the module-dependency layer reads
 # requires/conflicts/provides.
-BIND_FIELDS = ['module', 'version', 'parent', 'snapshot', 'suite', 'arch',
-               'requires', 'conflicts', 'provides', 'requested', 'removed',
-               'uid_range', 'accounts', 'units', 'artifact', 'packages']
-
-def bind_digest(d, fields):
-    """Canonical digest over `fields` of `d`. sort_keys and a fixed separator,
-    so it does not move with dict ordering or with json.dump's formatting."""
-    payload = {k: d.get(k) for k in fields}
-    return hashlib.sha256(json.dumps(payload, sort_keys=True,
-                                     separators=(',', ':'),
-                                     ensure_ascii=True).encode('utf-8')).hexdigest()
+sys.path.insert(0, os.path.join(E['MODFS_SRC'], 'scripts'))
+from manifest_binding import BIND_FIELDS, bind_digest
 
 doc = {
     'schema':   SCHEMA,
