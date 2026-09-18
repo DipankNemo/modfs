@@ -311,7 +311,10 @@ try:
     for line in open(pkgf, encoding='utf-8'):
         if '\t' in line:
             n, v = line.rstrip('\n').split('\t', 1)
-            if n: pkgs[n] = v
+            # dpkg-query -W with a glob also lists packages dpkg merely
+            # KNOWS about, with an empty version. Recording those would imply
+            # the image carries a kernel it does not have.
+            if n and v: pkgs[n] = v
 except OSError:
     pass
 # The ABI package version is what an out-of-tree module package must equal.
@@ -561,9 +564,31 @@ sgdisk -n 1:0:+128M -t 1:ef00 -c 1:ESP \
        -n 2:0:0     -t 2:8300 -c 2:modfsroot "$IMG" >/dev/null 2>&1 \
     || die2 "sgdisk failed"
 LOOPDEV=$(losetup --show -f -P "$IMG") || die2 "losetup failed"
-[ -e "${LOOPDEV}p1" ] || die2 "no partitions on ${LOOPDEV}"
-mkfs.vfat -F32 -n ESP "${LOOPDEV}p1" >/dev/null 2>&1 || die2 "mkfs.vfat failed"
-mkfs.ext4 -q -L modfsroot "${LOOPDEV}p2"            || die2 "mkfs.ext4 failed"
+# PARTITION NODES ARE CREATED ASYNCHRONOUSLY, so testing that they EXIST can
+# succeed a moment before the kernel will let anything open them. Observed
+# 2026-09-19 on the first GPU boot attempt: `[ -e ${LOOPDEV}p1 ]` passed and
+# mkfs.vfat then failed, on an image that the identical command formats without
+# complaint when run by hand seconds later. Three squashfs loop mounts are
+# already held at this point and the host carries 36 snap loop devices, which is
+# the load that makes the window visible. Wait for the partitions to be USABLE,
+# not merely present.
+command -v udevadm >/dev/null 2>&1 && udevadm settle --timeout=20 >/dev/null 2>&1
+for _try in $(seq 1 50); do
+    blockdev --getsize64 "${LOOPDEV}p1" >/dev/null 2>&1 \
+        && blockdev --getsize64 "${LOOPDEV}p2" >/dev/null 2>&1 && break
+    sleep 0.1
+done
+blockdev --getsize64 "${LOOPDEV}p1" >/dev/null 2>&1 \
+    || die2 "partition ${LOOPDEV}p1 never became usable after losetup -P"
+blockdev --getsize64 "${LOOPDEV}p2" >/dev/null 2>&1 \
+    || die2 "partition ${LOOPDEV}p2 never became usable after losetup -P"
+# And keep the reason. `>/dev/null 2>&1 || die2 "mkfs.vfat failed"` discarded
+# the only evidence of WHY, which is the same defect as the silent harness in
+# the 2026-09-16 entry: a failure that reports its existence and nothing else.
+mkfs.vfat -F32 -n ESP "${LOOPDEV}p1" > "$B/mkfs.log" 2>&1 \
+    || { sed 's/^/    /' "$B/mkfs.log" >&2; die2 "mkfs.vfat failed, see $B/mkfs.log"; }
+mkfs.ext4 -q -L modfsroot "${LOOPDEV}p2" >> "$B/mkfs.log" 2>&1 \
+    || { sed 's/^/    /' "$B/mkfs.log" >&2; die2 "mkfs.ext4 failed, see $B/mkfs.log"; }
 
 mkdir -p "$C/mnt/esp" "$C/mnt/root"
 mount "${LOOPDEV}p1" "$C/mnt/esp"  || die2 "cannot mount ESP"

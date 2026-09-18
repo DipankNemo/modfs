@@ -45,8 +45,19 @@ die2() { printf '\033[1;31m[FAIL]\033[0m %s\n' "$*" >&2; exit 2; }
 # modules, so N=27 was a CENSUS of one deterministic set. The catalogue grew to
 # 37 and that plan point silently became a 27-of-37 random draw of a single
 # sample. High N now gets enough samples to fit a line through.
+#
+# AND IT DECAYED AGAIN, the same way, on 2026-09-19. "36:2" was the census of
+# the two maximal admissible sets of a 37-usable catalogue. Adding the two GPU
+# modules made the catalogue 39 usable and the maximum 38, so "36:2" silently
+# became a 2-draw sample of a large space while still LOOKING like the top of
+# the range. The top point is now 38:2, and the lesson is that this constant
+# must be re-derived whenever the catalogue grows -- run
+#   python3 scripts/sample_sets.py --spec specs/modules.yaml \
+#       --mod-dir "$MOD_DIR" --plan 2:1 --pairs <pair csv> --out /dev/null
+# and read "largest admissible N" off it. Deriving it here automatically is the
+# real fix and is not done.
 SEED=1
-PLAN="2:30,3:30,5:20,10:10,15:10,20:10,25:10,27:10,30:10,33:6,35:4,36:2"
+PLAN="2:30,3:30,5:20,10:10,15:10,20:10,25:10,27:10,30:10,33:6,35:4,38:2"
 CSV="${LOG_DIR}/compose-sweep.csv"; PAIRS=""
 KNOWN_NEG=0; MAXSUB=0; SUBSET_OUT="${RESULTS_DIR}/maximal-subset.txt"
 while [ $# -gt 0 ]; do

@@ -3364,3 +3364,211 @@ estimated: CUDA runtime **11 packages, 1 188 MB**; full `nvidia-cuda-toolkit`
 brief's claim that 46% of the toolkit is headers is NOT verified here and
 should not be repeated without measuring it; what is verified is the package
 count and the installed-size ratio.
+
+## 2026-09-19 (task 4: tier 1, tier 2, a tier-3 boot, and what the 649 MB module did to the ratios)
+
+Evidence bundle: `/srv/modfs/results/gpu-2026-09-19/` (tier1, tier2, storage,
+`SHA256SUMS`), plus the boot bundle `results/boot/gpu-stack-20260918T231943Z/`.
+All seven `logs/*.csv` were copied to `logs-before/` before anything overwrote
+them.
+
+### TIER 1 -- 10 660 combinations, and every rejection predicted
+
+      n=2     780 combinations   ACCEPT   667   REJECT   113
+      n=3    9880 combinations   ACCEPT  7807   REJECT  2073
+
+The pair sweep is self-validating and the arithmetic closes exactly. An
+independent combinatorial model built from the four known causes predicts the
+rejection SET, not merely its size:
+
+      |A| control-oldsnap, a different snapshot, against all 39     39
+      |B| fake-cuda without fake-nvidia-driver                      38
+      |C| cuda-runtime without nvidia-driver-535                    38
+      |D| mta-msmtp + mta-nullmailer, a virtual-name conflict        1
+      |A u B u C u D| = 39+38+38+1 - 3 pairwise overlaps          = 113
+      observed REJECT                                             = 113
+      the two SETS are identical, not merely the same size
+
+The invariant that matters for the GPU work: **`cuda-runtime` is ACCEPTED
+without `nvidia-driver-535` in 0 of 9 880 triples.** Its module-level
+`requires` is doing real work, on a real dependency, where `fake-cuda` only
+ever demonstrated the mechanism.
+
+The sampler classified the new module correctly without being told to.
+`sample_sets.py` distinguishes EXCLUSION from IMPLICATION, and it explained 73
+of the rejections as unmet requirements while learning exactly **one**
+exclusion edge (the MTA pair). Had it treated `cuda-runtime`'s 38 rejections as
+exclusions, the module would have been banished from every high-N sample --
+the exact error that file exists to prevent, now exercised by a second, real
+case rather than only by `fake-cuda`.
+
+### A CONSTANT THAT DECAYED AGAIN, the same way, and it is worth naming
+
+`10_compose_sweep.sh`'s default plan ended `36:2`. When written, 36 was the
+largest admissible N of a 37-usable catalogue and `36:2` was a CENSUS of the
+two maximal sets. The GPU modules made the catalogue 39 usable and the maximum
+**38**, so `36:2` silently became a 2-draw sample of a much larger space while
+still looking like the top of the range. This is precisely the defect
+STATE_OF_PLAY section 5c records as "a census that rotted into a sample",
+recurring in the same file for the same reason. Plan top moved to `38:2`, with
+a comment saying how to re-derive it and admitting that deriving it
+automatically is the real fix and is not done.
+
+### TIER 2 -- 152 compositions, N=2 to 38, 152 PASS
+
+Every column clean on all 152 rows: `pkg_ok`, `ld_ok`, `audit_ok`, `acct_ok`,
+`dbc_ok`, `vis_ok` all 1; `alt_groups_bad` and `vis_missing` all 0. V1-V8 hold
+with the two largest artefacts the catalogue has ever contained in the stack.
+51 of the compositions contain `cuda-runtime`, 63 contain
+`nvidia-driver-535`, and none contains `cuda-runtime` without its driver.
+
+Composition cost on THIS generation:
+
+      total     = 175.2 ms + 30.55 ms x N     (R2 = 0.975)
+      mount     =  20.8 ms +  9.46 ms x N     (R2 = 0.985)
+      reconcile = 154.4 ms + 21.09 ms x N     (R2 = 0.958)
+
+`total_ms - mount_ms - reconcile_ms` is 0 on all 152 rows, so this is still
+composition and not verification.
+
+**This must NOT be differenced against the published `160.7 + 27.01 N`.** Two
+things moved between them, not one: the catalogue gained two modules and the
+top of the plan moved 36 to 38, AND the checker changed -- `verify_ms` and V7's
+node-type handling landed in commit aa9deec, after the last recorded sweep.
+Attributing the slope change to the GPU modules would repeat exactly the
+generation-mixing that section 6 withdraws two earlier comparisons for.
+
+### THE GPU MODULES COST NOTHING EXTRA TO COMPOSE, and that is a result
+
+To isolate the effect without crossing generations, compare WITHIN this run at
+matched N -- compositions containing the 649 MB module against those without:
+
+       N   mount with/without   total with/without   verify with/without
+      10       107 /  126           470 /  522           354 /  599
+      20       196 /  209           752 /  838           934 / 1100
+      25       255 /  247           976 /  916          1252 / 1211
+      30       293 /  310          1054 / 1102          1364 / 1404
+
+No systematic difference in either direction. **Composition cost scales with
+the NUMBER of layers, not with their SIZE**, and the mechanism is plain once
+measured: a squashfs loop mount is O(1) in payload, reconciliation reads
+registry files rather than content, and V7 walks paths. The two GPU modules
+contribute **522 and 55 paths** respectively despite being 232 MB and 680 MB --
+enormous in bytes, trivial in inodes. A 680 MB module composes as cheaply as a
+0.5 MB one.
+
+### VERIFICATION COST, now measured rather than excluded
+
+`verify_ms` was added in aa9deec and this is the first sweep to carry it:
+
+      verify = 161.3 ms + 41.80 ms x N        (R2 = 0.961)
+
+Verification is **more expensive per module than composition** (41.8 vs
+30.55 ms). That closes STATE_OF_PLAY section 7 item 8 -- "verification cost is
+outside the published model" -- with a number instead of an acknowledgement.
+
+### TIER 3 -- the GPU stack boots
+
+`base nvidia-driver-535 cuda-runtime`, bundle
+`results/boot/gpu-stack-20260918T231943Z`, 198 s, verdict **PASS**:
+
+      tier-1 admission : yes
+      systemd state    : running
+      failed units     : 0
+      check audit      PASS
+      probe nvidia-driver-535 PASS
+      probe cuda-runtime PASS
+
+and from the guest's own kernel log:
+
+      Linux version 5.15.0-185-generic ... (Ubuntu 5.15.0-185.195-generic ...)
+
+The running kernel's ABI package version is **5.15.0-185.195**, identical to
+the `vermagic` baked into the five `.ko` files and to
+`linux-objects-nvidia-535-5.15.0-185-generic` in the same `result.json`. The
+cross-layer match task 2 made recordable is now recorded, and it holds. (The
+guest kernel was itself built with `GNU ld 2.38` -- the same binutils that
+reproduced Canonical's `.ko` bytes exactly.)
+
+**This is not evidence that CUDA works.** It is evidence that a composed system
+carrying a real 680 MB CUDA runtime and a real NVIDIA driver module boots under
+UEFI and systemd, reaches a running state with no failed units, and satisfies
+both structural probes from inside the running guest. There is no GPU in the
+QEMU guest and none on this host.
+
+### TWO HARNESS DEFECTS, found because the first boot attempt failed
+
+1. **A udev race.** `11_boot_test.sh` tested that `${LOOPDEV}p1` EXISTS and
+   then ran `mkfs.vfat` on it. Partition nodes appear asynchronously, so the
+   existence test can pass a moment before the kernel will let anything open
+   the device. The first GPU boot died at `mkfs.vfat failed` on an image the
+   identical command formats without complaint by hand seconds later. Three
+   squashfs loop mounts are already held at that point and the host carries 36
+   snap loop devices, which is the load that opens the window. Now waits for
+   the partitions to be USABLE (`udevadm settle` plus a bounded `blockdev`
+   poll), not merely present.
+2. **A failure that reported only its own existence.** That `mkfs.vfat` call
+   was `>/dev/null 2>&1 || die2 "mkfs.vfat failed"`, so the one thing that
+   could have explained it was discarded. Same shape as the silent boot
+   harness of 2026-09-16. Both filesystem creations now log to the run bundle
+   and print the reason on failure.
+
+Also fixed while reading the first bundle: `dpkg-query -W` with a glob lists
+packages dpkg merely KNOWS about, with an empty version, so the first
+`kernel.json` recorded `linux-image`, `linux-headers-...` and
+`linux-image-unsigned-...` as though the image carried them. Empty versions are
+now dropped. The aborted run's bundle is kept as evidence of both.
+
+### STORAGE -- the ratios re-measured, and the "large realistic" cohort gets worse
+
+The cohort table was computed ad hoc on 2026-09-16 and that day's entry said it
+should become a script. It is now `scripts/13_storage_ratios.sh`, which also
+declares its unit -- **decimal MB (10^6)**, because that is what every
+published figure in section 7 uses while `mksquashfs` and `human()` print
+binary MiB under the same label, a 4.9 % difference.
+
+The script reproduces **every** previously published number exactly, which is
+what licenses comparing the new ones: base 41.7 MB; small cohort 272.8 /
+1 524.3 MB / 5.59x; and all six monolithic model checks to the decimal
+(curl 43.0/43.4, jq 41.9/42.3, nc-traditional 41.6/42.0, webserver 62.3/62.8,
+pytools 67.4/67.6, emacs 78.3/78.7).
+
+      cohort                N     stored      monolithic    ratio      was
+      small adversarial    31    272.8 MB     1 524.3 MB    5.59x    5.59x  (31)
+      large realistic       9  1 704.5 MB     2 038.3 MB    1.20x    1.32x  (7)
+      whole catalogue      40  1 935.6 MB     3 562.5 MB    1.84x    2.51x  (38)
+
+The small cohort is **unchanged and identical in membership**, which makes it a
+clean control: nothing about the re-measurement moved it.
+
+### WHY 2.51x -> 1.84x IS THE HONEST READING AND NOT A REGRESSION
+
+The ratio is
+
+      (N*B + sum d) / (B + sum d)      benefit = B*(N-1) / (B + sum d)
+
+so it tends to N as deltas shrink and to 1 as they grow. The two GPU modules
+add **911.8 MB** to `sum d` and only **2B = 83.4 MB** to the numerator. The
+arithmetic closes: 1 023.8 + 911.8 = 1 935.6 stored, and
+2 567.4 + 911.8 + 83.4 = 3 562.5 monolithic.
+
+Per module, the saving the delta model delivers:
+
+      nc-traditional   0.3 MB delta on a 41.7 MB base   over 99 %
+      curl             1.6 MB                                96 %
+      nvidia-driver-535  231.6 MB                            15.3 %
+      cuda-runtime       680.2 MB                             5.8 %
+
+Nothing has broken. The method's benefit is exactly `B*(N-1)/(B + sum d)`: it
+pays when many modules SHARE a large base and approaches nothing when modules
+are large and INDEPENDENT. A 680 MB CUDA runtime shares nothing with its
+siblings beyond base's 41.7 MB, so there is nothing to amortise. Reporting
+1.84x is reporting the operating envelope the method actually has, and it is
+the same conclusion the 2026-09-16 re-measurement reached (5.35x -> 2.51x) --
+now driven harder by two modules built precisely to drive it.
+
+The result Dipanker asked for still stands, and it is a different one from the
+ratio: **the method HANDLES a 680 MB module.** It builds, it is byte-exact, it
+composes at the same cost as a 0.5 MB module, it passes V1-V8 at every N up to
+38, and it boots. What it does not do is SAVE anything at that size, and the
+formula said so in advance.
