@@ -420,17 +420,34 @@ if absent:
     print("\n    SKIPPED -- no file sidecar for: %s" % ', '.join(absent))
     print("    regenerate with 06_extract_metadata.sh; class 4 was NOT checked")
 else:
-    def replaces_pkg(a, b):
-        """Does package a declare a Replaces that package b satisfies?"""
-        da, db = union.get(a), union.get(b)
-        if not da or not db: return False
-        bnames = set([b]) | set(n for grp in db['provides'] for (n, _, _) in grp)
-        for grp in da['replaces']:
+    def _matches(rels, db, bnames):
+        for grp in rels:
             for (n, op, v) in grp:
                 if n not in bnames: continue
                 if not op: return True
                 if vcmp(db['version'], op, v) is True: return True
         return False
+
+    def replaces_pkg(a, b):
+        """Does package a legitimately supersede b's files?
+
+        Replaces ALONE is not enough, and accepting it was a false negative
+        reproduced on 2026-09-17: two modules owning the same paths from
+        different packages flipped from REJECT to ACCEPT by adding one
+        `Replaces:` line to a manifest while the artefact bytes stayed
+        identical. Debian Policy 7.6 is explicit -- Replaces on its own permits
+        overwriting only while the other package is being REMOVED or UPGRADED.
+        For two packages installed SIDE BY SIDE, which is exactly what composing
+        two modules produces, dpkg requires Breaks or Conflicts as well. Without
+        that pairing a bare Replaces is a claim about an upgrade path that this
+        composition is not on."""
+        da, db = union.get(a), union.get(b)
+        if not da or not db: return False
+        bnames = set([b]) | set(n for grp in db['provides'] for (n, _, _) in grp)
+        if not _matches(da['replaces'], db, bnames):
+            return False
+        return (_matches(da['breaks'], db, bnames)
+                or _matches(da['conflicts'], db, bnames))
 
     owner, diverted = defaultdict(list), set()
     for m, sc in sidecars.items():

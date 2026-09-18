@@ -308,7 +308,10 @@ while IFS=$'\t' read -r N MODS; do
     T2=$(now_ms)
 
     # ---- collect what the composed system actually reports ----------------
-    in_chroot "$M" dpkg-query -W -f '${binary:Package}\n' 2>/dev/null </dev/null \
+    # Versions, not just names: V2 compared NAME SETS, so tier 2 had no
+    # independent view of class 2 at all and passed a composition that tier 1
+    # had rejected for five version skews.
+    in_chroot "$M" dpkg-query -W -f '${binary:Package}\t${Version}\n' 2>/dev/null </dev/null \
         | sort -u > "$C/actual.pkgs"
     in_chroot "$M" ldconfig -p 2>/dev/null </dev/null > "$C/actual.ld"
     in_chroot "$M" dpkg --audit 2>&1 </dev/null > "$C/audit.txt"

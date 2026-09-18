@@ -304,6 +304,15 @@ def main(argv):
         print("  version divergence : none")
 
     groups, problems = merge_alternatives(layers, merged)
+    # Divergence was detected, printed, and then DROPPED: it never reached
+    # `problems`, so this exited 0 while silently resolving a class-2 skew by
+    # last-wins. Reproduced 2026-09-17 with real artefacts -- 05_check.sh
+    # REJECTS curl+control-oldsnap with five skews and the whole of tier 2
+    # passed. Merging one of two versions is a decision, and an unreported
+    # decision is indistinguishable from no conflict.
+    for pkg, m1, v1, m2, v2 in diverged:
+        problems.append("class 2: %s is %s in %s and %s in %s; kept %s"
+                        % (pkg, v1, m1, v2, m2, v2))
     print("  alternatives       : %d link group(s)" % len(groups))
     for g in sorted(groups):
         e = groups[g]

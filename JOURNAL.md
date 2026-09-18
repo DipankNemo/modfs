@@ -1921,3 +1921,35 @@ Evaluation chapters — do not skip it.
   content loss, class 4 flipped by a bare Replaces, class 7 defeated by an
   understating manifest and by numeric file ownership, an alternatives demotion
   by a module owning no files, and tier 2's blindness to class-2 skew.
+
+## 2026-09-18 (closing the attack findings, 1 of 2: class 2 in tier 2, and bare Replaces)
+- FN-6 FIXED, both halves. Tier 2 could not see class-2 version skew AT ALL.
+    (a) verify_compose V2 compared package NAME SETS: `expected.add(pkg.split(':')[0])`
+        against a caller that reported `${binary:Package}` only. Both halves of a
+        skew are called `curl`, so the sets matched. V2 now compares
+        (name, version) and 10_compose_sweep reports `${Version}` so the
+        comparison is against the RUNNING system, not against metadata.
+        Fixture: two layers offering curl 7.81.0-1 and 7.74.0-1, composed system
+        holding one -> names match (the old check passed), pkg_ok=False now,
+        pkg_skew=['curl']. Benign control (same version in both layers, plus a
+        second package) still passes.
+    (b) reconcile.py DETECTED the divergence, PRINTED it, and dropped it:
+        `diverged` never reached `problems`, so `return 2 if problems else 0`
+        exited 0 while resolving a class-2 skew by last-wins. Merging one of two
+        versions is a decision, and an unreported decision is indistinguishable
+        from no conflict. It now reaches `problems`.
+  Why it mattered beyond the bug: stage 10's admission gate was load-bearing
+  rather than convenient, which is a much weaker claim than "tier 2 verifies each
+  composed system against its own layers". Now it verifies versions too.
+- FN-3 FIXED. `replaces_pkg` accepted a BARE `Replaces:`, so two modules owning
+  the same paths from different packages flipped REJECT -> ACCEPT by adding one
+  line to a manifest while the artefact bytes stayed identical. Debian Policy 7.6:
+  Replaces alone permits overwriting only while the other package is being
+  REMOVED or UPGRADED. Two composed modules are installed SIDE BY SIDE, which is
+  the case dpkg requires Breaks or Conflicts for. Now requires that pairing.
+  CHECKED AGAINST THE REAL CATALOGUE BEFORE AND AFTER, because tightening a
+  suppression rule risks turning working pairs into rejections: exactly ONE pair
+  in 703 relies on suppression, mta-msmtp+mta-nullmailer with 4 collisions, and
+  it declares Conflicts both ways via the virtual mail-transport-agent. It still
+  suppresses. No verdict in the catalogue changes; only the synthetic bare-
+  Replaces attack is now caught.

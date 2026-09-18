@@ -39,16 +39,39 @@ def main(argv):
     from reconcile import stanzas, field, parse_alt, read
 
     # ---- V2: dpkg status is the exact union of the layers -----------------
-    expected = set()
+    # NAME AND VERSION. Comparing name sets left tier 2 with no independent view
+    # of class 2 whatsoever: on 2026-09-17, 05_check.sh REJECTED
+    # curl+control-oldsnap with five version skews and every tier-2 column came
+    # back green, because both layers offer a package called `curl`. That made
+    # stage 10's admission gate load-bearing rather than convenient, which is a
+    # much weaker claim than "tier 2 verifies the composed system against its
+    # own layers". A composition holding one of two offered versions is now a
+    # failure here too, and the caller reports ${Version} so this can be checked
+    # against the running system rather than against metadata.
+    expected, exp_names = set(), set()
     for _, root in layers:
         for s in stanzas(read(os.path.join(root, 'var/lib/dpkg/status'))):
             pkg = field(s, 'Package')
             st = (field(s, 'Status') or '').split()
             if pkg and len(st) == 3 and st[2] == 'installed':
-                expected.add(pkg.split(':')[0])
-    actual = {l.split(':')[0] for l in
-              (read(os.path.join(work, 'actual.pkgs')) or '').split('\n') if l.strip()}
-    pkg_ok = (expected == actual)
+                nm = pkg.split(':')[0]
+                expected.add((nm, field(s, 'Version'))); exp_names.add(nm)
+    actual, act_names, versioned = set(), set(), True
+    for l in (read(os.path.join(work, 'actual.pkgs')) or '').split('\n'):
+        if not l.strip():
+            continue
+        parts = l.split('\t')
+        nm = parts[0].split(':')[0]
+        act_names.add(nm)
+        if len(parts) > 1:
+            actual.add((nm, parts[1].strip()))
+        else:
+            versioned = False
+    # Fall back to names if the caller predates the versioned format, and say so
+    # rather than silently reporting a weaker check as if it were the strong one.
+    pkg_ok = (expected == actual) if versioned else (exp_names == act_names)
+    pkg_skew = sorted({n for n, _ in expected} & act_names
+                      & {n for n, v in (expected - actual)}) if versioned else []
 
     # ---- V3: every alternatives group holds every candidate offered -------
     want = {}
@@ -247,8 +270,15 @@ def main(argv):
         ('PASS' if admitted != 'known-negative' else 'KNOWN_NEGATIVE')
         if ok else 'FAIL']))
     if not ok:
-        miss = sorted(expected - actual)[:5]
-        if miss: sys.stderr.write("  missing packages: %s\n" % ', '.join(miss))
+        # Distinguish "a package is gone" from "the wrong version survived" --
+        # they are different defects and the second was previously invisible.
+        gone = sorted(exp_names - act_names)[:5]
+        if gone: sys.stderr.write("  missing packages: %s\n" % ', '.join(gone))
+        for n in pkg_skew[:5]:
+            offered = sorted(v for nm, v in expected if nm == n)
+            kept = sorted(v for nm, v in actual if nm == n)
+            sys.stderr.write("  CLASS 2 version skew: %s offered %s, composed has %s\n"
+                             % (n, '/'.join(offered), '/'.join(kept) or 'none'))
         if alt_bad: sys.stderr.write("  alternatives short: %s\n" % ', '.join(alt_bad))
         if not ld_ok:
             sys.stderr.write("  linker cache missing: %s\n"
