@@ -2982,3 +2982,60 @@ direction only, and every finding in this round is in the negative one.
 - Before final evaluation, copied all 7 /srv/modfs/logs/*.csv files plus SHA256
   inventory to /srv/modfs/results/review-fixes-2026-09-18-before. Its round-2
   CSV hash is b383725ee699bde86ebeaba74ec344694e7e6e383233a772c3c17cf197fe64df.
+
+## 2026-09-18 (independent-review corrections: final evaluation)
+- All eleven findings H1–H4, M1–M4 and L1–L3 have separate correction commits.
+  No finding was withdrawn. L2 corrects policy rationale, not collision admission;
+  L3 corrects documentation, not runtime behaviour. Every finding has a new
+  regression exercised before and after its correction, as recorded above.
+- Final combined regression run: 68/68 tests pass. Final attacks: V7 4/4 and
+  round2 11/11, run as root so the whiteout check executes. All scripts/*.sh
+  pass bash -n; scripts/*.py and tests/review_*.py compile. Stage 12 confirms
+  all 39 original manifests and artefact digests, with zero mismatches/absences.
+- Tier 1: ./scripts/09_run_combinations.sh --max-n 2 --jobs 8 --keep-reports
+  produced 630 ACCEPT / 73 REJECT of 703. Every CSV field in every row equals
+  the preserved pre-correction CSV. --keep-reports avoids the runner deleting
+  check logs outside build; it does not change admission or the combination set.
+- Tier 2: ./scripts/10_compose_sweep.sh --pairs /srv/modfs/logs/combinations.csv
+  completed the default 152-set plan: 152 PASS, 0 failed, 0 refused. --pairs
+  reuses the just-completed sweep instead of invoking its log-deleting runner
+  again. The sample sets and their order match the preserved CSV exactly.
+- The ONLY non-timing tier-2 column that moved is acct_expected: 105/152 rows
+  increased because H4 counts subuid/subgid records. Deltas by number of rows:
+  +0:47, +2:32, +4:18, +6:20, +8:14, +10:12, +12:9. All other verification
+  values, package counts, debconf counts and verdicts are unchanged.
+- New measured composition-only fit (same CSV definition, verification excluded):
+      total     = 185.777569 + 26.375549 N ms  R2=0.861008
+      mount     =  24.021723 +  7.870310 N ms  R2=0.955699
+      reconcile = 161.755846 + 18.505239 N ms  R2=0.787894
+  total equals mount+reconcile on all 152 rows. The prior round-2 total was
+  160.696749 + 27.013002 N (R2=0.969692); the earlier published pre-round2
+  fit was 148.285629 + 27.200303 N. These numbers MOVED. M1 adds source-status
+  scans during reconciliation, while H2–H4 verification runs outside this
+  timer. One rerun cannot separate the code cost from host/timing variance;
+  no causal percentage or new full-tier latency claim is justified. The less
+  stable fit is reported as measured. ARCHITECTURE retains identified historical
+  measurements rather than silently replacing them with this run.
+- Smoke: ./scripts/07_smoke_test.sh base <the 36 names in maximal-subset.txt>
+  passed 75 checks, failed 0, skipped 1 (base has no probe), executed all 36
+  module probes. This is the existing maximal set excluding control-oldsnap
+  and mta-nullmailer. A fresh n-ary tier-1 check also ACCEPTed the full set.
+- My first smoke wrapper accidentally exported host TMPDIR into the guest;
+  Rust could not create /srv/modfs/build/codex-fixes-20260918/rustc* there.
+  That run reported 74/1/1. Removing TMPDIR at the chroot boundary and rerunning
+  the UNCHANGED smoke script/probes produced 75/0/1. This was my harness error,
+  not a ModFS finding; both logs are preserved, not replaced.
+- All cleanup ran through a guard printing resolved targets and checking
+  /proc/self/mountinfo for mounts at/below them, refusing anything outside a
+  child of /srv/modfs/build. The unchanged Git probe's /tmp/g was separately
+  resolved and checked under the build chroot before execution. No live mounts
+  remain anywhere under /srv/modfs/build. No deletion occurred outside build.
+- Storage re-derived again: small 5.588457900x, large 1.315747051x, all
+  2.507699632x; the published rounded 5.59x / 1.32x / 2.51x are unchanged.
+  These remain modelled monolithic comparisons, not new monolith builds.
+- Durable evidence: /srv/modfs/results/review-fixes-2026-09-18-before contains
+  all 7 original CSVs and hashes. review-fixes-2026-09-18-after contains the
+  final CSVs, exact subset, implementation commit, before/after/final logs,
+  comparison JSON, run guards and SHA256 inventory. Working scratch remains
+  /srv/modfs/build/codex-fixes-20260918. No QEMU or full rebuild was requested
+  in this correction pass, and neither is claimed.
