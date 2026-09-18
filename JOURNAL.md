@@ -2961,3 +2961,24 @@ direction only, and every finding in this round is in the negative one.
   correction, not a new claim that arbitrary Replaces overlays are safe.
 - V7 4/4, round2 11/11; shell syntax and Python compilation passed. Evidence:
   codex-fixes-20260918/L2-{before,after}.log and retained replaces-review-* roots.
+
+## 2026-09-18 (independent-review corrections L3: measurement provenance)
+- Canonical account claims now say set-equal under the tested reversal, NOT
+  byte-equal. Removed the unconditional order-independence claim; highest-layer
+  non-identity account fields remain an explicit order-sensitive policy.
+- Separated historical cost generations. The round-2 table already published
+  203–1090 ms and fit 160.7 + 27.01 N; its own split is 18.9 + 8.03 N mount and
+  141.8 + 18.98 N reconcile. The earlier 148 + 27.2 N remains labelled against
+  its preserved pre-round2 CSV. Neither includes verification. Withdrew the
+  mixed-generation 2x / 230–250x comparisons and stale 19.9-slope discussion.
+- Dated the three historical reproducibility hashes to JOURNAL's 2026-08-22
+  sample. Acknowledged the retained 17 September fat-base experiment without
+  claiming to rebuild it. Removed adjacent obsolete debconf-open / two-total-
+  boot-run wording. Documented corrected H1/V6/V7 boundaries without claiming
+  a new performance measurement. No final-run numbers substituted into tables.
+- Added 7 documentation regression contracts. BEFORE: 7 failures; AFTER: 7/7
+  pass. These check wording and fit arithmetic, not runtime or performance.
+  V7 4/4, round2 11/11; Python compilation and git diff --check passed.
+- Before final evaluation, copied all 7 /srv/modfs/logs/*.csv files plus SHA256
+  inventory to /srv/modfs/results/review-fixes-2026-09-18-before. Its round-2
+  CSV hash is b383725ee699bde86ebeaba74ec344694e7e6e383233a772c3c17cf197fe64df.

@@ -79,11 +79,14 @@ remounted as a lowerdir. **31 checks, 31 passed** — 30 until a `python3-yaml` 
 > used it. `02_build_delta.sh` asserts the two preconditions on every build
 > rather than trusting this paragraph, and tier 2 gained **V7**, which requires
 > every path present in any layer to be visible in the merged view, as the same
-> kind of file, at the same size — the check that would have caught this on the
+> kind of file, at the same size for regular files (and, after H3, with a
+> target offered by a source layer for symlinks) — the check that would have caught this on the
 > day it was introduced.
 >
 > **What V7 does NOT check, measured 2026-09-18 (round 2): content.** It records
-> `(kind, size)`, so any substitution that preserves the size passes.
+> `(kind, size)` for regular files, so a regular-file substitution that preserves
+> size passes. Correction H3 additionally compares symlink target text without
+> following links.
 > Reproduced on the real artefacts: compose `base + curl`, overwrite
 > `/usr/bin/curl` in the merged view with 260 328 bytes of the letter `X`
 > (the binary's exact size), and the tier-2 row is byte-identical to the
@@ -180,10 +183,12 @@ overwritten, and file mode and ownership preserved — `/etc/shadow` is
 
 Verified on the real artefacts: after reconciliation `base + postgres + mysql`
 contains both accounts and `ssl-cert` keeps its `postgres` member, and the
-merged `passwd`, `group`, `shadow` and `gshadow` are **record-for-record
-identical under order reversal**. Tier 2 now checks this directly (V6): the
-composed account databases must equal the semantic union of the layers,
-compared record by record, not by count.
+merged `passwd`, `group`, `shadow` and `gshadow` are **set-equal under the tested order reversal,
+not byte-equal**. V6 checks all fields in all six account databases, membership
+and subordinate-range sets, and file mode/ownership against their source layers.
+Non-identity fields and file attributes follow the reconciler's highest-layer
+policy; conflicting numeric identities are rejected. This does not make
+arbitrary conflicting shell, password or home-directory values order-independent.
 
 > **Record-identical, not byte-identical, and the earlier wording said
 > "identical".** Measured 2026-09-18 on the real artefacts,
@@ -310,12 +315,14 @@ complete candidate set. Of 1 479 such files:
 | already reconciled, excluded, or regenerated | 252 | handled |
 | `/var/lib/dpkg/info/*` control files | ~1 200 | benign: byte-identical copies of the same package version |
 | lock files (`dpkg/lock`, `archives/lock`, …) | 4 | benign: zero length |
-| `debconf/*.dat` | 3 | **open**, quantified above |
+| `debconf/*.dat` | 3 | initially open in this survey; now merged and verified by V8 |
 | `/etc/apt/apt.conf.d/99modfs` | 1 | **was a leak**, now removed after build |
 | `/etc/apt/sources.list` | 1 | deliberate: records the pinned generation |
 
-So the list is closed for the current catalogue, with exactly one unhandled
-registry (debconf) and one defect found and fixed. The method generalises:
+This historical survey identified debconf as an unhandled registry and the
+APT-policy leak as a defect. Both have since been addressed; the survey is not
+a proof that every form of shared state is handled (see the trigger limitation
+in §10). The method generalises:
 *non-package-owned files shared by two or more modules* is a computable
 definition of "registry", and it should be run whenever the catalogue grows
 rather than waiting for the next failure.
@@ -404,14 +411,14 @@ scratch and `05_check.sh` no longer requires root.
 > moved no column in any row.
 >
 > **Binding.** `binding.fields_sha256` is a canonical digest over exactly the
-> fields the checks read (listed in `binding.fields`, so a verifier reproduces
-> it without knowing the extractor's source), and `binding.sidecar_sha256`
-> covers the uncompressed class-4 sidecar. `05_check.sh` and `verify_bundle`
-> recompute it — 3.4 ms for all 39 manifests, +4 ms on a tier-1 check at N=2
-> and +10 ms at N=36 — and `12_verify_binding.sh` re-derives from the artefact
-> and compares. That last layer is the only one that reads the `.sqsh`, and so
-> the only one that catches a manifest whose digest was recomputed to match
-> forged content.
+> mandatory fields the checks read (the consumer requires the complete
+> BIND_FIELDS set, rather than trusting an arbitrary `binding.fields` list).
+> `binding.sidecar_sha256` covers the uncompressed class-4 sidecar; a missing
+> digest is rejected. `05_check.sh` and `verify_bundle` recompute it. Earlier
+> digest-only timings predate mandatory sidecar consumption checks and are not
+> a timing claim for the corrected code. `12_verify_binding.sh` re-derives
+> metadata from the artefact's filesystem contents and compares it; byte hashing
+> alone cannot catch a manifest resealed to match forged metadata.
 >
 > It is **integrity, not authenticity**: the digest lives in the document it
 > protects, exactly as `artifact.sha256` always has. What it closes is drift,
@@ -427,60 +434,37 @@ scratch and `05_check.sh` no longer requires root.
 Exhaustive validation is infeasible: jammy has ~65 000 binary packages, so pairs
 alone are ~2×10⁹. Three tiers exploit the cost asymmetry:
 
-| Tier | Operation | Cost (one call, N=2 → N=36) | Feasible |
+The following are historical measurements made before the independent-review
+corrections. The tier-2 row uses the 18 September round-2 generation shown in
+§7; the tier-1 and tier-3 rows are separate measurements, not a matched timing
+experiment. They must not be divided to claim a precise cross-tier ratio.
+
+| Tier | Operation | Historical cost (N=2 → N=36) | Scope |
 |---|---|---|---|
-| 1 | Metadata check | **89 ms → 398 ms** measured, 152 sets | thousands |
-| 2 | Compose + verify | **181 ms → 808 ms** measured, 152 compositions | thousands — all 666 pairs in ≈2 min (extrapolated) |
-| 3 | QEMU boot test | **189–204 s** at N=36, measured twice | tens |
+| 1 | Metadata check | **89 ms → 398 ms** | 152 sequential sets, before correction H1 |
+| 2 | Compose only | **203 ms → 1090 ms** | round-2 table in §7, 152 compositions; verification excluded |
+| 3 | QEMU boot test | **189–204 s** | two N=36 runs; not a catalogue-wide boot census |
 
-**The original cost estimates were wrong, and the correction matters.** Tier 2
-was assumed to cost ~10 s per composition; it costs 181 ms at N=2 — **55×
-cheaper**. Both cheap tiers are linear in N, re-measured 2026-09-17 over 152
-compositions spanning the full admissible range N=2…36:
+`total_ms` in the tier-2 CSV equals `mount_ms + reconcile_ms` on every row.
+Neither verification nor the preceding integrity/admission checks are included.
+The earlier **181–808 ms** table described a pre-debconf generation; it cannot
+be combined with the later **148 + 27.2 N** fit or labelled “Compose + verify”.
+The former 2× and 230–250× comparisons mixed generations and omitted verification;
+they are withdrawn. A matched full-pipeline timing experiment is still needed.
 
-    tier 2:  total = 148 ms + 27.2 ms × N     (152 compositions, 2026-09-18)
+For provenance, the post-debconf pre-round2 CSV is retained at
+`/srv/modfs/results/tier2/compose-sweep-2026-09-18-pre-round2.csv` and yields
+`148.285629 + 27.200303 N`. The round-2 CSV is preserved at
+`/srv/modfs/results/review-fixes-2026-09-18-before/compose-sweep.csv`
+(SHA256 `b383725ee699bde86ebeaba74ec344694e7e6e383233a772c3c17cf197fe64df`)
+and yields `160.696749 + 27.013002 N`. These are two measured composition-only
+fits, not competing fits to one dataset. New correction-run measurements are
+reported separately in JOURNAL.md rather than silently replacing these values.
 
-> **What that measures, precisely.** `total_ms` is exactly
-> `mount_ms + reconcile_ms` — checked across all 152 rows, maximum
-> difference 0 ms. It is the cost of COMPOSING, and verification is not in
-> it, so the row label "Compose + verify" above overstates what the number
-> covers. Re-measured on 2026-09-18 after V7 was hardened from a name check
-> into a `(kind, size)` check: the model is unmoved at 146.0 + 19.96 N
-> (R² = 0.959), because V7's cost falls entirely outside it. The sweep's
-> WALL CLOCK did move, 3 m 13 s → 3 m 54 s for the same 152 compositions.
-> Verification cost is real and currently unmeasured.
->
-> **Re-measured 2026-09-18, and the slope moved.** Adding debconf to the
-> reconciled registries took the per-module term from 19.9 to 27.2 ms, a
-> 31 % rise, and all of it is reconciliation: `12.90 N → 19.47 N`, while
-> mount barely moved (`7.06 N → 7.73 N`). The cause is size, not
-> algorithm — `templates.dat` is 519 KB per layer, so a 36-module
-> composition parses and re-renders about 18 MB of stanza text. At the
-> ceiling that is ~1.1 s against ~0.85 s before. It is the price of not
-> silently discarding a layer's debconf database, and it is worth paying,
-> but it is a real cost and the published slope changes with it.
-    tier 1:  total = 101 ms +  9.6 ms × N     (R² = 0.854, 152 checks)
-
-A quadratic term adds **nothing** (−0.003 N², R² gain 0.0000), so the linear
-form is not an artefact of a short range: it holds to the largest N the
-catalogue admits.
-
-> **Tier 1's cost was previously stated as a flat 28 ms, and that number was
-> not comparable to the one beside it.** It came from 3 654 checks in 102 s
-> *at 8 jobs* — throughput, not latency — and was tabulated against tier 2's
-> single-stream latency. Measured the same way, sequentially and on the same
-> 152 sets, tier 1 costs 89 ms at N=2 and 398 ms at N=36. Tier 1 also *scales*
-> with N, which a flat figure hid.
-
-The correction sharpens the argument here rather than undermining it. Like
-for like, **tier 2 costs almost exactly 2× tier 1 at every N** (2.03× at N=2,
-2.03× at N=36): the asymmetry this methodology rests on is *not* between
-tiers 1 and 2, which are a factor of two apart, not an order of magnitude. It
-is between tier 2 and tier 3, which is **230–250×** more expensive still
-(808 ms against 189 s and 204 s, the two measured N=36 boots). Stratified
-sampling is justified for boot testing; for composition it is a convenience,
-not a necessity — exhaustive tier-2 coverage of all pairs is affordable and
-should be reported as such.
+Tier 1's old flat 28 ms figure was eight-worker throughput, not single-call
+latency. Its historical sequential fit was `101 + 9.6 N` over 152 sets.
+Mandatory sidecar verification added by correction H1 changes the work measured;
+that historical fit is not a performance claim about the corrected checker.
 
 **Admission order is a rule, not a convention:**
 
@@ -606,10 +590,15 @@ naive:      137 listed / 178 real   → 41 invisible; dpkg says nginx NOT INSTAL
 reconciled: 178 listed / 178 real   → 0 invisible; nginx INSTALLED
 ```
 
-Reconciliation also makes composition **order-independent**.
+Tested reversals preserve record contents for the measured account, debconf,
+dpkg-status and extended-state examples; record order and file bytes differ.
+No general order-independence guarantee follows: non-identity account fields
+use highest-layer precedence, and these examples do not cover all permutations.
 
-**Artefacts are byte-reproducible.** Two full builds of each module, on one
-host, produce identical `sha256`:
+**Historical reproducibility sample — 2026-08-22.** JOURNAL.md records two full
+builds of each of these three modules on one host with identical hashes. These
+are not hashes of the current artefacts and do not establish reproducibility
+of every subsequent catalogue generation:
 
 | Module | sha256 (first 16) |
 |---|---|
@@ -669,8 +658,11 @@ base ⇒ smaller deltas", yet the built base is `minbase` plus four packages.
 Among the seven large modules, **53 packages appear in two or more** and 32 in
 three or more (`gcc`+`rust` share 31, `gcc`+`llvm` 24, `llvm`+`rust` 23).
 Moving that shared toolchain into the base would shrink every large delta and
-raise the ratio. Testing that is the obvious next experiment and has not been
-run.
+raise the ratio. A larger-base experiment was recorded on 2026-09-17 in
+`/srv/modfs/results/fatbase/fatbase-analysis-2026-09-17T163305Z.txt` and its
+per-module CSV. The independent review inspected those retained results but
+did not rebuild that generation. Its existence must not be described as an
+unrun experiment; its ratios also need their own baseline definition.
 
 One framing correction that follows: `11_boot_test.sh` flattens the composed
 overlay into an ext4 root, so a provisioned node receives a conventional
@@ -719,7 +711,7 @@ same space is **344 admitted, 7 rejected**. Stage `10` no longer composes a
 rejected set without `--known-negative`, and labels such runs
 `KNOWN_NEGATIVE`.
 
-Above N=2 the coverage is a stratified sample. Re-run 2026-09-17 against a
+Above N=2 the coverage is a stratified sample. The 2026-09-18 round-2 run used a
 constraint-aware sampler (§6): **152 real compositions from N=2 to N=36, 152
 passed, 0 failed, 0 refused**. Every composed system's dpkg status was the
 exact union of its layers, every alternatives group held every candidate any
@@ -785,7 +777,7 @@ The catalogue then grew to 37 usable modules and that plan point silently
 became a one-draw random sample of 27-of-37, with a 0.62 probability of being
 refused. In the last run before this one it was refused, and the row read
 zero. The old 622 ms figure describes a 27-module catalogue that no longer
-exists, not a 27-module *composition* in the present one, which costs 674 ms.
+exists, not a 27-module *composition* in the round-2 table above, which reports 872 ms.
 
 The union grows sub-linearly in N because modules share dependencies, and the
 arithmetic cross-check holds at the top of the range as it did at N=27: the 36
@@ -795,49 +787,26 @@ holds **391 packages — exactly base's 113 plus those 278**, reproduced from th
 artefacts alone. The composition and the manifest arithmetic agree from two
 independent measurements at the largest set the catalogue admits.
 
-**The cost model, re-measured.** The previous model was `115 + 18.8 × N`
-(R² = 0.94), fitted on 2026-09-02 over 96 compositions whose top point was the
-single census set described above — so one point carried the entire top of the
-range. (The most recent run before this one, still using the uniform sampler,
-composed 81 of its 96 planned sets and reached only N=20.) Over 152
-compositions reaching N=36:
+**The cost model, re-measured.** Keep the measurement generations separate:
+2026-09-02's 96-composition model was `115 + 18.8 N`; the post-debconf
+pre-round2 152-composition model was `148 + 27.2 N`. The round-2 table above
+and its preserved CSV (§6) instead have this internally consistent split:
 
-    total = 148 ms + 27.2 ms × N        (152 compositions, 2026-09-18)
+    total     = 160.7 ms + 27.01 ms × N     (R² = 0.970)
+    mount     =  18.9 ms +  8.03 ms × N     (R² = 0.972)
+    reconcile = 141.8 ms + 18.98 ms × N     (R² = 0.953)
 
-The **slope survives** — 18.8 → 19.9 ms per module, +6 % — so the old
-measurement's shape was right. The intercept moves 115 → 148 ms, +29 %, and
-the old model is **low at every single N**, by between +1 % (N=10) and +16 %
-(N=2), +8 % at N=27 and +2 % at N=36. A quadratic term is worthless (−0.003 N², R² gain 0.0000): composition
-cost is genuinely linear in the number of layers, all the way to the ceiling.
-Cost is better explained by layer count than by package count (R² 0.954 vs
-0.935 fitting the same totals against the composed package count), which is
-what one would expect if the per-layer loop mount, not the package
-arithmetic, is what N buys.
+The rounded component fits sum to the rounded total fit. The former split
+with slope 6.7 + 13.2 = 19.9 belonged to a pre-debconf generation; the former
+“18.8 → 19.9, +6%” comparison did too. Neither supports the 27.2 slope.
+Reconciliation accounts for about 70% of the round-2 per-module slope.
+These coefficients describe composition, not verification or full tier-2 latency.
 
-Splitting the total re-opens a settled question:
-
-    mount     =  21.5 ms +  6.7 ms × N      (R² = 0.980)
-    reconcile = 126.2 ms + 13.2 ms × N      (R² = 0.907)
-
-**"Mount time is the part that scales; reconciliation is nearly flat" was
-wrong.** Reconciliation carries **two-thirds of the per-module slope** and
-grows by 410 ms across the range against mount's 222 ms. The earlier reading
-came from a range that stopped at N=20 in a smaller catalogue; reconciliation
-is the cost that matters as N grows, and it is the obvious target if tier 2
-ever needs to be cheaper.
-
-Two honest limits on the fit:
-
-- **It predicts the mean, not a composition.** Within-N spread is ~164 ms
-  (median across N with ≥4 samples) — worth about **8 modules** of slope. No
-  individual composition's time is predictable to better than roughly
-  ±150 ms; the model is for capacity planning, not for scheduling.
-- **The top of the range is near-deterministic, and its variance is not
-  meaningful.** At N=36 only two admissible sets exist and they differ by a
-  single module, so the 4 ms spread there measures the machine, not the
-  catalogue. High-N samples are drawn from a small admissible space and
-  necessarily overlap heavily; the N=36 row is two points, not two
-  independent draws.
+The fit describes an average over sampled sets, not an individual composition.
+At N=36 there are only two admissible sets, differing by one module; high-N
+samples overlap heavily. Their spread is not evidence of independent workload
+draws or a universal latency bound. The correction-run fits and any changes
+in counters are recorded separately in JOURNAL.md.
 
 ---
 
@@ -855,7 +824,7 @@ Two honest limits on the fit:
 | `07_smoke_test.sh` | Compose a set, chroot in, and check it actually works: `dpkg --audit`, `apt-get -s install`, `ldconfig -p`, per-module probes |
 | `08_build_catalogue.sh` | Batch-build every module in `specs/modules.yaml`; reports sizes against `MODULE_MAX_MB` |
 | `09_run_combinations.sh` | Tier 1: run `05_check.sh` over all pairs and triples; tabulate verdicts by conflict class into a CSV |
-| `10_compose_sweep.sh` | Tier 2: compose admitted sets from N=2 to N=27 and verify status, alternatives, linker cache and dpkg state against the layers |
+| `10_compose_sweep.sh` | Tier 2: compose admitted sets from N=2 to N=36 and verify status, alternatives, linker cache and dpkg state against the layers |
 | `11_boot_test.sh` | Tier 3: pack a UEFI image, boot it under QEMU, and record a per-unit causal matrix from inside the running system |
 | `12_verify_binding.sh` | Re-derive every manifest from its artefact and compare. Run once per catalogue, not per check: 12.5 s for all 39 |
 | `reconcile.py`, `verify_compose.py` | Shared helpers: class-5 registry merge; per-composition verification |
@@ -883,7 +852,8 @@ correct node identity happen to require the same thing.
 
 ## 9. Tier-3 status
 
-Two tier-3 runs exist, and only one of them is a boot test.
+The initial two tier-3 attempts are described here; only one booted.
+The later causal matrix below contains four further runs, not a two-run census.
 
 **Run A** — 26 modules — **did not boot.** It failed during the pre-boot kernel
 transaction with `Unmet dependencies`, because the set contained the
@@ -964,7 +934,7 @@ what is verified and what is merely intended stays explicit.
 | H5 | ~~Class 5 is not closed: debconf and dpkg trigger registrations still last-win~~ — **partly done**: debconf is reconciled (§4) and verified by **V8**. dpkg trigger registrations are still last-win |
 | H6 | Removal, whiteout and opaque-directory composition are effectively untested |
 | H7 | Reconciler conflict handling is incomplete and sometimes order-dependent |
-| H8 | Tier-2 verification is materially weaker than its documentation says — narrowed by V7 v2 and V8; the residue is now specific: V7 compares `(kind, size)` and not content (§3), and the published cost model covers composition only, not verification |
+| H8 | Tier-2 verification is materially weaker than its documentation says — narrowed by V7 v2 and V8; the residue is now specific: V7 compares regular-file `(kind, size)` and symlink targets, not regular-file content (§3), and the published cost model covers composition only, not verification |
 | H9 | The monolithic comparison path is not a controlled equivalent baseline |
 | H10 | Signal cleanup can tear down resources and then continue execution |
 | H11 | The tier-1 sweep can report success when workers or output accounting fail |
@@ -1007,6 +977,6 @@ real hardware · multi-distro · any dependency solver of our own.
 ---
 
 ## 12. Open questions
-- debconf: reconcile or document as limitation?
+- dpkg trigger registrations: reconcile or retain the stated limitation?
 - Runtime conflicts: implement the systemd/port heuristic, or document only?
 - How many generations of artefacts to retain, given no rollback requirement?
