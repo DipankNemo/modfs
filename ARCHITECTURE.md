@@ -427,6 +427,40 @@ scratch and `05_check.sh` no longer requires root.
 > ACCEPT with no warning. Authenticity needs a key outside the artefact set and
 > stays out of scope.
 
+### A dependency this layer cannot express: the kernel ABI
+
+Every module in the catalogue until 2026-09-19 was a free-floating sibling
+whose only constraint was `(parent, snapshot)`. `nvidia-driver-535` is not.
+It installs `linux-objects-nvidia-535-5.15.0-185-generic`, whose **package name
+contains a kernel ABI**, and the five `.ko` files it links carry
+`vermagic=5.15.0-185-generic`. The module is valid against exactly one kernel.
+
+That kernel is not a module. §8's pipeline installs it at PACK time, into the
+image only, precisely so that no module carries one — and the design is right:
+the pack step's kernel footprint is **1 586 MB installed across 28 packages**,
+of which `linux-firmware` alone is 1 090 MB and is a hard dependency that
+`--no-install-recommends` cannot avoid.
+
+So the constraint is real, it is load-bearing, and **neither layer of the
+dependency model can state it**. Package relations cannot: apt sees one
+module's build and the kernel is not in it. Module-level `requires` cannot: it
+resolves against modules in the set, and the kernel is never a module.
+
+What closes the gap is measurement rather than a new schema. The ABI is a
+deterministic **function of the pinned snapshot**, and this is now demonstrated
+end to end: the snapshot index predicts `linux-image-generic` →
+`5.15.0.185.166` → ABI `5.15.0-185-generic` → ABI package `5.15.0-185.195`; the
+pack step resolved exactly that; and the booted guest reported exactly that.
+`kernel.json` in every run bundle records it beside the driver module's own
+version, so the match is checkable instead of hoped for (§9).
+
+The unsigned-module limitation follows from the same place.
+`linux-signatures-nvidia-<abi>` and `linux-modules-nvidia-535-<abi>` both
+`Depend` on `linux-image-<abi>`, so the SIGNED path would put a kernel inside a
+module. `linux-objects-*` is the only package in the chain without that
+dependency, which is why the modules are linked unsigned — and why a Secure
+Boot node is out of scope for this artefact.
+
 ---
 
 ## 6. Evaluation methodology
@@ -514,17 +548,26 @@ anything is mounted, so a set the model gets wrong is recorded `NOT_ADMITTED`,
 never composed on the model's word. In the 2026-09-17 run the two agreed on
 all 152 sets.
 
-The catalogue is `specs/modules.yaml`: 38 modules — 37 usable plus the
-positive control — each carrying the class it exists to provoke and a `probe`
-command that must exit 0 inside a composed chroot. 37 usable modules is 666
-pairs and 7 770 triples. Tier 1 needs no root and no build tree — only the
-manifests — so the whole sweep parallelises freely.
+The catalogue is `specs/modules.yaml`: **40 modules — 39 usable plus the
+positive control** — each carrying the class it exists to provoke and a `probe`
+command that must exit 0 inside a composed chroot. It held 38 (37 usable) until
+2026-09-19, when the two GPU modules were added. 39 usable modules is 741
+ordinary pairs, 780 pairs including the control, and 9 880 triples. Tier 1
+needs no root and no build tree — only the manifests — so the whole sweep
+parallelises freely.
 
 **The catalogue cannot be composed whole, by construction.** It contains a
-deliberate conflict pair, so the largest admissible set is **36 of 37**
-modules and there are exactly **two** such sets. N=37 is not a gap in the
+deliberate conflict pair, so the largest admissible set is **38 of 39**
+modules and there are exactly **two** such sets. N=39 is not a gap in the
 evidence; it is infeasible, and the sampler reports it as such rather than
 drawing sets that tier 1 will refuse.
+
+> **This maximum is a moving number and it has now silently decayed twice.**
+> `10_compose_sweep.sh`'s plan ended `27:1` when 27 was the whole catalogue,
+> and `36:2` when 36 was the maximum of a 37-usable one. Both kept looking like
+> the top of the range after the population moved. The plan top is now `38:2`;
+> re-derive it with `sample_sets.py` whenever the catalogue grows, and note
+> that deriving it automatically is the real fix and is not done.
 
 Baseline: monolithic, one image per use case.
 
@@ -626,6 +669,34 @@ monoliths and is superseded:
 | small adversarial modules | 31 | 272.8 MB | 1 524.3 MB | **5.59×** |
 | large realistic modules | 7 | 792.8 MB | 1 043.1 MB | **1.32×** |
 | whole catalogue | 38 | 1 023.8 MB | 2 567.4 MB | **2.51×** |
+
+> **Re-measured 2026-09-19 after two real GPU modules were added** —
+> `nvidia-driver-535` (231.6 MB stored) and `cuda-runtime` (680.2 MB stored),
+> the two largest artefacts the catalogue has held. Both join the *large
+> realistic* cohort, because they are real workloads and putting them anywhere
+> else would flatter the number:
+>
+> | Cohort | N | Stored | Monolithic | Ratio | was |
+> |---|---:|---:|---:|---:|---:|
+> | small adversarial modules | 31 | 272.8 MB | 1 524.3 MB | **5.59×** | 5.59× (31) |
+> | large realistic modules | 9 | 1 704.5 MB | 2 038.3 MB | **1.20×** | 1.32× (7) |
+> | whole catalogue | 40 | 1 935.6 MB | 3 562.5 MB | **1.84×** | 2.51× (38) |
+>
+> The small cohort is unchanged and identical in membership, so it is a control
+> on the re-measurement rather than a second result. The whole-catalogue fall
+> from 2.51× to 1.84× is the formula behaving as stated, not a regression: the
+> two modules add 911.8 MB to Σd and only 2·B = 83.4 MB to the numerator, and
+> the benefit is `B·(N−1)/(B+Σd)`. Per module the delta model returns over 99 %
+> on `nc-traditional` (0.3 MB), 96 % on `curl` (1.6 MB), **15.3 %** on the
+> driver and **5.8 %** on the CUDA runtime. A 680 MB module shares nothing with
+> its siblings beyond base's 41.7 MB, so there is nothing to amortise.
+>
+> This table and the six monolithic checks below are now produced by
+> `scripts/13_storage_ratios.sh` rather than computed by hand, and that script
+> reproduces every figure published above it to the decimal. It also declares
+> the unit: **decimal MB (10⁶)**, which is what §7 has always used, while
+> `mksquashfs` and `lib.sh`'s `human()` print binary MiB under the same label —
+> a 4.9 % difference that was never written down.
 
 The ratio is
 
@@ -808,6 +879,38 @@ samples overlap heavily. Their spread is not evidence of independent workload
 draws or a universal latency bound. The correction-run fits and any changes
 in counters are recorded separately in JOURNAL.md.
 
+> **A third generation, 2026-09-19, and it must not be differenced against the
+> second.** With the two GPU modules the catalogue is 39 usable, the largest
+> admissible set is **38**, and a fresh 152-composition sweep over the same
+> plan shape gives
+>
+>     total     = 175.2 ms + 30.55 ms × N     (R² = 0.975)
+>     mount     =  20.8 ms +  9.46 ms × N     (R² = 0.985)
+>     reconcile = 154.4 ms + 21.09 ms × N     (R² = 0.958)
+>
+> **152 compositions, N=2→38, 152 PASS**, every V1–V8 column clean. Two things
+> changed between this and the round-2 fit, not one — the catalogue grew *and*
+> the checker changed (`verify_ms` and V7 node types landed in aa9deec after
+> the last recorded sweep) — so the slopes are not comparable and the
+> difference is not evidence about the GPU modules.
+>
+> **Within** this generation, at matched N, compositions containing the 680 MB
+> module are indistinguishable from those without it in mount, total and verify
+> time. Composition cost scales with the **number of layers, not their size**:
+> a squashfs loop mount is O(1) in payload, reconciliation reads registries,
+> and V7 walks paths — and the two GPU modules contribute 522 and 55 paths
+> despite being 232 MB and 680 MB. A 680 MB module composes as cheaply as a
+> 0.5 MB one.
+>
+> **Verification cost, measured for the first time** (H8 and STATE_OF_PLAY §7.8
+> both record that it sat outside the published model):
+>
+>     verify    = 161.3 ms + 41.80 ms × N     (R² = 0.961)
+>
+> Verification is more expensive per module than composition. `total_ms` still
+> equals `mount_ms + reconcile_ms` on all 152 rows, so the composition fit above
+> remains composition-only and `verify_ms` is a separate column, not folded in.
+
 ---
 
 ## 8. Pipeline
@@ -827,6 +930,7 @@ in counters are recorded separately in JOURNAL.md.
 | `10_compose_sweep.sh` | Tier 2: compose admitted sets from N=2 to N=36 and verify status, alternatives, linker cache and dpkg state against the layers |
 | `11_boot_test.sh` | Tier 3: pack a UEFI image, boot it under QEMU, and record a per-unit causal matrix from inside the running system |
 | `12_verify_binding.sh` | Re-derive every manifest from its artefact and compare. Run once per catalogue, not per check: 12.5 s for all 39 |
+| `13_storage_ratios.sh` | Cohort storage ratios from artefact sizes, plus the `B + d` monolithic model checked against every real `--compare` build. Needs no root. Replaces the ad-hoc computation the 2026-09-16 JOURNAL entry asked to be made a script |
 | `reconcile.py`, `verify_compose.py` | Shared helpers: class-5 registry merge; per-composition verification |
 
 `specs/uid-ranges.yaml` holds the append-only UID/GID partition.
@@ -916,6 +1020,41 @@ Nothing here licenses "tier 3 passes". The defensible claim is: *four composed
 sets booted under UEFI; two single-service sets reached a running state, and
 both two-service sets reproduced a runtime-negative interaction whose cause is
 recorded.*
+
+### The GPU stack boots — 2026-09-19
+
+A fifth gated run, `results/boot/gpu-stack-20260918T231943Z`:
+
+| Run | Set | systemd | failed units | probes |
+|---|---|---|---:|---|
+| gpu | `base nvidia-driver-535 cuda-runtime` | running | 0 | both PASS |
+
+198 s, tier-1 admitted, `dpkg --audit` clean, and both module probes executed
+**inside the running guest** rather than in a chroot. The guest's own kernel log
+reports `Linux version 5.15.0-185-generic … (Ubuntu 5.15.0-185.195-generic)`,
+which is the same ABI package version as the `vermagic` baked into the five
+`.ko` files and as `linux-objects-nvidia-535-5.15.0-185-generic` recorded
+beside it in the same `result.json`. The cross-layer match is now evidence
+rather than an assumption.
+
+**What this is not.** There is no GPU in the guest and none on the host, so
+nothing here shows that any module loads, that `nvidia-smi` finds a device, or
+that CUDA computes. The claim is that a composed system carrying a real 680 MB
+CUDA runtime and a real NVIDIA driver module boots under UEFI and systemd,
+reaches a running state with no failed units, and satisfies both structural
+probes from inside it.
+
+**The resolved kernel ABI is now recorded.** `11_boot_test.sh` installs
+`linux-image-generic` at pack time; until 2026-09-19 it resolved the concrete
+kernel, logged it and discarded it, which STATE_OF_PLAY §7.9 correctly named as
+the CUDA blocker. The pack step now writes `kernel.json` into the run bundle —
+resolved ABI, ABI package and version, meta version, `vmlinuz` sha256,
+snapshot/suite/arch, the kernel package map, and the measured `/lib` layout —
+and `finish()` folds it into `result.json` on every exit path, recording `null`
+for a run that died before the kernel install. The meta version
+(`5.15.0.185.166`) is deliberately not treated as the ABI: the strings that
+matter are `5.15.0-185-generic` and `5.15.0-185.195`, and they are different
+again.
 
 ## 10. Future Work
 
