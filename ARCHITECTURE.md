@@ -370,6 +370,16 @@ cheaper**. Both cheap tiers are linear in N, re-measured 2026-09-17 over 152
 compositions spanning the full admissible range N=2…36:
 
     tier 2:  total = 148 ms + 19.9 ms × N     (R² = 0.954, 152 compositions)
+
+> **What that measures, precisely.** `total_ms` is exactly
+> `mount_ms + reconcile_ms` — checked across all 152 rows, maximum
+> difference 0 ms. It is the cost of COMPOSING, and verification is not in
+> it, so the row label "Compose + verify" above overstates what the number
+> covers. Re-measured on 2026-09-18 after V7 was hardened from a name check
+> into a `(kind, size)` check: the model is unmoved at 146.0 + 19.96 N
+> (R² = 0.959), because V7's cost falls entirely outside it. The sweep's
+> WALL CLOCK did move, 3 m 13 s → 3 m 54 s for the same 152 compositions.
+> Verification cost is real and currently unmeasured.
     tier 1:  total = 101 ms +  9.6 ms × N     (R² = 0.854, 152 checks)
 
 A quadratic term adds **nothing** (−0.003 N², R² gain 0.0000), so the linear

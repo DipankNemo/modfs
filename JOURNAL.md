@@ -1890,3 +1890,34 @@ Evaluation chapters — do not skip it.
   numeric file ownership, an alternatives demotion by a module owning no files,
   and tier 2's blindness to class-2 skew. V7 was first because it was the one
   whose shipped claim was stronger than its code.
+
+## 2026-09-18 (hardened V7 on the real catalogue: clean, and the cost model was never measuring it)
+- Re-ran the full sweep with the hardened V7. 152 compositions, 152 PASS,
+  vis_ok=1 on every one, ZERO findings.
+- That is the result that matters, and it is worth stating why: a STRICTER check
+  stayed green. V7 v1 passing meant "the right names are present"; V7 v2 passing
+  means "every path holds a file some layer actually shipped, and no layer
+  disagrees with another about whether a path is a symlink or a directory". The
+  catalogue is clean under the stronger definition, not merely the weaker one.
+  It also means the hardening produces no false positives on 152 real
+  compositions, which is the risk a stricter check carries.
+- COST MODEL UNMOVED, and the reason is a finding in itself:
+        total = 146.0 + 19.96 N   R2=0.959   (was 147.7 + 19.92 N, R2=0.954)
+  Well inside run-to-run noise. But it did not move because IT WAS NEVER
+  MEASURING V7. Checked directly: total_ms equals mount_ms + reconcile_ms
+  exactly, maximum difference 0 ms across all 152 rows. The published tier-2
+  model is the cost of COMPOSING. Section 6's table labels that row
+  "Compose + verify", which overstates what the number covers.
+- THE COST IS REAL AND SITS OUTSIDE THE MODEL. Sweep wall clock went
+  3 m 13 s -> 3 m 54 s for the same 152 compositions, about 270 ms per
+  composition, which is roughly double the modelled composition cost at low N.
+  V7 now stats every regular file where it previously listed directories. That
+  is the price of the check being correct, and it is worth paying, but the
+  thesis should not quote 148 + 19.9 N as the cost of tier 2 while tier 2 as
+  actually run includes a verification step that is not in the number.
+- Annotated section 7 rather than restating the model, because the model is
+  right about what it measures; it is the LABEL that was wrong.
+- Remaining from the attack session, untouched and honestly open: debconf
+  content loss, class 4 flipped by a bare Replaces, class 7 defeated by an
+  understating manifest and by numeric file ownership, an alternatives demotion
+  by a module owning no files, and tier 2's blindness to class-2 skew.
