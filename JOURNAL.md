@@ -2884,3 +2884,21 @@ direction only, and every finding in this round is in the negative one.
   definition/coverage change, not an added account or an artefact modification.
 - Evidence: codex-fixes-20260918/H4-{before,after,real}.log. Published CSVs have
   not yet been overwritten; the final evaluation will report this count change.
+
+## 2026-09-18 (independent-review corrections M1: preserve manual requests)
+- extended_states now makes manual installation in any layer prevail over
+  automatic installation in another. Manual state is inferred from complete
+  dpkg status minus automatic flags, not from positive automatic stanzas alone.
+  Missing delta extended_states inherits base flags; an empty final result is
+  written explicitly so stale automatic flags cannot survive.
+- Measured an input detail before implementing: mysql has five automatic
+  records with APT Architecture=amd64 but dpkg Architecture=all. Flags therefore
+  match by package name in this project's single-architecture scope, retaining
+  APT's original architecture when writing. No multiarch claim is added.
+- Added 5 extended-state tests: BEFORE 2 fail, 3 controls pass; AFTER 5/5 pass.
+  Cases cover both sibling orders, auto-only packages, inherited flags, arch=all
+  and clearing stale state. Existing suites: V7 4/4; round2 11/11. Compile passed.
+- Real base+rsync+mysql still tier-2 PASS; showauto rsync is empty, showmanual
+  lists rsync, and apt-get -s autoremove mariadb-server no longer lists Remv
+  rsync. No package transaction was performed. Evidence: M1-{before,after,real}
+  logs under /srv/modfs/build/codex-fixes-20260918.
