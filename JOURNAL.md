@@ -2018,3 +2018,43 @@ Evaluation chapters — do not skip it.
   field in one script and consumed it in another without once running the pair
   together on real data. Both times the fixture passed and the catalogue broke.
   A fixture proves the logic; only real data proves the INTERFACE.
+
+## 2026-09-18 (the fifth: debconf is a registry, and it merges)
+- FN-1 FIXED. The debconf databases were the SIXTH diverging registry and were
+  missed for exactly the reason the account databases were: not package-owned, so
+  class 4 never sees them, and OverlayFS takes the top layer's copy ENTIRE.
+  Reproduced with real modules and no fixtures: base 14 151 B, postgres 25 180 B,
+  java 14 470 B, all three different, merged byte-identical to java's. Every
+  postgres debconf answer gone, every checker green.
+- I had assumed this needed detection rather than merging, on the grounds that
+  config.dat is an opaque format and a bad merge corrupts configuration instead
+  of losing it. THAT ASSUMPTION WAS WRONG and checking took one command:
+        Name: adduser/homedir-permission
+        Template: adduser/homedir-permission
+        Value: false
+        Owners: adduser
+  It is stanza-formatted, one record per debconf question keyed by Name, the same
+  shape as dpkg status and /etc/passwd. templates.dat is the same and escapes
+  long text's newlines as literal \n, so the existing stanzas() parser handles
+  both. Detection would have rejected 231 of 666 pairs for a registry that
+  unions cleanly.
+- merge_debconf() unions records by Name across config.dat, templates.dat and
+  passwords.dat, unions the comma-separated Owners list, and treats ANY other
+  field disagreeing between layers as a conflict -- two modules answering the
+  same question differently is a real conflict and is now reported rather than
+  resolved in silence. Modes are preserved (passwords.dat is 0600).
+- Fixture, shaped like the real postgres/java case: three records in, three
+  records out, Owners merged to "postgres, java", and the one genuine
+  disagreement reported. Before this the whole of one layer's database vanished.
+- INTERFACE BUG CAUGHT BEFORE IT SHIPPED, which is the first time this week I
+  have caught one of these BEFORE running it rather than after. reconcile now
+  WRITES config.dat and templates.dat, so the merged copies deliberately match no
+  single layer -- and V7 compares merged content against the layers, so it would
+  have reported ALTERED on every single composition. Added them to V7's
+  RECONCILED exemption alongside dpkg status and the account files. V7's four
+  regression cases still 4/4.
+- ALL FIVE of the attack session's remaining false negatives are now closed.
+  What remains is FN-4a, which is not a bug but a structural statement: nothing
+  binds a manifest to the artefact it describes, so every tier-1 verdict trusts a
+  document. Recording numeric file owners narrowed it -- those come from the tree
+  -- but the gap is real and belongs in the thesis as a limitation.

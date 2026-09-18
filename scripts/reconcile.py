@@ -198,6 +198,100 @@ ACCOUNT_FILES = [
     ('etc/subgid',  3, None, ()),
 ]
 
+# ------------------------------------------------------------------- debconf
+# The SIXTH diverging registry, and it was missed for the same reason the
+# account databases were: it is not package-owned, so class 4 never sees it, and
+# OverlayFS takes the top layer's copy ENTIRE. Reproduced 2026-09-17 with real
+# modules and no fixtures: base 14 151 B, postgres 25 180 B, java 14 470 B, all
+# three different, merged byte-identical to java's. postgres' debconf answers
+# were simply gone and every checker was green.
+#
+# It merges for the same reason /etc/passwd does: config.dat and templates.dat
+# are stanza-formatted, one record per debconf question keyed by `Name`, with
+# single-line fields (long text escapes its newlines as literal \n). Owners is a
+# comma-separated list and unions. Any OTHER field disagreeing between layers is
+# a real conflict -- two modules answering the same question differently -- and
+# is reported rather than resolved silently.
+DEBCONF_FILES = ['var/cache/debconf/config.dat',
+                 'var/cache/debconf/templates.dat',
+                 'var/cache/debconf/passwords.dat']
+
+def _stanza_fields(text):
+    """Ordered field list for one stanza. Continuation lines belong to the
+    field above them, which matters for templates.dat's Description."""
+    out = []
+    for line in text.split('\n'):
+        if not line.strip():
+            continue
+        if line[:1] in (' ', '\t') and out:
+            out[-1] = (out[-1][0], out[-1][1] + '\n' + line)
+            continue
+        k, sep, v = line.partition(':')
+        if sep:
+            out.append((k.strip(), v.strip()))
+        elif out:
+            out[-1] = (out[-1][0], out[-1][1] + '\n' + line)
+    return out
+
+def merge_debconf(layers, merged):
+    summary, problems = {}, []
+    for rel in DEBCONF_FILES:
+        records, order, src_stat, present = {}, [], None, False
+        for name, root in layers:
+            path = os.path.join(root, rel)
+            text = read(path)
+            if text is None:
+                continue
+            present = True
+            try:
+                src_stat = os.stat(path)
+            except OSError:
+                pass
+            for st in stanzas(text):
+                fields = _stanza_fields(st)
+                key = dict(fields).get('Name')
+                if not key:
+                    continue
+                if key not in records:
+                    records[key] = (fields, name); order.append(key)
+                    continue
+                prev, prev_from = records[key]
+                prev_d, cur_d = dict(prev), dict(fields)
+                out = []
+                for k, v in prev:
+                    if k == 'Owners':
+                        union = [o for o in
+                                 dict.fromkeys([x.strip() for x in
+                                                (v + ',' + cur_d.get('Owners', '')).split(',')])
+                                 if o]
+                        out.append((k, ', '.join(union)))
+                    elif k in cur_d and cur_d[k] != v:
+                        problems.append("debconf: %s '%s' is %r in %s and %r in %s"
+                                        % (rel.split('/')[-1], key, v, prev_from,
+                                           cur_d[k], name))
+                        out.append((k, cur_d[k]))
+                    else:
+                        out.append((k, v))
+                for k, v in fields:
+                    if k not in prev_d:
+                        out.append((k, v))
+                records[key] = (out, prev_from)
+        if not present:
+            continue
+        body = '\n\n'.join('\n'.join('%s: %s' % kv for kv in records[k][0])
+                           for k in order)
+        out_path = os.path.join(merged, rel)
+        write(out_path, body + '\n')
+        if src_stat is not None:
+            try:
+                os.chmod(out_path, stat.S_IMODE(src_stat.st_mode))
+                os.chown(out_path, src_stat.st_uid, src_stat.st_gid)
+            except OSError as exc:
+                problems.append("%s: cannot restore mode/owner (%s)" % (rel, exc))
+        summary[rel.split('/')[-1]] = len(order)
+    return summary, problems
+
+
 def merge_accounts(layers, merged):
     summary, problems = {}, []
     for rel, nfields, key_at, member_at in ACCOUNT_FILES:
@@ -353,6 +447,14 @@ def main(argv):
     for pr in acc_problems:
         print("      PROBLEM %s" % pr)
     problems.extend(acc_problems)
+
+    dbc, dbc_problems = merge_debconf(layers, merged)
+    if dbc:
+        print("  debconf            : %s"
+              % ', '.join("%s %d" % (k, v) for k, v in sorted(dbc.items())))
+    for pr in dbc_problems:
+        print("      PROBLEM %s" % pr)
+    problems.extend(dbc_problems)
 
     print("  diversions         : %d" % merge_diversions(layers, merged))
     print("  extended_states    : %d" % merge_extended_states(layers, merged))

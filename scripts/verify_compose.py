@@ -202,7 +202,12 @@ def main(argv):
                   'etc/subuid', 'etc/subgid', 'etc/ld.so.cache',
                   'var/lib/dpkg/status', 'var/lib/dpkg/status-old',
                   'var/lib/dpkg/diversions', 'var/lib/apt/extended_states',
-                  'var/cache/ldconfig/aux-cache'}
+                  'var/cache/ldconfig/aux-cache',
+                  # reconcile.py merges the debconf databases as of 2026-09-18,
+                  # so the merged copies deliberately match no single layer.
+                  'var/cache/debconf/config.dat',
+                  'var/cache/debconf/templates.dat',
+                  'var/cache/debconf/passwords.dat'}
     RECONCILED_PREFIX = ('var/lib/dpkg/alternatives/', 'etc/alternatives/')
 
     def vis_scan(root):
