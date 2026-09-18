@@ -3080,3 +3080,70 @@ direction only, and every finding in this round is in the negative one.
 - Column width verified live rather than by reading: header 24 fields, emitted
   row 24 fields, one real composition, exit 0. That check exists because adding
   columns without it has now broken this CSV twice.
+
+## 2026-09-19 (precondition: is the build path reproducible? Yes -- rebuilt and compared)
+
+- CONTEXT. Everything downstream of `08_build_catalogue.sh` reads artefacts
+  nobody had ever rebuilt and compared. Three review passes assumed the
+  artefacts were correct; ARCHITECTURE section 8 claims byte reproducibility and
+  says it took four fixes, but its evidence is a table of three hashes from
+  **2026-08-22**, explicitly labelled historical and explicitly NOT a statement
+  about the current generation. Before adding the largest modules the catalogue
+  will ever hold, that claim had to be tested rather than inherited.
+- BASELINE FIRST. The three artefacts were preserved before anything was
+  overwritten, together with all seven of `logs/*.csv`, under
+  `/srv/modfs/results/gpu-2026-09-19/{repro-before,logs-before}/`. The on-disk
+  `.sqsh` already matched the `sha256` in its own manifest for all three, so the
+  comparison starts from a consistent state rather than a drifted one.
+- METHOD. `sudo ./scripts/08_build_catalogue.sh --force --only <name>` for curl,
+  jq and zstd. `--force` reaches `02_build_delta.sh`, which `rm -rf`s the
+  upperdir, re-mounts base, re-runs `apt-get update` and `apt-get install`
+  against the pinned snapshot, and re-squashes. This is a real rebuild, not a
+  skip: build logs record apt resolving and unpacking 10 packages for curl, and
+  the `.upper` trees and `.sqsh` files carry fresh mtimes.
+- RESULT -- the claim holds, and holds across a 2-day gap:
+
+      module  before (17 Sep)   after (19 Sep)    manifest         verdict
+      curl    3d354340071af55a  3d354340071af55a  3d354340071af55a IDENTICAL
+      jq      883d7420d147e7ff  883d7420d147e7ff  883d7420d147e7ff IDENTICAL
+      zstd    a04083d454151b44  a04083d454151b44  a04083d454151b44 IDENTICAL
+
+  Sizes identical to the byte (1 638 400 / 565 248 / 864 256). `cmp` agrees with
+  sha256 on all three.
+- THE ARTEFACT IS NOT ONLY THE .sqsh, so the class-4 sidecars were compared too,
+  and they reproduce **both compressed and uncompressed** -- zstd's own output
+  is deterministic here, which was not guaranteed and is now measured.
+- SOURCES OF DIFFERENCE: exactly one, and it is benign. `<name>.json` differs on
+  a single line, `built`, which records wall-clock build time and is the one
+  field that SHOULD move. It is deliberately absent from `manifest_binding.py`'s
+  `BIND_FIELDS`, so `binding.fields_sha256` did not move and the seal survives a
+  rebuild. Every other field in all three manifests is byte-identical, including
+  the whole `binding` block. There is no second source of difference to classify.
+- CORROBORATION: `12_verify_binding.sh` over the whole catalogue afterwards --
+  **39 matched, 0 mismatched**, 39 artefacts matching the digest their manifest
+  records, in 12.3 s. The rebuild did not desynchronise anything downstream.
+- WHAT THIS DOES AND DOES NOT LICENCE. It licences: the four fixes of section 8
+  (pinned mkfs/file times, excluded logs and aux-cache, stripped overlay
+  uuid/origin, emptied machine-id) still hold on the CURRENT generation, on this
+  host, two days later, so artefact bytes do not move with the wall clock. It
+  does NOT licence cross-host reproducibility, which ARCHITECTURE already calls
+  untested and which this run cannot address with one machine. It also does not
+  licence anything about LARGE modules: curl, jq and zstd are 0.5-1.6 MB and run
+  almost no maintainer-script logic. That gap is closed directly below rather
+  than argued -- the nvidia driver module is built twice on purpose.
+- CONSEQUENCE: the precondition is met and the GPU work proceeds on a build path
+  that has now been attacked instead of assumed.
+
+- SEPARATELY, A FALSE PREMISE IN THE TASK BRIEF, recorded because a thesis
+  should not cite a measurement that does not exist. The brief asks that the
+  "kernel feasibility spike of 17 September, which measured all the package
+  sizes" be read and its figures checked. **There is no such entry.** Neither
+  JOURNAL.md (this branch or main), nor ARCHITECTURE.md, nor any file in docs/
+  contains the strings `433`, `1313`, `linux-objects` or `nvidia-utils`, and
+  there is no 17 September entry about kernels or package sizing. The only
+  standing statement on the subject is STATE_OF_PLAY section 7 item 9, "CUDA/
+  TensorFlow: costed, not built" -- which asserts a costing without recording
+  one. The figures quoted in the brief (~105 MB driver, ~433 MB CUDA runtime,
+  ~1313 MB full toolkit, 46% headers) are therefore treated here as UNVERIFIED
+  ESTIMATES with no provenance, and are measured from the snapshot below rather
+  than reused.
