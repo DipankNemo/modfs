@@ -138,7 +138,28 @@ def merge_alternatives(layers, merged):
                 if sname not in have:
                     e['slaves'].append((sname, slink)); have.add(sname)
             for path, prio, smap in alts:
-                e['alts'][path] = (prio, smap)      # later layer wins
+                # PRIORITY DISAGREEMENT IS A CONFLICT, not a merge. This was
+                # `e['alts'][path] = (prio, smap)` -- later layer wins, silently.
+                # Reproduced 2026-09-17: a module owning ZERO paths, shipping
+                # nothing but an alternatives registry entry, re-declared another
+                # module's candidate at priority 1 and changed which binary
+                # /usr/bin/<link> resolves to. Tier 1 ACCEPTed, tier 2 PASSed,
+                # alt_bad=0. V3's invariant is "no group is short a candidate",
+                # which says nothing about WHICH candidate wins. In the real
+                # catalogue the exposed groups are `editor` (vim/emacs) and
+                # `awk` (gawk/original-awk).
+                if path in e['alts']:
+                    had = e['alts'][path][0]
+                    if str(had or 0) != str(prio or 0):
+                        problems.append(
+                            "%s: candidate %s declared at priority %s by %s and %s by %s"
+                            % (g, os.path.basename(path), had,
+                               '+'.join(e['from']) or '?', prio, name))
+                        # Keep the HIGHER priority rather than the later layer, so
+                        # a demotion cannot take effect merely by layer order.
+                        if int(prio or 0) < int(had or 0):
+                            continue
+                e['alts'][path] = (prio, smap)
             if name not in e['from']: e['from'].append(name)
 
     for g, e in groups.items():

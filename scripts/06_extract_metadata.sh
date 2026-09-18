@@ -361,10 +361,29 @@ users = {n: {'uid': v['uid'], 'gid': v['gid']}
 groups = {n: {'gid': v['gid'],
               'members': [x for x in v['members'].split(',') if x]}
           for n, v in own_g.items() if n not in par_g}
+# FILE OWNERS, as NUMBERS. Class 7 compares account RECORDS, but ownership on
+# disk is a number, and until now nothing looked at the numeric owners of the
+# files a module actually ships. Reproduced 2026-09-17 WITHOUT any forged
+# manifest: a module that allocates no account at all, but ships a file owned by
+# uid 2500 -- the way a tarball or a pip install preserving ownership does --
+# silently takes on another module's identity in the composed system, and its
+# empty `accounts` block is entirely truthful. Recording the numbers is what
+# lets class 7 compare what is ON DISK rather than only what was DECLARED.
+file_ids = {'uids': set(), 'gids': set()}
+for _dp, _dn, _fn in os.walk(tree):
+    for _n in _dn + _fn:
+        try:
+            _st = os.lstat(os.path.join(_dp, _n))
+        except OSError:
+            continue
+        file_ids['uids'].add(_st.st_uid); file_ids['gids'].add(_st.st_gid)
+
 accounts = {'users': dict(sorted(users.items())),
             'groups': dict(sorted(groups.items())),
             'shadow': sorted(own_sh - par_sh),
-            'gshadow': sorted(own_gsh - par_gsh)}
+            'gshadow': sorted(own_gsh - par_gsh),
+            'file_uids': sorted(file_ids['uids']),
+            'file_gids': sorted(file_ids['gids'])}
 
 # ---- post-build identity audit ------------------------------------------
 # Prevention is not proof. Every account the module created must be either a

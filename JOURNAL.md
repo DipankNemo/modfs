@@ -1953,3 +1953,37 @@ Evaluation chapters — do not skip it.
   it declares Conflicts both ways via the virtual mail-transport-agent. It still
   suppresses. No verdict in the catalogue changes; only the synthetic bare-
   Replaces attack is now caught.
+
+## 2026-09-18 (closing the attack findings, 2 of 2: alternatives priority, numeric ownership)
+- FN-5 FIXED. merge_alternatives did `e['alts'][path] = (prio, smap)` -- later
+  layer wins, no comparison. A module owning ZERO paths, shipping nothing but an
+  alternatives registry entry, re-declared another module's candidate at priority
+  1 and changed which binary the link resolves to. Tier 1 ACCEPT, tier 2 PASS,
+  alt_bad=0, because V3's invariant is "no group is short a candidate" and says
+  nothing about WHICH candidate wins.
+  Now: a priority disagreement on the same candidate is a `problem`, AND the
+  HIGHER priority is kept rather than the later layer, so a demotion cannot take
+  effect merely through layer order. Fixture: p1 offers ed-a(100)/ed-b(50), p2
+  owns no files and re-declares ed-a(1) -> problem reported, ed-a still wins.
+  SAFETY CHECK ON THE REAL CATALOGUE: scanned all 68 alternatives groups across
+  38 artefacts for a candidate declared at differing priorities by two modules.
+  ZERO. No false positives; the exposed groups (editor, awk) declare distinct
+  candidates, not competing priorities for the same one.
+- FN-4b FIXED, subject to a metadata refresh. Class 7 compared account RECORDS,
+  but ownership on disk is a NUMBER. A module that allocates nothing and ships a
+  file owned by uid 2500 -- what a tarball, or a pip install preserving
+  ownership, produces -- takes on another module's identity in the composed
+  system, and its empty `accounts` block is entirely TRUTHFUL. No forgery needed.
+  06 now records `file_uids`/`file_gids`, the numeric owners of everything the
+  module ships, and class 7 requires every one to resolve either to a base
+  account or to an account the module itself declares.
+  Manifests predating the field are reported as NOT CHECKED rather than passed,
+  which is the rule the rest of this checker already follows. Activating it needs
+  `08_build_catalogue.sh --refresh-metadata`.
+- STILL OPEN, and deliberately: FN-1 debconf content loss (config.dat is a
+  custom binary-ish format; merging it is real work, and detection may be the
+  better answer), and FN-4a, a manifest that understates its artefact. 4a is the
+  structural one -- nothing binds a manifest to the artefact it describes, so
+  every tier-1 verdict trusts a document. Recording file owners narrows it,
+  because those numbers are now derived from the tree rather than declared, but
+  it does not close it.

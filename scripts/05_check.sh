@@ -536,6 +536,47 @@ else:
                   % (kind, i, len(names),
                      ', '.join("%s (%s)" % (n, '+'.join(ms)) for n, ms in sorted(names.items()))))
 
+    # FILE OWNERSHIP IS A NUMBER, and until 2026-09-18 nothing compared the
+    # numbers. The checks above compare declared RECORDS, so a module that
+    # allocates nothing and simply ships a file owned by uid 2500 -- exactly what
+    # a tarball or a pip install preserving ownership produces -- passed with an
+    # `accounts` block that was entirely truthful. In the composed system that
+    # file then belongs to whichever module DID allocate 2500. Reproduced with no
+    # forged manifest at all.
+    #
+    # Rule: every numeric owner of a file a module ships must resolve to an
+    # account base provides or one the module itself declares. Anything else is
+    # an identity the module is borrowing without saying so.
+    base_uids = {r['uid'] for r in ((base_doc.get('accounts') or {}).get('users') or {}).values()}
+    base_gids = {r['gid'] for r in ((base_doc.get('accounts') or {}).get('groups') or {}).values()}
+    unowned = 0
+    for m in modules:
+        d = docs.get(m) or {}
+        acc = d.get('accounts') or {}
+        if 'file_uids' not in acc:
+            continue                      # manifest predates this field; see below
+        own_u = {r['uid'] for r in (acc.get('users') or {}).values()} | base_uids | {0}
+        own_g = {r['gid'] for r in (acc.get('groups') or {}).values()} | base_gids | {0}
+        for kind, seen, known in (('uid', acc.get('file_uids') or [], own_u),
+                                  ('gid', acc.get('file_gids') or [], own_g)):
+            for i in seen:
+                if i in known: continue
+                unowned += 1; ERRORS += 1
+                claimant = [o for o in modules if o != m
+                            and i in {r[kind] for r in
+                                      ((docs.get(o) or {}).get('accounts') or {}).get(
+                                          'users' if kind == 'uid' else 'groups', {}).values()}]
+                print("    IDENTITY BORROWED %s ships files owned by %s %s, which it "
+                      "never allocated%s" % (m, kind, i,
+                      " -- %s allocated it" % '+'.join(claimant) if claimant else ""))
+    if not any('file_uids' in ((docs.get(m) or {}).get('accounts') or {}) for m in modules):
+        WARNINGS += 1
+        WARN_REASONS.append("numeric file ownership not checked (manifests predate it)")
+        print("    numeric file ownership NOT checked -- no manifest records it;"
+              " regenerate with 08_build_catalogue.sh --refresh-metadata")
+    elif not unowned:
+        print("    every file owner resolves to base or to the module's own accounts  [OK]")
+
     # Every identity a unit names must exist somewhere in the merged view. A
     # name that resolves nowhere fails at service start, not at compose time.
     unresolved = 0
