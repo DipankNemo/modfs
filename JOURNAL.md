@@ -2058,3 +2058,31 @@ Evaluation chapters — do not skip it.
   binds a manifest to the artefact it describes, so every tier-1 verdict trusts a
   document. Recording numeric file owners narrowed it -- those come from the tree
   -- but the gap is real and belongs in the thesis as a limitation.
+
+## 2026-09-18 (debconf reconciliation on the real catalogue: clean, and it costs)
+- Full sweep with debconf merging live: 152 compositions, 152 PASS, vis_ok=1 on
+  every one, zero failing columns. The V7 exemption was right -- no composition
+  reports ALTERED on a debconf path.
+- AND NO COMPOSITION REPORTED A DEBCONF CONFLICT, which is worth stating because
+  it is an inference, not a hope: a debconf disagreement becomes a `problem`,
+  reconcile then returns 2, and the sweep records RECONCILE_FAIL. All 152 are
+  PASS, so in the real catalogue no two modules answer the same debconf question
+  differently. The merge is therefore pure recovery -- records that used to be
+  discarded are now kept, and nothing had to be arbitrated.
+- THE COST IS REAL AND THE PUBLISHED SLOPE CHANGES:
+        total      148 + 19.9 N  ->  148 + 27.2 N      (+31 % per module)
+        reconcile  127.7 + 12.90 N -> 131.7 + 19.47 N  (+51 % on the slope)
+        mount       18.3 +  7.06 N ->  16.6 +  7.73 N  (unchanged in substance)
+  All of it is reconciliation, and the cause is SIZE rather than algorithm:
+  templates.dat is 519 435 B per layer, so a 36-module composition parses and
+  re-renders roughly 18 MB of stanza text. At the ceiling that is about 1.1 s
+  against 0.85 s. Updated section 7 in both places rather than leaving the old
+  number standing next to new behaviour.
+- Worth saying plainly in the Evaluation: this is what a correctness fix costs.
+  The alternative was rejecting 231 of 666 pairs, or continuing to discard one
+  layer's database in silence. 7 ms per module is the price of neither.
+- An optimisation exists and is NOT taken: templates.dat is largely identical
+  across layers, being base's copy plus each module's additions, so the merge
+  re-renders a great deal of text that never changed. Skipping records present in
+  only one layer would recover most of it. That is performance work, it is not
+  needed at N=36, and it would be premature to complicate the merge for it.

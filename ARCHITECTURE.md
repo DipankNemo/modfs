@@ -369,7 +369,7 @@ was assumed to cost ~10 s per composition; it costs 181 ms at N=2 — **55×
 cheaper**. Both cheap tiers are linear in N, re-measured 2026-09-17 over 152
 compositions spanning the full admissible range N=2…36:
 
-    tier 2:  total = 148 ms + 19.9 ms × N     (R² = 0.954, 152 compositions)
+    tier 2:  total = 148 ms + 27.2 ms × N     (152 compositions, 2026-09-18)
 
 > **What that measures, precisely.** `total_ms` is exactly
 > `mount_ms + reconcile_ms` — checked across all 152 rows, maximum
@@ -380,6 +380,16 @@ compositions spanning the full admissible range N=2…36:
 > (R² = 0.959), because V7's cost falls entirely outside it. The sweep's
 > WALL CLOCK did move, 3 m 13 s → 3 m 54 s for the same 152 compositions.
 > Verification cost is real and currently unmeasured.
+>
+> **Re-measured 2026-09-18, and the slope moved.** Adding debconf to the
+> reconciled registries took the per-module term from 19.9 to 27.2 ms, a
+> 31 % rise, and all of it is reconciliation: `12.90 N → 19.47 N`, while
+> mount barely moved (`7.06 N → 7.73 N`). The cause is size, not
+> algorithm — `templates.dat` is 519 KB per layer, so a 36-module
+> composition parses and re-renders about 18 MB of stanza text. At the
+> ceiling that is ~1.1 s against ~0.85 s before. It is the price of not
+> silently discarding a layer's debconf database, and it is worth paying,
+> but it is a real cost and the published slope changes with it.
     tier 1:  total = 101 ms +  9.6 ms × N     (R² = 0.854, 152 checks)
 
 A quadratic term adds **nothing** (−0.003 N², R² gain 0.0000), so the linear
@@ -687,7 +697,7 @@ range. (The most recent run before this one, still using the uniform sampler,
 composed 81 of its 96 planned sets and reached only N=20.) Over 152
 compositions reaching N=36:
 
-    total = 148 ms + 19.9 ms × N        (R² = 0.954, 152 compositions)
+    total = 148 ms + 27.2 ms × N        (152 compositions, 2026-09-18)
 
 The **slope survives** — 18.8 → 19.9 ms per module, +6 % — so the old
 measurement's shape was right. The intercept moves 115 → 148 ms, +29 %, and
