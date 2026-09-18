@@ -6,7 +6,10 @@ becomes the Implementation and Evaluation chapters.
 
 ## Deadlines
 - Submission: **29 September 2026**
-- Code freeze: **2 September 2026** — refuse new features after this date.
+- No code freeze. Dipanker lifted it on 18 September 2026 and owns the risk.
+  Judge a change on whether it earns its keep before 29 September, not on a
+  date. Still say plainly when something is a new feature rather than a fix,
+  and what it puts at risk — then build it if asked.
 
 ## How to work with me
 - Explain the concept before implementing. I want the "why", with analogies.

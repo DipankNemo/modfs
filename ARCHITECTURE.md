@@ -1,7 +1,7 @@
 # ARCHITECTURE
 
 Modular, updatable filesystem for Bare Metal as a Service.
-BSc thesis. Submission **29 September 2026**. Code freeze **2 September 2026**.
+BSc thesis. Submission **29 September 2026**. (Code freeze of 2 September 2026 lifted on 18 September.)
 
 Scope: Ubuntu 22.04 (jammy), APT/dpkg, x86-64.
 
