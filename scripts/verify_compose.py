@@ -10,7 +10,7 @@ and a count-only check would pass a composition that silently swapped a package
 for another. The caller has already collected what the composed system reports
 into <work>/actual.pkgs, actual.ld and audit.txt from inside the chroot.
 """
-import os, subprocess, sys
+import os, stat, subprocess, sys
 
 def arg(argv, name, default=None):
     return argv[argv.index(name) + 1] if name in argv else default
@@ -74,7 +74,15 @@ def main(argv):
                       & {n for n, v in (expected - actual)}) if versioned else []
 
     # ---- V3: every alternatives group holds every candidate offered -------
-    want = {}
+    # NAMED alt_want, not `want`. It used to be `want`, and BOTH V6's loop
+    # variable (`for rel, want in acct_expected.items()`) and a local inside
+    # V7's ALTERED branch rebound it before the CSV was printed at the bottom.
+    # The column labelled `alt_groups` therefore reported the number of
+    # /etc/gshadow records: 42 for `base nc-traditional rust`, which has 10
+    # alternatives groups. `alt_groups_bad` was computed here, before the
+    # rebinding, so the VERDICT was always right and only the count was wrong --
+    # but the count is published in ARCHITECTURE section 7's tier-2 table.
+    alt_want = {}
     for _, root in layers:
         d = os.path.join(root, 'var/lib/dpkg/alternatives')
         if not os.path.isdir(d): continue
@@ -83,7 +91,7 @@ def main(argv):
                 _, _, _, alts = parse_alt(read(os.path.join(d, g)) or '')
             except Exception:
                 continue
-            want.setdefault(g, set()).update(p for p, _, _ in alts)
+            alt_want.setdefault(g, set()).update(p for p, _, _ in alts)
     got = {}
     md = os.path.join(merged, 'var/lib/dpkg/alternatives')
     if os.path.isdir(md):
@@ -93,7 +101,8 @@ def main(argv):
             except Exception:
                 continue
             got[g] = {p for p, _, _ in alts}
-    alt_bad = sorted(g for g, cands in want.items() if not cands <= got.get(g, set()))
+    alt_bad = sorted(g for g, cands in alt_want.items()
+                     if not cands <= got.get(g, set()))
 
     # ---- V4: linker cache is the union of the layers' caches --------------
     ld_expected = set()
@@ -149,12 +158,12 @@ def main(argv):
                         new[mi] = ','.join(mem)
                 tgt[k] = new
     got = accounts(merged)
-    for rel, want in acct_expected.items():
-        missing = sorted(set(want) - set(got.get(rel, {})))
+    for rel, acct_want in acct_expected.items():
+        missing = sorted(set(acct_want) - set(got.get(rel, {})))
         if missing:
             acct_bad.append("%s missing %d: %s" % (rel, len(missing), ', '.join(missing[:6])))
             continue
-        for k, f in want.items():
+        for k, f in acct_want.items():
             g = got[rel][k]
             # identity fields only: gecos/home/shell may legitimately differ
             id_fields = (2, 3) if rel == 'etc/passwd' else ((2,) if rel == 'etc/group' else ())
@@ -171,6 +180,40 @@ def main(argv):
                                         % (rel, k, ','.join(sorted(wm - gm))))
     acct_ok = not acct_bad
     n_acct = sum(len(v) for v in acct_expected.values())
+
+    # ---- V8: every debconf question any layer answered survives the merge --
+    # The debconf databases became the sixth reconciled registry on 2026-09-18.
+    # The account databases got V6 when they were added; debconf got NOTHING --
+    # it was added to reconcile.py and, on the same day, added to V7's
+    # RECONCILED exemption list so that V7 would stop reporting the merged copy
+    # as ALTERED. Between those two changes the newest and least-tested merge in
+    # the project became the only one with no verification at all, and a merged
+    # templates.dat truncated to zero bytes passed every column.
+    #
+    # Same invariant as V6, by record rather than by count. Cheap on purpose:
+    # `Name:` starts a record in this format and appears nowhere else (checked
+    # across all 39 artefact trees -- 74 `Name:` lines, 74 blank lines, 74
+    # parsed stanzas in every one), so this is a line scan, not a second parse.
+    DEBCONF = ('var/cache/debconf/config.dat',
+               'var/cache/debconf/templates.dat',
+               'var/cache/debconf/passwords.dat')
+    def dbc_names(root, rel):
+        return {l[6:] for l in (read(os.path.join(root, rel)) or '').split('\n')
+                if l.startswith('Name: ')}
+    dbc_bad, n_dbc = [], 0
+    for rel in DEBCONF:
+        want_n = set()
+        for _, root in layers:
+            want_n |= dbc_names(root, rel)
+        if not want_n:
+            continue
+        n_dbc += len(want_n)
+        lost = sorted(want_n - dbc_names(merged, rel))
+        if lost:
+            dbc_bad.append("%s lost %d of %d: %s"
+                           % (rel.split('/')[-1], len(lost), len(want_n),
+                              ', '.join(lost[:6])))
+    dbc_ok = not dbc_bad
 
     # ---- V5 ---------------------------------------------------------------
     audit_ok = not (read(os.path.join(work, 'audit.txt')) or '').strip()
@@ -232,7 +275,18 @@ def main(argv):
                     elif e.is_file(follow_symlinks=False):
                         out[r] = ('f', e.stat(follow_symlinks=False).st_size)
                     else:
-                        out[r] = ('o', 0)
+                        # A WHITEOUT is a character device 0:0, and it means the
+                        # opposite of everything else here: the path must be
+                        # ABSENT from the merged view. Scored as 'o' it made V7
+                        # demand to find the deletion marker in the merge and
+                        # report MISSING when OverlayFS had correctly honoured
+                        # it -- a false positive on legitimate composition,
+                        # waiting for the day removal support lands (H6).
+                        # Latent today only because 02_build_delta.sh refuses to
+                        # build a module containing one.
+                        st = e.stat(follow_symlinks=False)
+                        out[r] = ('w', 0) if (stat.S_ISCHR(st.st_mode)
+                                              and st.st_rdev == 0) else ('o', 0)
                 except OSError:
                     out[r] = ('?', 0)
         return out
@@ -242,11 +296,32 @@ def main(argv):
         for r, v in vis_scan(lroot).items():
             vis_expected.setdefault(r, set()).add(v)
     vis_got = vis_scan(merged)
-    vis_missing = []
+    vis_missing, vis_unchecked = [], []
     for r in sorted(vis_expected):
-        if r in RECONCILED or r.startswith(RECONCILED_PREFIX):
-            continue
         kinds = {k for k, _ in vis_expected[r]}
+        # RECONCILED paths are exempt from the (kind, size) COMPARISON, because
+        # reconciliation rewrites them on purpose and they match no single
+        # layer. They were also exempt from the EXISTENCE test, which is a
+        # different concession and nothing justified it: a merged
+        # templates.dat truncated to zero bytes, or an /etc/alternatives
+        # emptied of every link, passed with vis_ok=1 and no other check covers
+        # either -- V3 reads the dpkg alternatives REGISTRY, never the symlinks
+        # it is supposed to produce. Existence is still required here.
+        if r in RECONCILED or r.startswith(RECONCILED_PREFIX):
+            if 'w' not in kinds and r not in vis_got:
+                vis_missing.append('MISSING /%s (reconciled path, so only its '
+                                   'existence is checked)' % r)
+            continue
+        if 'w' in kinds:
+            # Some layer DELETES this path. Whether the merge should show it
+            # depends on stacking order, which this check does not model. It
+            # declines to judge rather than guessing -- but it says so, out of
+            # band, instead of counting a correct deletion as file loss or
+            # skipping it in silence. Zero on the present catalogue, because
+            # 02_build_delta.sh refuses to build a module containing a whiteout.
+            vis_unchecked.append('/%s (a layer deletes it; V7 does not model '
+                                 'deletion ordering)' % r)
+            continue
         if len(kinds) > 1 and 'l' in kinds:
             vis_missing.append('TYPE CONFLICT /%s: layers disagree %s -- whichever '
                                'loses, paths through it break' % (r, '/'.join(sorted(kinds))))
@@ -255,20 +330,29 @@ def main(argv):
         if g is None:
             vis_missing.append('MISSING /%s' % r)
         elif g not in vis_expected[r]:
-            want = ','.join(sorted('%s%s' % (k, (' %dB' % sz) if k == 'f' else '')
-                                   for k, sz in vis_expected[r]))
+            shape = ','.join(sorted('%s%s' % (k, (' %dB' % sz) if k == 'f' else '')
+                                    for k, sz in vis_expected[r]))
             vis_missing.append('ALTERED /%s: merged=%s%s but layers have {%s}'
-                               % (r, g[0], (' %dB' % g[1]) if g[0] == 'f' else '', want))
+                               % (r, g[0], (' %dB' % g[1]) if g[0] == 'f' else '', shape))
     vis_ok = not vis_missing
 
-    ok = pkg_ok and not alt_bad and ld_ok and audit_ok and acct_ok and vis_ok
+    # Not a failure and not silence: a path V7 declined to judge is written to
+    # stderr on every run, so "vis_ok=1" never quietly means "did not look".
+    for v in vis_unchecked[:5]:
+        sys.stderr.write("  V7 DECLINED TO CHECK: %s\n" % v)
+    if len(vis_unchecked) > 5:
+        sys.stderr.write("  V7 DECLINED TO CHECK: %d more\n" % (len(vis_unchecked) - 5))
+
+    ok = (pkg_ok and not alt_bad and ld_ok and audit_ok and acct_ok
+          and dbc_ok and vis_ok)
     print(','.join(str(x) for x in [
         idx, n, ' '.join(name for name, _ in layers), admitted,
         mount_ms, rec_ms, tot_ms,
         len(expected), len(actual), int(pkg_ok),
-        len(want), len(alt_bad),
+        len(alt_want), len(alt_bad),
         len(ld_expected), len(ld_actual), int(ld_ok), int(audit_ok),
         n_acct, int(acct_ok),
+        n_dbc, int(dbc_ok),
         len(vis_missing), int(vis_ok),
         # A structurally clean composition of a tier-1-rejected set is a
         # known-negative observation, never a verification.
@@ -290,6 +374,8 @@ def main(argv):
                              % ', '.join(sorted(ld_expected - ld_actual)[:5]))
         for a in acct_bad[:5]:
             sys.stderr.write("  accounts: %s\n" % a)
+        for d in dbc_bad[:5]:
+            sys.stderr.write("  DEBCONF RECORDS LOST: %s\n" % d)
         for v in vis_missing[:5]:
             sys.stderr.write("  NOT VISIBLE IN MERGE: %s\n" % v)
     return 0

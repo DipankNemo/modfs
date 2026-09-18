@@ -2446,3 +2446,111 @@ here; findings are marked LIVE (fires on the real catalogue today) or LATENT
   they replaced, and 4 still answerable by a sibling. The replacements that do
   real work -- gcc compiling, git committing, sqlite inserting, zstd round
   tripping -- are a genuine improvement and the finding does not touch them.
+
+## 2026-09-18 (adversarial round 2, part 2: fixing what earns its keep)
+
+Seven of the thirteen findings are fixed here. Each fix was checked for FALSE
+POSITIVES against real artefacts before being kept, because a check that rejects
+correct composition is the failure mode this project keeps rediscovering.
+
+- R2-1 FIXED. `want` -> `alt_want` in V3, `acct_want` in V6's loop, `shape` in
+  V7's ALTERED branch. The three could not previously coexist. Fixture: 3
+  alternatives groups and 5 gshadow records now prints alt_groups=3 (was 5).
+  ARCHITECTURE section 7's table is corrected below.
+- R2-5 FIXED. `vis_scan` now recognises a whiteout -- character device with
+  st_rdev 0 -- as kind 'w' and V7 stops demanding to find it in the merged view.
+  It does NOT pretend to verify deletion ordering, which it cannot: the path is
+  reported to stderr as "V7 DECLINED TO CHECK" on every run, so `vis_ok=1` can
+  never quietly mean "did not look". Zero on the present catalogue.
+- R2-4 FIXED, half of it. A RECONCILED path is exempt from the (kind, size)
+  COMPARISON, which is justified, and was also exempt from the EXISTENCE test,
+  which was not. Existence is now required. Attack F (both /etc/alternatives
+  entries deleted from the merge) goes from vis_ok=True to two MISSING findings.
+- R2-4's other half is NOT a V7 fix and became V8 instead, below.
+- V8 ADDED, and this is a real gap rather than a hardening. The account
+  databases got V6 on the day they were reconciled. The debconf databases were
+  reconciled on 18 September and got NOTHING -- they were added to reconcile.py
+  and, hours later, added to V7's RECONCILED exemption so V7 would stop
+  reporting the merged copy as ALTERED. Between those two commits the newest and
+  least-tested merge in the project became the only reconciled registry with no
+  verification at all. V8 is V6's invariant for debconf: every question any
+  layer answered must be present in the merged database, by record.
+  Deliberately cheap -- `Name:` opens a record in this format and appears
+  nowhere else, verified across all 39 trees, so it is a line scan and not a
+  second parse of 519 KB per layer.
+  Fixture: control (merged keeps both questions) PASS; attack (merged config.dat
+  and templates.dat emptied) FAIL with
+  `DEBCONF RECORDS LOST: config.dat lost 2 of 2: a/q, b/q`.
+  CSV gains `dbc_expected,dbc_ok` beside `acct_expected,acct_ok`. csv_stub
+  derives its padding from the header, so the stub rows followed automatically --
+  which is the 09-17 fix doing its job.
+- R2-6 and R2-7 FIXED in reconcile.py. A Name-less debconf stanza is now a
+  reported `problem` naming the layer and the first line it saw, instead of
+  vanishing. Conflict attribution is now per (Name, field), so the three-layer
+  case reads "'AAA' in a and 'BBB' in b" then "'BBB' in b and 'CCC' in c"
+  instead of blaming layer a twice.
+- R2-9 and R2-10 FIXED in 05_check.sh's class 7.
+    * A module whose manifest omits `file_uids` is NAMED
+      ("numeric file ownership NOT CHECKED for: <module>"), raises a warning,
+      and suppresses the unqualified [OK]. It cannot be rejected -- the check
+      genuinely cannot run -- but it can no longer pass in silence while the
+      checker prints an affirmative verdict about it.
+    * Ids are compared as NUMBERS on both sides. alpha='2500' against
+      beta='02500' now REJECTs with `IDENTITY COLLISION user id 2500 claimed by
+      2 names`; a manifest carrying the id as a JSON number no longer crashes
+      `sorted()` and is either compared or reported as MALFORMED MANIFEST.
+- NO VERDICT CHANGED ON THE REAL CATALOGUE. Full tier-1 pair sweep re-run,
+  703 pairs, 22.9 s at 8 jobs, compared column by column against the CSV from
+  before the changes (preserved first at scratch/combinations-BEFORE.csv):
+        rows 703 / 703, key sets equal, NO COLUMN CHANGED in any of 703 pairs
+- NO FALSE POSITIVES FROM THE HARDENED TIER-2 CHECKS. Six real compositions
+  built from the shipped .sqsh files, reconciled, regenerated and verified:
+        N=2   base curl                                     PASS
+        N=3   base webserver apache                         PASS
+        N=4   base postgres mysql java                       PASS
+        N=7   base vim emacs gawk original-awk pytools pyyaml PASS
+        N=11  base gcc rust llvm git jq rsync socat zstd sqlite tmux  PASS
+        N=17  base webserver apache postgres mysql java docker redis
+              memcached tcpdump dnsutils htop wget curl jq git vim    PASS
+  N=7 is the alternatives-heavy set, which is where the new /etc/alternatives
+  existence rule would fire if it were going to. Nothing on stderr either, so
+  no path was declined.
+- tests/v7_attacks.py still 4/4 against the hardened block. It execs the real
+  source, so it needed `stat` added to the exec namespace -- which is the test
+  doing exactly what it was built to do.
+
+### The three probes, rewritten and tested on real artefacts
+        vim   'vim --version && printf "x\n" > /tmp/vimtest &&
+               vim -es -u NONE -c "%s/x/ok/" -c wq /tmp/vimtest &&
+               grep -qx ok /tmp/vimtest &&
+               update-alternatives --list editor | grep -q /usr/bin/vim'
+        tmux  'tmux new-session -d -s modfs "sleep 30" &&
+               tmux list-sessions | grep -q "^modfs:" && r=0 || r=1;
+               tmux kill-server 2>/dev/null; exit $r'
+        mta-nullmailer 'test -x /usr/sbin/sendmail && test -x
+               /usr/sbin/nullmailer-send && test -x /usr/sbin/nullmailer-queue &&
+               dpkg -S /usr/sbin/sendmail | grep -q "^nullmailer:"'
+- AND THE OLD vim PROBE'S FUNCTIONAL HALF NEVER WORKED. Ran it alone, with its
+  exit status no longer discarded, against a real composition:
+        [FAIL] vim: vim --version >/dev/null && printf x | vim -es -u NONE
+               -c "%s/x/ok/" -c wq /dev/stdin 2>/dev/null
+  `vim -es ... /dev/stdin` cannot write back to a pipe. So the 18 September
+  probe was a pure registry lookup not by oversight in the separator alone: the
+  half the separator discarded was broken, and discarding it is the only reason
+  the probe passed. The audit could not have noticed, because it only ever
+  checked that probes PASS.
+- nullmailer's `/usr/sbin/sendmail` is a real 24 296-byte binary, not the
+  alternatives symlink msmtp uses, so `readlink -f | grep` (mta-msmtp's shape)
+  does not transfer. Presence plus dpkg ownership is what is available offline
+  and the new `probe_note` says so rather than looking as strong as the others.
+- VERIFIED, not assumed: all 38 probes parse under `sh -n`; the stub-PATH attack
+  now finds no passer; `07_smoke_test.sh base <all 36 usable modules>` reports
+        RESULT: 75 passed, 0 failed, 1 skipped   (7.0 s)
+  the same score as 18 September, with three probes that can now fail.
+- R2-13 DOCUMENTED, NOT FIXED, and deliberately. `gawk+mysql`, `gcc+rust`,
+  `rsync+mysql` and `socat+mysql` are class-1 benign overlap: the sibling ships
+  the identical binary as a dependency, so the composed system really does work
+  and the probe's verdict is true of the SYSTEM while saying nothing about the
+  MODULE. There is no functional test that separates them, so each gained a
+  `probe_note` naming the sibling -- the treatment pgclient and control-oldsnap
+  already had. Writing the limitation next to the probe is the point.

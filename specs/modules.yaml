@@ -32,7 +32,7 @@ modules:
   # ---- adversarial: alternatives on the same generic name ----------------
   - name: vim
     packages: [vim]
-    probe: 'vim --version >/dev/null && printf x | vim -es -u NONE -c "%s/x/ok/" -c wq /dev/stdin 2>/dev/null; update-alternatives --list editor | grep -q /usr/bin/vim'
+    probe: 'vim --version >/dev/null && printf "x\n" > /tmp/vimtest && vim -es -u NONE -c "%s/x/ok/" -c wq /tmp/vimtest && grep -qx ok /tmp/vimtest && update-alternatives --list editor | grep -q /usr/bin/vim'
     provokes: alternatives
     note: registers /usr/bin/editor. Pair with emacs.
 
@@ -50,6 +50,13 @@ modules:
     probe: 'gawk "BEGIN{print substr(\"modfs\",1,5)}" | grep -qx modfs && update-alternatives --list awk | grep -q /usr/bin/gawk'
     provokes: alternatives
     note: second awk provider; base already ships mawk.
+    probe_note: >
+      satisfied by a sibling. `mysql` pulls in the gawk package as a
+      dependency and ships /usr/bin/gawk (704 984 B, identical), so in
+      `gawk + mysql` BOTH halves of this probe pass on mysql's copy --
+      the binary and the alternatives registration. Benign class-1
+      overlap, so the composed system is correct; the probe just stops
+      being evidence about THIS module. Same shape as pgclient/postgres.
 
   - name: original-awk
     packages: [original-awk]
@@ -95,7 +102,13 @@ modules:
 
   - name: mta-nullmailer
     packages: [nullmailer]
-    probe: 'nullmailer-inject --help >/dev/null 2>&1; dpkg -S /usr/sbin/sendmail | grep -q "^nullmailer:"'
+    probe: 'test -x /usr/sbin/sendmail && test -x /usr/sbin/nullmailer-send && test -x /usr/sbin/nullmailer-queue && dpkg -S /usr/sbin/sendmail | grep -q "^nullmailer:"'
+    probe_note: >
+      presence and ownership, not function. nullmailer's sendmail queues mail
+      for a daemon that cannot run in a chroot, so there is no offline
+      functional test. It does require the three binaries to EXIST, which the
+      previous version did not: its verdict came from `dpkg -S` alone, after a
+      `;` that discarded the functional half.
     provokes: virtual-provider
     note: >
       also Provides mail-transport-agent. Worth watching: C4 in 05_check.sh
@@ -127,6 +140,11 @@ modules:
     packages: [build-essential]
     probe: 'printf "int main(){return 0;}" > /tmp/p.c && gcc -o /tmp/p /tmp/p.c && /tmp/p'
     provokes: scale
+    probe_note: >
+      satisfied by a sibling. `rust` pulls in gcc-11 AND cc1 as build
+      dependencies, so in `gcc + rust` this probe compiles and runs using
+      rust's copy of the toolchain. Class-1 benign overlap.
+
   - name: java
     packages: [default-jdk-headless]
     probe: 'cd /tmp && printf "public class H{public static void main(String[] a){System.out.print(1);}}" > H.java && javac H.java && java H | grep -qx 1'
@@ -238,9 +256,14 @@ modules:
     packages: [rsync]
     probe: 'printf data > /tmp/r1 && rsync /tmp/r1 /tmp/r2 && cmp /tmp/r1 /tmp/r2'
     provokes: benign-overlap
+    probe_note: >
+      satisfied by a sibling. `mysql` ships /usr/bin/rsync (534 624 B,
+      identical) as a dependency, so `rsync + mysql` passes this probe on
+      mysql's copy. Class-1 benign overlap.
+
   - name: tmux
     packages: [tmux]
-    probe: 'tmux -f /dev/null new-session -d -s t true && tmux kill-server 2>/dev/null; true'
+    probe: 'tmux -f /dev/null new-session -d -s modfs "sleep 30" && tmux -f /dev/null list-sessions | grep -q "^modfs:" && r=0 || r=1; tmux -f /dev/null kill-server 2>/dev/null; exit $r'
     provokes: benign-overlap
   - name: htop
     packages: [htop]
@@ -254,6 +277,11 @@ modules:
     packages: [socat]
     probe: 'printf data > /tmp/s1 && socat -u FILE:/tmp/s1 CREATE:/tmp/s2 && cmp /tmp/s1 /tmp/s2'
     provokes: benign-overlap
+    probe_note: >
+      satisfied by a sibling. `mysql` ships /usr/bin/socat (392 824 B,
+      identical) as a dependency, so `socat + mysql` passes this probe on
+      mysql's copy. Class-1 benign overlap.
+
   - name: zstd
     packages: [zstd]
     probe: 'printf data > /tmp/z1 && zstd -q -o /tmp/z1.zst /tmp/z1 && zstd -dq -o /tmp/z2 /tmp/z1.zst && cmp /tmp/z1 /tmp/z2'

@@ -15,7 +15,7 @@ Each case is a real failure that V7 v1 passed:
          lib -> usr/lib symlink; every file is present and nothing can execute
 BENIGN is the control: an ordinary last-wins override must NOT be reported.
 """
-import io, os, shutil, sys, tempfile
+import io, os, shutil, stat, sys, tempfile
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 
@@ -67,7 +67,7 @@ def main():
         build(tmp)
         bad = 0
         for name, lyrs, merged, want_ok in CASES:
-            ns = {'os': os,
+            ns = {'os': os, 'stat': stat,
                   'layers': [(l, os.path.join(tmp, l)) for l in lyrs],
                   'merged': os.path.join(tmp, merged)}
             exec(blk, ns)

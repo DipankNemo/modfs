@@ -507,6 +507,22 @@ if len(have_accounts) < len(modules) + 1:
     print("\n    SKIPPED -- no account records in: %s" % ', '.join(missing))
     print("    regenerate with 06_extract_metadata.sh; class 7 was NOT checked")
 else:
+    # NUMBERS, not the strings the manifest happens to store them as. The
+    # 2026-09-18 int-vs-string fix was applied to the numeric-ownership check
+    # below and NOT here, so this comparison still keyed on the raw string:
+    # module A allocating alpha='2500' and module B allocating beta='02500' give
+    # one id two names -- the exact msmtp/redis/tcpdump/memcached defect -- and
+    # the checker reported "no id reused [OK]". A manifest carrying the id as a
+    # JSON NUMBER additionally crashed `sorted(id_names.items())` on int-vs-str.
+    def _num(v, m, kind, nm):
+        try:
+            return int(v)
+        except (TypeError, ValueError):
+            global ERRORS
+            ERRORS += 1
+            print("    MALFORMED MANIFEST %s: %s '%s' has non-numeric id %r"
+                  % (m, kind, nm, v))
+            return None
     name_ids = defaultdict(lambda: defaultdict(list))   # kind -> name -> id -> [mods]
     id_names = defaultdict(lambda: defaultdict(list))
     merged_users, merged_groups = {}, {}
@@ -514,13 +530,17 @@ else:
         d = docs.get(m) or base_doc
         acc = d.get('accounts') or {}
         for n, rec in (acc.get('users') or {}).items():
-            name_ids[('user', n)][rec['uid']].append(m)
-            id_names[('user', rec['uid'])][n].append(m)
-            merged_users.setdefault(n, rec['uid'])
+            uid = _num(rec.get('uid'), m, 'user', n)
+            if uid is None: continue
+            name_ids[('user', n)][uid].append(m)
+            id_names[('user', uid)][n].append(m)
+            merged_users.setdefault(n, uid)
         for n, rec in (acc.get('groups') or {}).items():
-            name_ids[('group', n)][rec['gid']].append(m)
-            id_names[('group', rec['gid'])][n].append(m)
-            merged_groups.setdefault(n, rec['gid'])
+            gid = _num(rec.get('gid'), m, 'group', n)
+            if gid is None: continue
+            name_ids[('group', n)][gid].append(m)
+            id_names[('group', gid)][n].append(m)
+            merged_groups.setdefault(n, gid)
 
     collisions = 0
     for (kind, n), ids in sorted(name_ids.items()):
@@ -560,11 +580,20 @@ else:
     base_uids = _ids(base_doc, 'users', 'uid')
     base_gids = _ids(base_doc, 'groups', 'gid')
     unowned = 0
+    no_field = []
     for m in modules:
         d = docs.get(m) or {}
         acc = d.get('accounts') or {}
         if 'file_uids' not in acc:
-            continue                      # manifest predates this field; see below
+            # WAS A BARE `continue`. The "manifests predate this field" warning
+            # below fires only when NO module in the set carries it, so one
+            # module without it was skipped in SILENCE and the set still printed
+            # "every file owner resolves ... [OK]". Deleting two keys from a
+            # manifest turned a REJECT into a clean ACCEPT with no warning at
+            # all -- the understating-manifest attack, done by omission rather
+            # than by forgery. Named here, and it suppresses the [OK] line.
+            no_field.append(m)
+            continue
         own_u = _ids(d, 'users', 'uid') | base_uids | {0}
         own_g = _ids(d, 'groups', 'gid') | base_gids | {0}
         for kind, seen, known in (('uid', acc.get('file_uids') or [], own_u),
@@ -579,13 +608,18 @@ else:
                 print("    IDENTITY BORROWED %s ships files owned by %s %s, which it "
                       "never allocated%s" % (m, kind, i,
                       " -- %s allocated it" % '+'.join(claimant) if claimant else ""))
-    if not any('file_uids' in ((docs.get(m) or {}).get('accounts') or {}) for m in modules):
+    if no_field:
         WARNINGS += 1
-        WARN_REASONS.append("numeric file ownership not checked (manifests predate it)")
-        print("    numeric file ownership NOT checked -- no manifest records it;"
+        WARN_REASONS.append("numeric file ownership not checked for %d module(s)"
+                            % len(no_field))
+        print("    numeric file ownership NOT CHECKED for: %s" % ', '.join(no_field))
+        print("    those manifests record no file_uids/file_gids;"
               " regenerate with 08_build_catalogue.sh --refresh-metadata")
-    elif not unowned:
-        print("    every file owner resolves to base or to the module's own accounts  [OK]")
+    if not unowned and len(no_field) < len(modules):
+        print("    every file owner resolves to base or to the module's own"
+              " accounts  [OK]%s"
+              % (" (for the %d module(s) that record them)"
+                 % (len(modules) - len(no_field)) if no_field else ""))
 
     # Every identity a unit names must exist somewhere in the merged view. A
     # name that resolves nowhere fails at service start, not at compose time.

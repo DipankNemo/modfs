@@ -237,6 +237,7 @@ def merge_debconf(layers, merged):
     summary, problems = {}, []
     for rel in DEBCONF_FILES:
         records, order, src_stat, present = {}, [], None, False
+        value_from = {}                 # (Name, field) -> layer the value is from
         for name, root in layers:
             path = os.path.join(root, rel)
             text = read(path)
@@ -251,6 +252,16 @@ def merge_debconf(layers, merged):
                 fields = _stanza_fields(st)
                 key = dict(fields).get('Name')
                 if not key:
+                    # SILENTLY DISCARDED until 2026-09-18 round 2. A record with
+                    # no Name was dropped from the merged database and nothing
+                    # said so -- `summary` counts what came OUT, so the loss was
+                    # invisible in the count as well. Zero occurrences across all
+                    # 39 artefact trees (74 `Name:` lines = 74 stanzas in every
+                    # one), so this reports rather than repairs: if the format
+                    # ever produces one, the merge says so instead of eating it.
+                    problems.append("debconf: %s from %s has no Name, dropped: %r"
+                                    % (rel.split('/')[-1], name,
+                                       st.split('\n')[0][:48]))
                     continue
                 if key not in records:
                     records[key] = (fields, name); order.append(key)
@@ -266,9 +277,17 @@ def merge_debconf(layers, merged):
                                  if o]
                         out.append((k, ', '.join(union)))
                     elif k in cur_d and cur_d[k] != v:
+                        # prev_from is the layer that FIRST defined the record,
+                        # not the one that supplied the value being replaced. On
+                        # a third disagreeing layer the old message read
+                        # "'BBB' in d5a and 'CCC' in d5c" when BBB came from d5b.
+                        # Per-field provenance, so the message names the layer a
+                        # reader would have to go and look at.
                         problems.append("debconf: %s '%s' is %r in %s and %r in %s"
-                                        % (rel.split('/')[-1], key, v, prev_from,
+                                        % (rel.split('/')[-1], key, v,
+                                           value_from.get((key, k), prev_from),
                                            cur_d[k], name))
+                        value_from[(key, k)] = name
                         out.append((k, cur_d[k]))
                     else:
                         out.append((k, v))

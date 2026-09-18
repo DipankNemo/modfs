@@ -212,7 +212,7 @@ try_mount() {
 }
 now_ms() { date +%s%3N; }
 
-echo "sample,n,modules,admitted,mount_ms,reconcile_ms,total_ms,pkg_expected,pkg_actual,pkg_ok,alt_groups,alt_groups_bad,ld_expected,ld_actual,ld_ok,audit_ok,acct_expected,acct_ok,vis_missing,vis_ok,result" > "$CSV"
+echo "sample,n,modules,admitted,mount_ms,reconcile_ms,total_ms,pkg_expected,pkg_actual,pkg_ok,alt_groups,alt_groups_bad,ld_expected,ld_actual,ld_ok,audit_ok,acct_expected,acct_ok,dbc_expected,dbc_ok,vis_missing,vis_ok,result" > "$CSV"
 
 # Emit a stub row whose label lands in `result`, WHATEVER the schema width is.
 # Every one of these used to hand-count commas, and when acct_expected/acct_ok
