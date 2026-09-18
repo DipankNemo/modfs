@@ -58,7 +58,10 @@ def build_v7(t):
     os.makedirs(j('Cm', 'var/lib/db'))
     f = io.open(j('Cm', 'var/lib/db/store'), 'wb'); f.truncate(4096); f.close()
 
-    # R2-3 KNOWN OPEN: FIFO, socket, char and block devices all score ('o', 0).
+    # R2-3 FIXED 2026-09-19: FIFO, socket, char and block devices used to all
+    # score ('o', 0), so swapping one special file for another compared equal.
+    # They now score 'p'/'s'/'c'/'b', and device nodes carry st_rdev, so
+    # /dev/null becoming /dev/sda is a change of content and not only of kind.
     os.makedirs(j('B1', 'usr/lib/svc')); os.mkfifo(j('B1', 'usr/lib/svc/ctl'))
     os.makedirs(j('Bm', 'usr/lib/svc'))
     s = socket.socket(socket.AF_UNIX); s.bind(j('Bm', 'usr/lib/svc/ctl')); s.close()
@@ -94,7 +97,7 @@ def build_v7(t):
 V7_CASES = [
     ("R2-2 same-size swap",   "KNOWN OPEN", ['A1'],       'Am', True),
     ("R2-2 sparse hole",      "KNOWN OPEN", ['C1'],       'Cm', True),
-    ("R2-3 FIFO -> socket",   "KNOWN OPEN", ['B1'],       'Bm', True),
+    ("R2-3 FIFO -> socket",   "FIXED",      ['B1'],       'Bm', False),
     ("R2-4 reconciled wiped", "FIXED",      ['F1', 'F2'], 'Fm', False),
     ("R2-4 reconciled merge", "CONTROL",    ['R1', 'R2'], 'Rm', True),
     ("R2-5 whiteout",         "FIXED",      ['G1', 'G2'], 'Gm', True),

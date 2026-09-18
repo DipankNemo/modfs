@@ -10,7 +10,7 @@ and a count-only check would pass a composition that silently swapped a package
 for another. The caller has already collected what the composed system reports
 into <work>/actual.pkgs, actual.ld and audit.txt from inside the chroot.
 """
-import os, stat, subprocess, sys
+import os, time, stat, subprocess, sys
 
 def arg(argv, name, default=None):
     return argv[argv.index(name) + 1] if name in argv else default
@@ -24,6 +24,12 @@ def cache_libs(text):
     return out
 
 def main(argv):
+    # Time OURSELVES. total_ms is exactly mount_ms + reconcile_ms -- checked
+    # across all 152 rows, maximum difference 0 ms -- so the number published
+    # as the cost of tier 2 has never included verifying, while the cost table
+    # labelled that row "Compose + verify". Measuring it is the only way to
+    # stop quoting a composition cost as a verification cost.
+    _t0 = time.monotonic()
     scripts = arg(argv, '--scripts'); merged = arg(argv, '--merged')
     work = arg(argv, '--work')
     idx, n = arg(argv, '--index'), arg(argv, '--n')
@@ -330,8 +336,25 @@ def main(argv):
                         # Latent today only because 02_build_delta.sh refuses to
                         # build a module containing one.
                         st = e.stat(follow_symlinks=False)
-                        out[r] = ('w', 0) if (stat.S_ISCHR(st.st_mode)
-                                              and st.st_rdev == 0) else ('o', 0)
+                        if stat.S_ISCHR(st.st_mode) and st.st_rdev == 0:
+                            out[r] = ('w', 0)
+                        else:
+                            # DISTINGUISH the node types instead of collapsing
+                            # them to 'o'. Scored identically, a FIFO replaced by
+                            # a socket, or a character device by a block device,
+                            # compared equal and V7 saw nothing -- a module could
+                            # swap one special file for another and the merge
+                            # would verify. Device nodes also carry their
+                            # major:minor in st_rdev, so /dev/null becoming
+                            # /dev/sda is a change of content, not merely of
+                            # kind. Cheap: this branch runs only for the handful
+                            # of non-regular, non-directory, non-symlink entries.
+                            m = st.st_mode
+                            if   stat.S_ISFIFO(m): out[r] = ('p', 0)
+                            elif stat.S_ISSOCK(m): out[r] = ('s', 0)
+                            elif stat.S_ISCHR(m):  out[r] = ('c', st.st_rdev)
+                            elif stat.S_ISBLK(m):  out[r] = ('b', st.st_rdev)
+                            else:                  out[r] = ('o', 0)
                 except OSError:
                     out[r] = ('?', 0)
         return out
@@ -403,6 +426,7 @@ def main(argv):
         n_acct, int(acct_ok),
         n_dbc, int(dbc_ok),
         len(vis_missing), int(vis_ok),
+        int((time.monotonic() - _t0) * 1000),
         # A structurally clean composition of a tier-1-rejected set is a
         # known-negative observation, never a verification.
         ('PASS' if admitted != 'known-negative' else 'KNOWN_NEGATIVE')

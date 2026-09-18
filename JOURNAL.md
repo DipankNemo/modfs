@@ -3039,3 +3039,44 @@ direction only, and every finding in this round is in the negative one.
   comparison JSON, run guards and SHA256 inventory. Working scratch remains
   /srv/modfs/build/codex-fixes-20260918. No QEMU or full rebuild was requested
   in this correction pass, and neither is claimed.
+
+## 2026-09-19 (three small closures, and verification turns out to cost more than composition)
+- Merged the Codex correction branch. It diverged from main only because the
+  state-of-play document landed after the branch was cut; no conflicts. Verified
+  its headline finding independently before merging: deleting
+  binding.sidecar_sha256 from a real manifest is now a hard BINDING MISMATCH
+  rather than a silent skip, the seal is checked BEFORE class 4 consumes the
+  sidecar, and class 4 then reports SKIPPED instead of trusting it. All nine of
+  its test files pass under root; round2_attacks 11/11 and v7_attacks 4/4 intact.
+  Its tests need root to mount artefacts and fail with a bare traceback without
+  it -- a usability wart, not a defect, recorded for later.
+- V7 NON-REGULAR NODES, FIXED. FIFO, socket, character and block devices all
+  scored ('o', 0), so a module swapping one special file for another compared
+  equal and V7 saw nothing. They now score 'p'/'s'/'c'/'b', and device nodes
+  carry st_rdev, so /dev/null becoming /dev/sda is a change of CONTENT and not
+  merely of kind. The branch runs only for the handful of entries that are
+  neither regular files, directories nor symlinks, so it costs nothing.
+- AND THE FIX BROKE A TEST, CORRECTLY. round2_attacks went 11/11 -> 10/11:
+        R2-3 FIFO -> socket   KNOWN OPEN  vis_ok=False  *** WRONG ***
+  The case asserted the LIMITATION, so removing the limitation made it fail.
+  That is exactly what a KNOWN OPEN test is for -- it is a tripwire on a
+  documented gap, and it fired the moment the gap closed. Reclassified to FIXED
+  with the expectation inverted; 11/11 again.
+- FOUR SIBLING-SATISFIED PROBES: CLOSED AS NOT FIXABLE, which is a different
+  thing from unfixed. gawk, gcc, rsync and socat pass when their module is
+  absent because a sibling pulls in THE SAME DEBIAN PACKAGE -- mysql depends on
+  gawk, rust on gcc-11. `dpkg -S /usr/bin/gawk` answers `gawk` whichever module
+  contributed the file, so nothing inside the composed system can distinguish
+  them. This is a property of the CATALOGUE, not a defect in the probe, and the
+  probe_notes naming each sibling are the correct final state.
+- VERIFY_MS ADDED, and the first measurement is the point:
+        N=2   composition ~202 ms (modelled)   verification 252 ms (measured)
+  Verification costs MORE than composition at the low end, and the published
+  tier-2 model contains only the smaller half. total_ms is exactly
+  mount_ms + reconcile_ms, checked across all 152 rows at maximum difference
+  0 ms, so "148 + 27.2 ms x N" has never been the cost of tier 2 -- it is the
+  cost of composing. The column now measures the rest instead of leaving it to
+  be inferred from wall clock.
+- Column width verified live rather than by reading: header 24 fields, emitted
+  row 24 fields, one real composition, exit 0. That check exists because adding
+  columns without it has now broken this CSV twice.
