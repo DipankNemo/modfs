@@ -3212,3 +3212,155 @@ direction only, and every finding in this round is in the negative one.
   module whose correctness depends on something the MODULE SET does not
   contain, because the kernel is pack-time scaffolding by design. Recording the
   ABI is what turns "hope it matches" into a comparison someone can run.
+
+## 2026-09-19 (task 3: two real GPU modules, and what Ubuntu actually ships is not what the brief assumed)
+
+- BUILT, both from the pinned snapshot 20260701T000000Z, both on base:
+
+      nvidia-driver-535  535.309.01   220.8 MB stored   508.3 MB upperdir  12 pkgs
+      cuda-runtime       11.5.1       648.7 MB stored  1188.9 MB upperdir  11 pkgs
+
+  Both are reported OVER MODULE_MAX_MB (50) and not rejected, which is what
+  that setting is for. They are now the two largest artefacts in the catalogue
+  by a wide margin -- the next largest is gcc at 80 MB.
+
+### FINDING 1 -- Ubuntu does NOT ship prebuilt nvidia kernel modules
+
+The brief says "Ubuntu ships PREBUILT nvidia kernel modules ... so no DKMS and
+no compiler are needed". Half right, and the half that is wrong changes the
+design. Opening the packages:
+
+- `linux-objects-nvidia-535-<abi>` (133 MB) ships prebuilt **object files**,
+  a link script `BUILD`, a `CLEAN`, per-module `.mod.o`, `scripts/module.lds`
+  and a `SHA256SUMS`. It Depends on **binutils** and on nothing else.
+- The `.ko` is produced by `/usr/bin/ld.bfd` at INSTALL time, by
+  `linux-modules-nvidia-535-<abi>`'s postinst, gated on the debconf question
+  `linux/nvidia/latelink` (default **true**).
+
+So: no compiler and no DKMS, correct -- nothing is COMPILED, and that is what
+makes this feasible against a base with no kernel headers. But a **linker is
+required**, and the brief's framing would have led to a module with no `.ko`
+in it at all.
+
+### FINDING 2 -- the signed path costs a kernel inside a module
+
+`linux-modules-nvidia-535-<abi>` and `linux-signatures-nvidia-<abi>` both
+Depend on `linux-image-5.15.0-185-generic | linux-image-unsigned-...`.
+Installing either puts a kernel inside a MODULE, contradicting the design rule
+that the kernel is pack-time scaffolding (`11_boot_test.sh` installs it into
+the image only), and duplicating what the pack step installs anyway.
+
+`linux-objects-*` is the one package in the chain with no kernel dependency,
+which is why the brief names it -- and now there is a reason on record.
+The modules are therefore linked **UNSIGNED**, via `BUILD unsigned`. Stated as
+a limitation, not hidden: under Secure Boot an unsigned module is refused, so
+this module is for a node with Secure Boot off. Closing that needs the
+signatures package and therefore a decision about kernels in modules.
+
+### FINDING 3 -- `BUILD unsigned` leaves ZERO-BYTE kernel modules
+
+Canonical's own script:
+
+    [ "$1" = "unsigned" ] && { signed_only=:; shift; }
+    ...
+    $signed_only cat 'nvidia.ko' 'nvidia.ko.sig' >'../nvidia.ko'
+
+`signed_only=:` turns the COMMAND into a no-op. **The shell still performs the
+redirection.** So `unsigned` mode creates a zero-byte `nvidia.ko` at exactly
+the path `depmod` scans, and leaves the real linked module in `bits/`.
+
+The first build did this and I caught it by listing the upperdir, not by
+reasoning: five `.ko` files of 0 bytes. A probe written as `test -e .../nvidia.ko`
+would have passed on them -- the project's single most common defect shape.
+`post_install` now does what the SIGNED branch does, minus the signature: copy
+each linked `.ko` up to `nvidia-535/`, remove it from `bits/`, and remove the
+seven link intermediates that Canonical's own `CLEAN` lists. Verified that none
+of those seven is package-owned, so dpkg's file list stays truthful. That took
+the module from 286 MB to 220.8 MB stored.
+
+### FINDING 4 -- the pin is what makes the link verifiable, and it is measurable
+
+`BUILD` ends in `sha256sum -c SHA256SUMS`, comparing the locally linked `.ko`
+against the bytes Canonical produced. Result:
+
+      host binutils 2.42 (this workstation)   4 of 5 match, nvidia.ko FAILS
+      jammy binutils 2.38 (pinned snapshot)   5 of 5 match
+
+That is the pinning premise paying off somewhere nobody had looked: the same
+objects and the same link script give different bytes under different linkers,
+and only the pinned toolchain reproduces the vendor's output. The build now
+fails loudly if it ever stops matching -- the first build attempt failed
+exactly that way on the host fixture, which is how I know the gate works.
+
+### FINDING 5 -- the `/lib` trap did not fire, and was checked rather than assumed
+
+Both nvidia packages ship their payload under `./lib/modules/<abi>/...`, i.e.
+the real-`lib/` path that `round2_attacks.py` reproduces as fatal. Measured on
+the built upperdir: **there is no `lib` entry at all**; dpkg followed base's
+`lib -> usr/lib` symlink and everything landed under `usr/lib/modules/`.
+`post_install` asserts `test -L /lib` before it does anything, the probe
+asserts it in the composed system, and `kernel.json` now records it at pack
+time. Three independent places, because the failure is silent and total.
+
+### THE PROBES, and the line under what they prove
+
+`nvidia-driver-535` asserts: `/lib` is still a symlink; all five `.ko` exist
+under `/usr/lib/modules/5.15.0-185-generic/kernel/nvidia-535/` and are
+non-empty; each carries `vermagic=5.15.0-185-generic`, so it matches the kernel
+the pack step installs; all five are **byte-identical to Canonical's
+SHA256SUMS after surviving squash, overlay stacking and reconciliation** -- a
+per-file CONTENT check, stronger than V7's `(kind, size)`; and `nvidia-smi`,
+`libcuda.so.1` and `libnvidia-ml.so.1` are present with every dynamic
+dependency resolvable.
+
+`cuda-runtime` asserts all eleven runtime sonames are in the regenerated linker
+cache, present on disk, fully resolvable, and that `libcudart.so.11.0` really
+points at the 11.5 series.
+
+NOT PROVEN, and said in both `probe_note`s: that any module LOADS; that
+`nvidia-smi` finds a device (it exits non-zero without one, which is why the
+probe checks its linkage and not its exit status); that the driver initialises
+hardware; that CUDA computes anything. **There is no GPU on this machine and
+nothing here is evidence that CUDA works.**
+
+### THE PROBES WERE MADE TO FAIL BEFORE THEY WERE BELIEVED
+
+`tests/gpu_probe_attacks.sh` composes the real artefacts, runs each probe on
+the pristine merge, then mutates the overlay's writable upper and re-runs.
+**20 of 20 cases behaved**: 8 controls passed, 12 attacks failed the probe.
+
+    D1 .ko truncated to 0 bytes            <- exactly the BUILD-unsigned trap
+    D2 .ko removed
+    D3 .ko same-size substitution          <- V7's KNOWN OPEN blind spot
+    D4 nvidia-smi removed
+    D5 libcuda.so.1 removed
+    D6 /lib replaced by a real directory   <- the fatal layout
+    C1 soname target removed
+    C2 libcudart.so.11.0 repointed at a non-11.5 target
+    C3 libnvToolsExt.so.1 removed
+
+Two probe bugs were found by writing this and fixed before any of it was
+believed: `ldconfig -p` indents with a TAB, so the original
+`grep -q " $so "` could never match (a false NEGATIVE that would have failed
+every composition); and a missing `libcuda.so.1` slipped past an `ldd`-only
+check, because `ldd` on a missing file prints an error that contains no
+"not found" -- a false POSITIVE. Both are now covered by a case above.
+
+### SIZES: the brief's estimates are low, and the reason is Finding 1
+
+      component                      brief     measured
+      nvidia driver module          ~105 MB    220.8 MB stored
+      CUDA runtime module           ~433 MB    648.7 MB stored
+
+The driver overshoots because the brief assumed a prebuilt `.ko`: the module
+must carry Canonical's 133 MB of objects AND the 139 MB of `.ko` linked from
+them, because the objects are package-owned and removing them would make
+dpkg's file list a lie. The CUDA figure is simply 1 188.9 MB of runtime
+libraries compressing at 1.83x, not the 2.7x the estimate implies.
+
+Authoritative installed sizes, read from the snapshot indices rather than
+estimated: CUDA runtime **11 packages, 1 188 MB**; full `nvidia-cuda-toolkit`
+**75 packages, 3 958 MB** (a 3.3x difference, and it pulls a compiler). The
+brief's claim that 46% of the toolkit is headers is NOT verified here and
+should not be repeated without measuring it; what is verified is the package
+count and the installed-size ratio.

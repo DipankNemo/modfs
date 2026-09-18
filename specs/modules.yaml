@@ -327,3 +327,98 @@ modules:
     packages: [memcached]
     probe: 'memcached --version >/dev/null && getent passwd memcache >/dev/null'
     provokes: benign-overlap
+
+  # ---- the real GPU stack ------------------------------------------------
+  # These two are NOT adversarial and NOT small. They exist to answer a
+  # different question from the rest of the catalogue: does the delta method
+  # survive a module two orders of magnitude larger than its median? Their
+  # effect on the storage ratios is a RESULT, not a regression -- see
+  # ARCHITECTURE section 7, "Storage depends on the catalogue".
+  #
+  # ABI PINNING. linux-objects-nvidia-535-5.15.0-185-generic names a kernel
+  # ABI in its package name, so this module is valid against exactly one
+  # kernel: the one 11_boot_test.sh installs at pack time from the same
+  # pinned snapshot. That is recorded in each run bundle's kernel.json since
+  # 2026-09-19. It cannot be expressed as a module-level `requires`, because
+  # the kernel is image scaffolding and is not a module.
+  - name: nvidia-driver-535
+    version: "535.309.01"
+    packages:
+      - linux-objects-nvidia-535-5.15.0-185-generic
+      - nvidia-kernel-common-535
+      - libnvidia-compute-535
+      - nvidia-utils-535
+    # Link the .ko from Canonical's prebuilt objects, then put them where the
+    # signed path would have put them. BUILD's `unsigned` mode sets
+    # signed_only=: so that `: cat x.ko x.ko.sig > ../x.ko` becomes a no-op
+    # COMMAND -- but the shell still performs the REDIRECT, so it leaves a
+    # zero-byte .ko at exactly the path depmod scans. Ubuntu's own script;
+    # found by looking, not by assuming. The copy-up below is what the signed
+    # branch does, minus the signature, and the intermediates removed are
+    # exactly the ones Canonical's CLEAN lists.
+    post_install: 'set -e; abi=5.15.0-185-generic; test -L /lib || { echo "FATAL: /lib is not a symlink -- a real lib/ directory was created"; exit 1; }; d="/usr/lib/modules/$abi/kernel/nvidia-535"; test -d "$d/bits" || { echo "FATAL: nvidia objects are not under $d/bits"; exit 1; }; cd "$d/bits"; sh ./BUILD unsigned; sha256sum -c SHA256SUMS >/dev/null; for k in nvidia nvidia-uvm nvidia-modeset nvidia-drm nvidia-peermem; do cat "$k.ko" > "../$k.ko"; rm -f "$k.ko"; done; rm -f nvidia.o nvidia-uvm.o nvidia-modeset.o nvidia-drm.o nvidia-peermem.o nvidia/nv-interface.o nvidia-modeset/nv-modeset-interface.o; cd "$d"; sha256sum -c bits/SHA256SUMS >/dev/null; for k in nvidia nvidia-uvm nvidia-modeset nvidia-drm nvidia-peermem; do test -s "$k.ko" || { echo "FATAL: $k.ko is empty"; exit 1; }; grep -aqF "vermagic=$abi" "$k.ko" || { echo "FATAL: $k.ko is not built for $abi"; exit 1; }; done; echo "MODFS-LINK-OK 5 modules linked from objects, byte-identical to Canonical SHA256SUMS, vermagic=$abi"'
+    probe: 'abi=5.15.0-185-generic; d="/usr/lib/modules/$abi/kernel/nvidia-535"; test -L /lib || exit 1; for k in nvidia nvidia-uvm nvidia-modeset nvidia-drm nvidia-peermem; do test -s "$d/$k.ko" || exit 1; grep -aqF "vermagic=$abi" "$d/$k.ko" || exit 1; done; ( cd "$d" && sha256sum -c bits/SHA256SUMS >/dev/null 2>&1 ) || exit 1; test -x /usr/bin/nvidia-smi || exit 1; ldd /usr/bin/nvidia-smi 2>/dev/null | grep -q "not found" && exit 1; ldconfig -p | grep -q "libcuda\.so\.1 " || exit 1; ldconfig -p | grep -q "libnvidia-ml\.so\.1 " || exit 1; for f in libcuda.so.1 libnvidia-ml.so.1; do test -e "/usr/lib/x86_64-linux-gnu/$f" || exit 1; ldd "/usr/lib/x86_64-linux-gnu/$f" 2>/dev/null | grep -q "not found" && exit 1; done; exit 0'
+    probe_note: >-
+      WHAT THIS PROVES, and it is less than "the GPU works". It proves the five
+      kernel modules exist under /usr/lib/modules/<ABI>/ and NOT under a real
+      /lib/modules/<ABI>/; that each carries vermagic=5.15.0-185-generic, so it
+      was built for exactly the kernel 11_boot_test.sh installs at pack time;
+      that all five are byte-identical to Canonical's own SHA256SUMS after
+      surviving squash, overlay stacking and reconciliation -- a per-file
+      CONTENT check, which is stronger than V7's (kind, size); and that
+      nvidia-smi and libcuda.so.1 are present with every dynamic dependency
+      resolvable inside the composed system.
+      WHAT IT CANNOT PROVE, on a machine with no NVIDIA GPU: that any module
+      LOADS (insmod needs the running kernel, and these are linked UNSIGNED so
+      they would be refused under Secure Boot); that nvidia-smi finds a device
+      -- it exits non-zero without one, which is why the probe checks its
+      linkage and not its exit status; that the driver initialises hardware, or
+      that CUDA computes anything. None of that is testable here and none of it
+      is claimed.
+    provokes: scale
+    note: >-
+      Ubuntu does NOT ship a prebuilt nvidia .ko. linux-objects ships prebuilt
+      OBJECT files plus a link script; the .ko is produced by ld.bfd at install
+      time. No compiler and no DKMS are needed, which is what makes this
+      feasible against a base with no kernel headers -- but binutils is, and
+      linux-objects declares it. The signed path needs
+      linux-signatures-nvidia-<abi>, which Depends on linux-image-<abi>; taking
+      it would put a kernel inside a module and contradict the design rule that
+      the kernel is pack-time scaffolding. So the modules are linked UNSIGNED.
+
+  - name: cuda-runtime
+    version: "11.5.1"
+    packages:
+      - libcudart11.0
+      - libcublas11
+      - libcufft10
+      - libcurand10
+      - libcusolver11
+      - libcusparse11
+      - libnvrtc11.2
+      - libnvblas11
+      - libnvtoolsext1
+    requires:
+      - module: nvidia-driver-535
+        constraint: ">= 535"
+    probe: 'for so in libcudart.so.11.0 libcublas.so.11 libcublasLt.so.11 libcufft.so.10 libcurand.so.10 libcusolver.so.11 libcusparse.so.11 libnvrtc.so.11.2 libnvrtc-builtins.so.11.5 libnvblas.so.11 libnvToolsExt.so.1; do ldconfig -p | grep -q "[[:space:]]$so " || exit 1; f="/usr/lib/x86_64-linux-gnu/$so"; test -e "$f" || exit 1; ldd "$f" 2>/dev/null | grep -q "not found" && exit 1; done; readlink /usr/lib/x86_64-linux-gnu/libcudart.so.11.0 | grep -q "^libcudart\.so\.11\.5\." || exit 1; exit 0'
+    probe_note: >-
+      Presence and dynamic resolvability of all eleven runtime sonames inside
+      the composed system, plus a version assertion that libcudart.so.11.0
+      really resolves to the 11.5 series rather than to some other CUDA a
+      sibling might carry.
+      DELIBERATELY NOT CLAIMED: that any CUDA call succeeds. The runtime
+      dlopen()s libcuda.so.1 and then talks to a device; with no GPU there is
+      nothing to talk to, and this module ships no executable to try with --
+      the runtime packages contain libraries only, and nvcc lives in the
+      toolkit this module exists to avoid. A probe that ran a CUDA program and
+      reported success would be a false positive of exactly the kind this
+      project has found most often.
+      The libcuda.so.1 this runtime needs comes from nvidia-driver-535, which
+      is why that is a module-level `requires` and not merely a comment.
+    provokes: scale
+    note: >-
+      The CUDA RUNTIME only, deliberately not nvidia-cuda-toolkit. The toolkit
+      pulls nvidia-cuda-dev and a compiler: 75 packages and 3 958 MB installed
+      against this set's 11 packages and 1 188 MB. A deployed node runs CUDA
+      binaries; it does not compile them.

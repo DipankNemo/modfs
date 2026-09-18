@@ -65,5 +65,7 @@ ranges:
   fake-nvidia-driver:  5500
   fake-cuda:           5600
   pipdemo:             5700
+  nvidia-driver-535:   5800
+  cuda-runtime:        5900
 
-# next free start: 5800
+# next free start: 6000
