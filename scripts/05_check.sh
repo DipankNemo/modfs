@@ -69,7 +69,7 @@ if ! : > "$OUT" 2>/dev/null; then
 fi
 
 python3 - "$MOD_DIR" "$OUT" "$@" <<'PY' 2>&1 | tee "$OUT"
-import sys, os, json, shutil, subprocess, functools, traceback
+import sys, os, json, hashlib, shutil, subprocess, functools, traceback
 from collections import defaultdict, deque
 
 # An uncaught exception would exit 1 -- indistinguishable from REJECT. Remap
@@ -203,6 +203,69 @@ for m in modules:
 
 ERRORS = WARNINGS = 0
 WARN_REASONS = []
+
+# ------------------------------------------------- BIND: manifest <-> artefact
+# EVERY VERDICT BELOW THIS LINE TRUSTS A JSON DOCUMENT. Until 2026-09-18 nothing
+# tied that document to the .sqsh it describes, so a module could understate its
+# accounts, its packages or its file owners and be believed -- and the cheapest
+# version of that attack was not forgery at all but OMISSION: deleting
+# `file_uids` from one manifest turned a class-7 REJECT into a clean ACCEPT.
+#
+# What tier 1 can afford, measured: re-deriving from the artefact costs a mount
+# (5-18 ms) plus a full lstat walk (2-114 ms) per module and needs ROOT, and
+# hashing the .sqsh costs 6-250 ms per module -- 116 ms for base+curl alone
+# against a whole-check budget of 79 ms. Both are out. Hashing the manifest's
+# own bound fields costs a hash of a few kilobytes.
+#
+# So the expensive half runs ONCE PER ARTEFACT rather than once per check:
+# 06_extract_metadata.sh derives the manifest FROM the mounted artefact, and
+# 12_verify_binding.sh re-derives independently and compares. Tier 1 checks the
+# digest those produce. The artefact is immutable; the check is not; the work
+# belongs on the side that does not repeat.
+print("\n" + "=" * 72)
+print(" BIND. MANIFEST <-> ARTEFACT  (does this document describe that .sqsh?)")
+print("=" * 72 + "\n")
+
+def bind_digest(doc, fields):
+    payload = {k: doc.get(k) for k in fields}
+    return hashlib.sha256(json.dumps(payload, sort_keys=True,
+                                     separators=(',', ':'),
+                                     ensure_ascii=True).encode('utf-8')).hexdigest()
+
+unbound, from_tree, bound = [], [], 0
+for m in ['base'] + modules:
+    d = docs.get(m) or base_doc
+    b = d.get('binding') or {}
+    if not b.get('fields_sha256'):
+        unbound.append(m); continue
+    if bind_digest(d, b.get('fields') or []) != b['fields_sha256']:
+        ERRORS += 1
+        print("    BINDING MISMATCH %s: a bound field was edited or removed"
+              " since extraction" % m)
+        continue
+    art = (d.get('artifact') or {}).get('sha256')
+    if b.get('artifact_sha256') != art:
+        ERRORS += 1
+        print("    BINDING MISMATCH %s: binding names artefact %s, manifest"
+              " records %s" % (m, str(b.get('artifact_sha256'))[:16], str(art)[:16]))
+        continue
+    if b.get('source') != 'artifact':
+        WARNINGS += 1
+        WARN_REASONS.append("manifest derived from a build tree, not an artefact")
+        from_tree.append(m)
+    bound += 1
+if unbound:
+    WARNINGS += 1
+    WARN_REASONS.append("manifest binding absent for %d module(s)" % len(unbound))
+    print("    NOT BOUND: %s" % ', '.join(unbound))
+    print("    those manifests predate binding; re-run 06_extract_metadata.sh."
+          " Their content is NOT tied to any artefact.")
+if from_tree:
+    print("    DERIVED FROM A BUILD TREE, not the artefact: %s" % ', '.join(from_tree))
+if bound and not unbound:
+    print("    %d manifest(s) bound to their artefact by digest  [OK]" % bound)
+print("    (bytes are verified by verify_bundle before composing, and the"
+      " manifest is re-derived from the artefact by 12_verify_binding.sh)")
 
 # ------------------------------------------------- PRE: composability
 # ARCHITECTURE section 2: modules are composable only with siblings sharing

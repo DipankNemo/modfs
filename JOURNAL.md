@@ -2554,3 +2554,244 @@ correct composition is the failure mode this project keeps rediscovering.
   MODULE. There is no functional test that separates them, so each gained a
   `probe_note` naming the sibling -- the treatment pgclient and control-oldsnap
   already had. Writing the limitation next to the probe is the point.
+
+## 2026-09-18 (adversarial round 2, part 3: binding manifests to artefacts -- A FEATURE)
+
+This is a new feature, not a fix, and it is worth saying what it puts at risk:
+it changes what `06_extract_metadata.sh` reads, adds a field to every manifest,
+adds a stage, and adds two columns to the tier-2 CSV. The manifests all had to
+be regenerated. Everything below was checked against the real catalogue before
+and after, because the failure mode of a change this wide is a verdict moving
+for a reason nobody notices.
+
+### ASSESSMENT: what the gap actually was, measured
+
+- `05_check.sh` reads `<name>.json` and `<name>.files.json.zst` and nothing
+  else. `06_extract_metadata.sh`'s output IS the manifest. `verify_bundle`
+  (stages 10 and 11) re-hashes the `.sqsh` against `artifact.sha256`. So the
+  BYTES were already bound. What was never bound is the manifest's CONTENT.
+- AND IT WAS WORSE THAN "NOT VERIFIED": the manifest was not even DERIVED from
+  the artefact. `module_tree()` returns `<name>.upper` or `<name>.dir` -- the
+  BUILD TREE. Every content field described a tree that is not what ships,
+  while `artifact.sha256` beside it described bytes nobody had read.
+- MEASURED, all 39 artefacts mounted and walked against their manifests:
+        module      artefact entries   tree entries   file_uids in the manifest
+        base              6 700           6 751       [0, 100, 101]
+        curl                157             167       [0, 100]
+        webserver         1 187           1 197       [0, 100]
+        postgres          8 200           8 214       [0, 100]
+        gcc               5 962           5 973       [0, 100]
+  NO FILE IN ANY ARTEFACT IS OWNED BY UID 100. The tree/artefact difference is
+  exactly SQUASH_EXCLUDES -- /dev, /tmp, the apt caches, the build logs -- and
+  `_apt` (100) and `adm` (4) own the apt caches and logs. Diffed directly:
+  `var/lib/dpkg/status`, `passwd`, `group`, `shadow` and `gshadow` are
+  byte-identical between tree and artefact, and the .list counts match, so
+  `packages`, `removed` and `accounts` were right; `file_uids`/`file_gids` were
+  a statement about build scratch.
+  That is also the content of the bug that broke the catalogue on 18 September:
+  the numeric-ownership check was reporting that curl and wget ship files owned
+  by uid 100 and gid 4. It does not, and never did -- its build tree did.
+
+### WHAT RE-DERIVATION COSTS, measured before deciding anything
+
+        per artefact        mount     walk (lstat every entry)    sha256
+        base (39 MB)        18 ms     100 ms                      110 ms
+        curl (1 MB)          5 ms       2 ms                        6 ms
+        webserver (20 MB)    6 ms      15 ms                       87 ms
+        postgres (78 MB)     7 ms     114 ms                      250 ms
+        gcc (80 MB)          8 ms      77 ms                      235 ms
+        emacs (35 MB)        6 ms      36 ms                      112 ms
+- At N=2 that is ~125 ms of mount+walk or ~116 ms of sha256, against a
+  whole-tier-1 budget of 79 ms. At N=36 the artefacts total about 1 GB.
+- `unsquashfs -ll` is unprivileged and reads only the inode table, which looked
+  promising -- but base alone costs 101 ms, and base is in every set.
+- And the cost is not even the main objection: mounting needs ROOT, and tier 1
+  not needing root is what decouples it from the build tree (ARCHITECTURE
+  section 5). Re-deriving inside tier 1 would give that up.
+- CONCLUSION: the artefact is IMMUTABLE and the check is NOT. Per-artefact work
+  belongs where it happens once, not where it repeats 666 times.
+
+### THE DESIGN: three layers, each placed by what it costs
+
+  1. DERIVE FROM THE ARTEFACT (`06_extract_metadata.sh`, build time).
+     It now mounts `<name>.sqsh` read-only and derives from that, and mounts the
+     PARENT's artefact too -- `removed` and every package's origin are computed
+     against the parent, so a parent read from scratch would make this module's
+     contribution a statement about scratch. `binding.source` records
+     `artifact` or `tree`, so a manifest says which it was rather than leaving
+     it to be inferred. This is what makes `artifact.sha256` a real binding:
+     content and digest now come from the same bytes.
+  2. A DIGEST OVER THE BOUND FIELDS (tier 1, every check, ~0 ms).
+     `binding.fields_sha256` covers module, version, parent, snapshot, suite,
+     arch, requires, conflicts, provides, requested, removed, uid_range,
+     accounts, units, artifact, packages -- and `binding.fields` lists them IN
+     the manifest, so a verifier reproduces the digest without knowing this
+     version of the code. `binding.sidecar_sha256` covers the UNCOMPRESSED
+     class-4 sidecar, so it does not move with the zstd level.
+     05_check.sh gained a BIND stage that recomputes it; lib.sh's
+     `verify_bundle` gained the same check, so stages 10 and 11 get it too.
+  3. RE-DERIVE AND COMPARE (`12_verify_binding.sh`, once per artefact).
+     Mounts every artefact and re-runs the derivation via
+     `06_extract_metadata.sh --check`. This is the only layer that reads the
+     artefact, and therefore the only one that can catch a manifest whose
+     digest was recomputed to match forged content.
+
+### WHAT IT DETECTS, demonstrated on curl's real manifest
+        clean                                        exit 0
+        edited accounts.file_uids, digest untouched  MISMATCH: manifest fields
+            were edited after extraction (digest says 686c5b96..., content
+            hashes to 9c994071...); differs from the artefact in: accounts
+        edited AND digest recomputed (a real forgery) MISMATCH: re-derivation
+            differs from the manifest in: accounts
+  The second case is the one the digest alone cannot catch, and it is caught
+  only because stage 12 reads the .sqsh.
+- A MISTAKE I MADE AND CAUGHT BY TESTING IT: the first `--check` compared the
+  STORED digest against the re-derived one, which passes a manifest whose fields
+  were edited while its digest was left alone -- the stored digest still equals
+  what the artefact produces. The digest has to be recomputed from the manifest
+  AS IT IS ON DISK. Both comparisons are now made and they are different
+  questions: "was this edited after extraction" and "does it match the artefact".
+- R2-9's attack is now caught at three points instead of passing silently:
+  tier 1 reports BINDING MISMATCH, verify_bundle refuses to compose, and stage
+  12 names the field.
+
+### WHAT IT IS NOT, stated rather than implied
+- INTEGRITY, NOT AUTHENTICITY. `fields_sha256` lives inside the document it
+  protects, so anyone who can rewrite the manifest can rewrite the digest. That
+  is exactly the property `artifact.sha256` already had. Layer 3 is what raises
+  the bar past that, and it needs root and a mount. Authenticity needs a key
+  outside the artefact set and is deliberately out of scope.
+- Stage 12 reuses `06 --check` rather than reimplementing the derivation,
+  because a second implementation would drift and the question is "is this
+  manifest still what this artefact produces", not "is the extractor correct".
+  A logic error in 06 is invisible to stage 12 and always will be. Said in the
+  script's own header, not only here.
+
+### COST, measured like for like on the same manifests
+        tier 1, base + 2  : 78 ms -> 82 ms   (+4 ms, +5 %)
+        tier 1, base + 36 : 388 ms -> 398 ms (+10 ms, +2.6 %)
+  Profiled to be sure the cheap number was real: loading all 39 manifests costs
+  5.3 ms and computing all 39 binding digests costs 3.4 ms (2.6 ms of
+  json.dumps over 257 KB, 0.6 ms of sha256). The digest is not what tier 1
+  spends its time on.
+        12_verify_binding.sh, whole catalogue : 12.5 s, 39/39 matched
+  Compare: re-deriving inside tier 1 would have cost ~125 ms at N=2 alone, and
+  would have needed root.
+
+### REGENERATION, and what actually changed in 39 manifests
+- `08_build_catalogue.sh --refresh-metadata`, 14.0 s. Previous manifests and
+  sidecars preserved first.
+- ONLY `accounts.file_uids` (39 manifests) and `accounts.file_gids` (35)
+  changed. `packages`, `removed`, `requested`, `units`, `requires`/`conflicts`/
+  `provides`, `uid_range` and `artifact` are identical in all 39. Examples:
+        base    file_uids [0,100,101] -> [0]     file_gids [0,4,8,42,43,50,101,102] -> [0,8,42,43,50,101]
+        apache  file_uids [0,33,100]  -> [0,33]
+        curl    file_uids [0,100]     -> [0]     file_gids [0,4] -> [0]
+  The check is strictly more accurate afterwards: it now describes owners of
+  files that SHIP.
+- A REGRESSION I INTRODUCED AND CAUGHT BY DIFFING THE SIDECARS. `is_dir()`
+  dropped directories by testing the tree; against the artefact, `base-files`'
+  /dev, /tmp, /proc, /run, /sys, /var/tmp and `apt`'s archive caches do not
+  exist at all, so they were recorded as nine phantom package-owned FILES in
+  base's sidecar -- straight into class 4's input.
+  My first fix was "drop any path absent from the artefact", and diffing the
+  sidecars again showed it dropping 143 REAL paths across 27 modules:
+  `/lib/systemd/system/apache2.service`, `/bin/nc.openbsd`,
+  `/lib/x86_64-linux-gnu/libexpat.so.1` and so on. On merged-/usr jammy those
+  exist only in the MERGED view -- the `/lib -> usr/lib` symlink is in base and
+  the file is in the delta -- so absence from one layer proves nothing. Exactly
+  the kind of path class 4 exists to catch colliding.
+  The correct test is SQUASH_EXCLUDES itself: the module does not ship what the
+  squash removed. Final diff across all 39 sidecars: ONE path changed, base's
+  `/var/lib/apt/lists/partial`, which is under an excluded prefix. 4970 -> 4969.
+- TIER-1 PAIR SWEEP RE-RUN AGAINST THE REGENERATED MANIFESTS: 703 pairs,
+  compared column by column against the CSV from before any round-2 change --
+  NO COLUMN CHANGED IN ANY OF 703 PAIRS. The manifests are more accurate and no
+  verdict moved.
+
+## 2026-09-18 (round 2, part 4: the sweep with everything live, and a second stale number)
+
+- FULL TIER-2 SWEEP re-run with the hardened V7, V8, the corrected `alt_groups`
+  column and the regenerated artefact-derived manifests. 3 m 59 s.
+        152 compositions, 152 PASS, 0 FAIL, 0 refused
+        pkg_ok, acct_ok, dbc_ok, vis_ok = 1 on every one of the 152 rows
+  So the stricter definitions stayed green on the real catalogue: no debconf
+  record is lost in any composition, no reconciled path is missing, and the two
+  new CSV columns behave.
+- THE PUBLISHED PER-N TABLE WAS STALE, and it was stale against its own section.
+  ARCHITECTURE section 7 printed the cost model `148 + 27.2 N` (re-fitted on
+  18 September when debconf reconciliation landed) directly above a table whose
+  N=36 row read 808 ms. The model gives 1 127 ms there. The model was updated
+  and the table was not.
+        re-measured : total = 160.7 + 27.01 N   R2 = 0.970
+                      mount =  18.9 +  8.03 N   R2 = 0.972
+                      recon = 141.8 + 18.98 N   R2 = 0.953
+  The SLOPE reproduces the published 27.2 almost exactly, so the 18 September
+  re-fit was right; only the table beside it described the pre-debconf code.
+  N=36 measures 1 090 ms against the model's 1 127 and the table's 808.
+- `total_ms - mount_ms - reconcile_ms` is 0 on all 152 rows, unchanged, so the
+  published model still measures COMPOSING and not verifying. Section 6's row
+  label still overstates it and the annotation from 18 September still applies.
+- THE CORRECTED alt_groups COLUMN, and why the wrong one looked better:
+        published (gshadow count)   42-44 at N=2 ... 49-50 at N=36
+        true                         5-46 at N=2 ... 68    at N=36
+  The fake column rose smoothly with N because gshadow records do. The true
+  count depends on WHICH modules are in the set: `java` alone carries 33
+  alternatives groups, `tmux` carries none, so N=2 spans 5 to 46. A column that
+  varies with the SET was replaced by one that varies with N, and the smoother
+  series read as the healthier one.
+  VERIFIED INDEPENDENTLY at both extremes by counting the registry files in the
+  artefact trees: union(base, java, vim) = 46 and union(base, mysql, tmux) = 6,
+  exactly what the corrected column reports. And the N=36 value of 68 matches
+  the "68 alternatives groups across 38 artefacts" measured on 18 September
+  from a completely different direction.
+- EVIDENCE PRESERVED BEFORE THE RUN: the previous CSV is at
+  /srv/modfs/results/tier2/compose-sweep-2026-09-18-pre-round2.csv, because
+  --out defaults to /srv/modfs/logs/compose-sweep.csv and would have
+  overwritten it -- the same care the 09-17 entry records taking, for the same
+  reason.
+
+### Round 2, closed and open
+
+CLOSED (fixed and verified against the real catalogue):
+  R2-1  alt_groups reported the gshadow count
+  R2-4  V7 exempted reconciled paths from EXISTENCE as well as comparison
+  R2-5  V7 reported a legitimate whiteout as file loss
+  R2-6  merge_debconf dropped a Name-less stanza silently
+  R2-7  three-layer debconf conflicts named the wrong layer
+  R2-9  class 7's numeric-ownership check was disabled by omitting a field
+  R2-10 the int-vs-string fix had reached one of two comparison sites
+  R2-12 three of the 33 replaced probes passed with the module absent
+  plus V8, and the manifest-to-artefact binding of part 3.
+
+OPEN, deliberately, each with a reason:
+  R2-2  V7 compares (kind, size), not content. Closing it is a per-file hash
+        over every layer on every composition. V7 already costs ~270 ms per
+        composition outside the published model; hashing would add the cost of
+        reading every byte of ~1 GB of artefacts per composition at N=36.
+        Recorded in ARCHITECTURE section 3 as a stated limitation with its
+        reproduction, which is the honest form.
+  R2-3  V7 collapses FIFOs, sockets and device nodes to one kind. Zero such
+        files exist in the catalogue outside base's /dev, which V7 skips.
+        Fixing it is easy; it would be a fix with no defect behind it.
+  R2-8  reconciliation is order-independent semantically and not byte-wise.
+        Making it byte-stable means sorting the output of six registries, which
+        changes every merged file in the project three weeks before submission,
+        to buy a property nothing currently needs. Documented in section 4.
+  R2-11 was a positive result, not a defect.
+  R2-13 four probes are satisfied by a sibling that ships the identical binary
+        as a dependency. There is no functional test that separates them; each
+        now carries a probe_note naming the sibling.
+
+WHAT ROUND 2 SAYS ABOUT THE 18 SEPTEMBER WORK, since that was the question.
+The five false negatives were genuinely closed -- every one of the attack
+session's reproductions still fails today, and tests/v7_attacks.py is 4/4
+against the hardened block. What the same-author-same-fixture process missed is
+a consistent shape: it verified that the new code does the new thing, and not
+that the new code does not do the wrong thing. V7 v2 was verified to catch its
+three attacks and never asked whether padding defeats it. The probe audit was
+verified to make 33 probes PASS and never ran one against a broken module. The
+class-7 numeric check was verified to fire on an attack and never asked what
+happens when the field is absent. debconf was verified to merge and never got a
+check that the merge did not lose anything. Each of those is the positive
+direction only, and every finding in this round is in the negative one.

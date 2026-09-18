@@ -78,8 +78,21 @@ remounted as a lowerdir. **31 checks, 31 passed** — 30 until a `python3-yaml` 
 > are unchanged; only "replace this whole directory" is dropped, and nothing
 > used it. `02_build_delta.sh` asserts the two preconditions on every build
 > rather than trusting this paragraph, and tier 2 gained **V7**, which requires
-> every name present in any layer to be visible in the merged view — the check
-> that would have caught this on the day it was introduced.
+> every path present in any layer to be visible in the merged view, as the same
+> kind of file, at the same size — the check that would have caught this on the
+> day it was introduced.
+>
+> **What V7 does NOT check, measured 2026-09-18 (round 2): content.** It records
+> `(kind, size)`, so any substitution that preserves the size passes.
+> Reproduced on the real artefacts: compose `base + curl`, overwrite
+> `/usr/bin/curl` in the merged view with 260 328 bytes of the letter `X`
+> (the binary's exact size), and the tier-2 row is byte-identical to the
+> baseline — `vis_ok=1`, `vis_missing=0`, verdict PASS — while `curl --version`
+> no longer runs inside the chroot. V7 catches the shape of this failure where
+> the size moves, which is the shape the opaque-directory bug had; a padded one
+> it does not. Content verification is a per-file hash and was measured as too
+> expensive for the tier it would sit in (§6); this is a stated limitation, not
+> an oversight.
 
 ---
 
@@ -167,10 +180,21 @@ overwritten, and file mode and ownership preserved — `/etc/shadow` is
 
 Verified on the real artefacts: after reconciliation `base + postgres + mysql`
 contains both accounts and `ssl-cert` keeps its `postgres` member, and the
-merged `passwd`, `group`, `shadow` and `gshadow` are **identical under order
-reversal**. Tier 2 now checks this directly (V6): the composed account
-databases must equal the semantic union of the layers, compared record by
-record, not by count.
+merged `passwd`, `group`, `shadow` and `gshadow` are **record-for-record
+identical under order reversal**. Tier 2 now checks this directly (V6): the
+composed account databases must equal the semantic union of the layers,
+compared record by record, not by count.
+
+> **Record-identical, not byte-identical, and the earlier wording said
+> "identical".** Measured 2026-09-18 on the real artefacts,
+> `base+postgres+mysql+java+webserver` merged forward and reversed: `passwd`,
+> `group`, `shadow`, `gshadow`, `subuid` and `subgid` are set-equal in every
+> case and byte-equal in none, because record order follows first appearance
+> and reversing the stack reorders the output. The same holds for the debconf
+> databases — same 79 records, none differing in content, different order,
+> different sha256. The SEMANTIC claim is what V6 tests and it holds; a
+> composed system is nevertheless not byte-reproducible with respect to layer
+> order, which is worth stating beside §8's reproducibility claims.
 
 **What may be claimed:** disjoint pre-install windows eliminated the six
 observed numeric collisions, and account records are now reconciled and
@@ -249,14 +273,25 @@ survive as directories; nginx needs the latter at runtime. Three of the four
 logs also record wall-clock timestamps, which is why shipping them made
 artefacts impossible to reproduce byte-for-byte (section 8).
 
-`debconf/config.dat` and `templates.dat` sit outside that count and remain
-open, but they are no longer unquantified. **7 of 37 modules carry a debconf
+`debconf/config.dat` and `templates.dat` sit outside that count. They were open
+until 2026-09-18; they are now reconciled and verified by **V8**, and the
+measurement that motivated it stands: **7 of 37 modules carry a debconf
 database that differs from base's** — `docker`, `java`, `mta-msmtp`,
 `mta-nullmailer`, `mysql`, `postgres`, `webserver` — so 21 pairs have two
 diverging copies and **231 of 666 pairs have at least one**. Under last-wins
-every one of those loses debconf state. This is the same shape as the account
-defect and is not implemented; it is stated as a bounded limitation with a
-measurement rather than a guess.
+every one of those lost its debconf state. Merging recovers it, and measured
+across all 39 artefact trees and all 741 tree pairs there are **zero
+(Name, field) disagreements** outside `Owners`, so on this catalogue the merge
+is pure recovery and nothing has to be arbitrated. The cost is real and is in
+§7's slope.
+
+> **V8 was added in round 2, and the gap it closes is instructive.** The account
+> databases gained V6 on the day they were reconciled. debconf was reconciled on
+> 18 September and, hours later, added to V7's RECONCILED exemption so V7 would
+> stop reporting the merged copy as ALTERED — leaving the newest and
+> least-tested merge in the project as the only reconciled registry with no
+> verification at all. A merged `templates.dat` truncated to zero bytes passed
+> every column. V8 is V6's invariant for debconf, by record.
 
 ### How do we know the registry list is complete?
 
@@ -351,6 +386,40 @@ This is what decouples tier 1 from the build tree: `base.sqsh` + `base.json`
 is everything a consistency check needs, so the chroots become disposable
 scratch and `05_check.sh` no longer requires root.
 
+> **And until 2026-09-18 the manifest was derived from the build tree it claims
+> to have replaced.** `06` read `<name>.upper`, so every content field described
+> the scratch chroot while `artifact.sha256` beside it described bytes nobody
+> read. Measured across all 39 artefacts, the difference is exactly
+> `SQUASH_EXCLUDES`: `curl.json` recorded file owner uid 100 (`_apt`) when *no
+> file in curl.sqsh is owned by 100* — the apt caches and build logs that carry
+> that ownership are excluded from the artefact. `status`, `passwd`, `group`,
+> `shadow` and `gshadow` were byte-identical between the two, so `packages`,
+> `removed` and `accounts` were right; `file_uids`/`file_gids` were a statement
+> about scratch, and they are what class 7's numeric-ownership check reads.
+>
+> `06` now mounts the artefact — and the parent's artefact, since `removed` and
+> every package's origin are computed against it — and records
+> `binding.source`. Regenerating all 39 manifests changed `file_uids` in 39 and
+> `file_gids` in 35 and nothing else, and re-running the 703-pair tier-1 sweep
+> moved no column in any row.
+>
+> **Binding.** `binding.fields_sha256` is a canonical digest over exactly the
+> fields the checks read (listed in `binding.fields`, so a verifier reproduces
+> it without knowing the extractor's source), and `binding.sidecar_sha256`
+> covers the uncompressed class-4 sidecar. `05_check.sh` and `verify_bundle`
+> recompute it — 3.4 ms for all 39 manifests, +4 ms on a tier-1 check at N=2
+> and +10 ms at N=36 — and `12_verify_binding.sh` re-derives from the artefact
+> and compares. That last layer is the only one that reads the `.sqsh`, and so
+> the only one that catches a manifest whose digest was recomputed to match
+> forged content.
+>
+> It is **integrity, not authenticity**: the digest lives in the document it
+> protects, exactly as `artifact.sha256` always has. What it closes is drift,
+> partial refreshes and quiet omission — and omission was the live attack:
+> deleting `file_uids` from one manifest turned a class-7 REJECT into a clean
+> ACCEPT with no warning. Authenticity needs a key outside the artefact set and
+> stays out of scope.
+
 ---
 
 ## 6. Evaluation methodology
@@ -415,7 +484,8 @@ should be reported as such.
 
 **Admission order is a rule, not a convention:**
 
-    bundle integrity -> tier-1 admission -> compose/reconcile -> tier-2/3 verification
+    manifest binding -> bundle integrity -> tier-1 admission
+                     -> compose/reconcile -> tier-2/3 verification
 
 Tier 2 previously composed a tier-1-rejected set and labelled it `PASS`, and
 tier-3 Run A bypassed admission entirely and died inside APT. Stages `10` and
@@ -657,20 +727,55 @@ layer offered, `/etc/ld.so.cache` was exactly the union in all 152, `dpkg
 --audit` was clean throughout, and no layer's files were invisible in the
 merged view (V7).
 
-| N | samples | packages (median) | alt groups | cache libs | mount ms | reconcile ms | total ms |
+| N | samples | packages | alt groups | debconf records | mount ms | reconcile ms | total ms |
 |---|---|---|---|---|---|---|---|
-| 2 | 30 | 142 | 42–44 | 100–148 | 32 | 144 | 181 |
-| 3 | 30 | 150 | 42–45 | 100–185 | 38 | 164 | 204 |
-| 5 | 20 | 175 | 42–45 | 118–173 | 50 | 173 | 225 |
-| 10 | 10 | 224 | 42–46 | 127–192 | 83 | 223 | 305 |
-| 15 | 10 | 261 | 43–49 | 166–240 | 122 | 317 | 440 |
-| 20 | 10 | 297 | 43–49 | 207–232 | 161 | 355 | 517 |
-| 25 | 10 | 325 | 44–49 | 198–247 | 186 | 475 | 667 |
-| 27 | 10 | 348 | 45–50 | 226–261 | 201 | 475 | 674 |
-| 30 | 10 | 364 | 47–50 | 236–266 | 225 | 522 | 751 |
-| 33 | 6 | 373 | 48–50 | 254–268 | 233 | 534 | 794 |
-| 35 | 4 | 383 | 48–50 | 256–268 | 246 | 571 | 817 |
-| 36 | 2 | 387 | 49–50 | 264–268 | 254 | 554 | 808 |
+| 2 | 30 | 119–184 | 5–46 | 90–148 | 33 | 169 | 203 |
+| 3 | 30 | 120–223 | 5–44 | 90–162 | 44 | 193 | 235 |
+| 5 | 20 | 137–203 | 5–48 | 90–122 | 56 | 219 | 278 |
+| 10 | 10 | 163–247 | 8–24 | 90–160 | 91 | 293 | 392 |
+| 15 | 10 | 217–311 | 12–59 | 106–172 | 133 | 425 | 576 |
+| 20 | 10 | 290–317 | 15–61 | 110–174 | 175 | 494 | 680 |
+| 25 | 10 | 267–344 | 28–68 | 112–172 | 217 | 628 | 859 |
+| 27 | 10 | 328–360 | 28–67 | 112–174 | 211 | 664 | 872 |
+| 30 | 10 | 330–382 | 60–67 | 118–174 | 264 | 734 | 1000 |
+| 33 | 6 | 359–382 | 59–68 | 166–174 | 285 | 753 | 1050 |
+| 35 | 4 | 371–391 | 68 | 168–174 | 300 | 780 | 1080 |
+| 36 | 2 | 384–391 | 68 | 168–174 | 309 | 781 | 1090 |
+
+> **This table is re-measured 2026-09-18 (round 2) and replaces one that was
+> stale in two independent ways.**
+>
+> **The timings predated the debconf merge.** The version above it ended
+> `36 | 2 | 387 | ... | 254 | 554 | 808`, which is inconsistent with the cost
+> model printed a few paragraphs earlier in the same section: `148 + 27.2 N`
+> gives 1 127 ms at N=36, not 808. The model was updated when debconf
+> reconciliation landed and the table was not. The fresh measurement, 152
+> compositions over the same plan, gives **`total = 160.7 + 27.01 ms × N`
+> (R² = 0.970)** — the slope reproduces the published 27.2 almost exactly, so
+> the 18 September re-fit was right and only its table was left behind.
+> `mount = 18.9 + 8.03 N` (R² = 0.972), `reconcile = 141.8 + 18.98 N`
+> (R² = 0.953), and `total_ms − mount_ms − reconcile_ms` is 0 on all 152 rows,
+> so this is still the cost of COMPOSING and not of verifying.
+>
+> **The "alt groups" column was measuring /etc/gshadow.** `verify_compose.py`
+> built V3's expectation in a variable called `want`, and both V6's loop
+> variable and a local inside V7 rebound it before the CSV line was printed, so
+> the column carried the gshadow record count. Confirmed against the old CSV's
+> own sample 1, `base nc-traditional rust`: it published 42, the true count is
+> **10** (5 base + 1 nc-traditional + 4 rust), and the union of `/etc/gshadow`
+> across those layers is 42. The old column's smooth 42→50 progression was
+> itself the evidence that something was wrong and read as reassurance instead:
+> the true count depends on WHICH modules are in the set, not how many, so it
+> ranges 5–46 at N=2. `java` alone carries 33 alternatives groups; `tmux`
+> carries none. Verified independently at both extremes — the union for
+> `base java vim` is 46 and for `base mysql tmux` is 6, exactly what the
+> corrected column now reports.
+>
+> `alt_groups_bad` was computed before the rebinding and was never affected, so
+> "no alternatives group was short a candidate in 152/152" stands unchanged.
+>
+> The "cache libs" column is replaced by **debconf records**, the new V8 count
+> (below). `ld_ok` is still checked and still clean in all 152.
 
 **This table replaces one whose top row was a fossil.** The previous version
 ended `27 | 1 | 281 | 23 | 205 | 622`, measured on 2026-09-02 when the
@@ -746,12 +851,13 @@ Two honest limits on the fit:
 | `03_analyse_overlap.sh` | Byte-compare files shared by two deltas (research tool, run once) |
 | `04_compose.sh` | Stack modules; demonstrate defect; write reconciled state layer |
 | `05_check.sh` | Metadata-only consistency check over `module.json` → ACCEPT/REJECT |
-| `06_extract_metadata.sh` | Write `<name>.json` beside each artefact, plus `<name>.files.json.zst` mapping every owned path to its package (class 4). Records the assigned UID window and audits every account against it |
+| `06_extract_metadata.sh` | Mount `<name>.sqsh` read-only and write `<name>.json` beside it, plus `<name>.files.json.zst` mapping every owned path to its package (class 4). Records the assigned UID window, audits every account against it, and seals the result with `binding.fields_sha256`. `--check` re-derives and compares instead of writing |
 | `07_smoke_test.sh` | Compose a set, chroot in, and check it actually works: `dpkg --audit`, `apt-get -s install`, `ldconfig -p`, per-module probes |
 | `08_build_catalogue.sh` | Batch-build every module in `specs/modules.yaml`; reports sizes against `MODULE_MAX_MB` |
 | `09_run_combinations.sh` | Tier 1: run `05_check.sh` over all pairs and triples; tabulate verdicts by conflict class into a CSV |
 | `10_compose_sweep.sh` | Tier 2: compose admitted sets from N=2 to N=27 and verify status, alternatives, linker cache and dpkg state against the layers |
 | `11_boot_test.sh` | Tier 3: pack a UEFI image, boot it under QEMU, and record a per-unit causal matrix from inside the running system |
+| `12_verify_binding.sh` | Re-derive every manifest from its artefact and compare. Run once per catalogue, not per check: 12.5 s for all 39 |
 | `reconcile.py`, `verify_compose.py` | Shared helpers: class-5 registry merge; per-composition verification |
 
 `specs/uid-ranges.yaml` holds the append-only UID/GID partition.
@@ -851,14 +957,14 @@ what is verified and what is merely intended stays explicit.
 
 | | |
 |---|---|
-| H1 | Artifact, manifest, sidecar and parent generation are not cryptographically bound at consumption time |
+| H1 | ~~Artifact, manifest, sidecar and parent generation are not cryptographically bound at consumption time~~ — **narrowed 2026-09-18**: the manifest is derived from the mounted artefact, the fields the checks read are covered by `binding.fields_sha256` and the sidecar by `binding.sidecar_sha256`, both verified at tier 1 and by `verify_bundle`, and `12_verify_binding.sh` re-derives from the artefact. What remains is AUTHENTICITY — the digests sit inside the document they protect, so a signing key outside the artefact set is still required, and is still out of scope |
 | H2 | Publication is only partly atomic and can mix generations |
 | H3 | Class-4 `Replaces` suppression does not implement Debian's file-overwrite semantics |
 | H4 | Class-4 inventory covers only part of filesystem semantics |
-| H5 | Class 5 is not closed: debconf and dpkg trigger registrations still last-win |
+| H5 | ~~Class 5 is not closed: debconf and dpkg trigger registrations still last-win~~ — **partly done**: debconf is reconciled (§4) and verified by **V8**. dpkg trigger registrations are still last-win |
 | H6 | Removal, whiteout and opaque-directory composition are effectively untested |
 | H7 | Reconciler conflict handling is incomplete and sometimes order-dependent |
-| H8 | Tier-2 verification is materially weaker than its documentation says |
+| H8 | Tier-2 verification is materially weaker than its documentation says — narrowed by V7 v2 and V8; the residue is now specific: V7 compares `(kind, size)` and not content (§3), and the published cost model covers composition only, not verification |
 | H9 | The monolithic comparison path is not a controlled equivalent baseline |
 | H10 | Signal cleanup can tear down resources and then continue execution |
 | H11 | The tier-1 sweep can report success when workers or output accounting fail |

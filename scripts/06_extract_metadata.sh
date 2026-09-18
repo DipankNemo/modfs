@@ -18,6 +18,8 @@
 #   - the ARCHITECTURE section 5 module-dependency layer, empty for now
 #   - requested : the packages actually asked for on the build command line
 #   - artifact  : .sqsh name, size and sha256 (reproducibility evidence)
+#   - binding   : what this manifest was DERIVED FROM, and a digest over the
+#                 fields the checks depend on (see "Binding" below)
 #   - packages  : ONLY this module's contribution -- packages whose
 #                 (name, version) differ from the parent's. Full dpkg
 #                 relations for each: Depends, Pre-Depends, Conflicts,
@@ -30,6 +32,33 @@
 # Re-running is safe: hand-written requires/conflicts/provides/version, and a
 # previously recorded requested list, are carried over rather than wiped.
 #
+# BINDING THE MANIFEST TO THE ARTEFACT  (new, 2026-09-18; this is a FEATURE)
+#
+#   Every tier-1 verdict trusts this document, and until now nothing tied it to
+#   the .sqsh it describes. Two holes, and the first was the larger:
+#
+#   1. DERIVATION. This script read <name>.upper -- the BUILD TREE -- not the
+#      artefact. `artifact.sha256` therefore said "the .sqsh hashes to X" while
+#      every content field described a different tree. Measured: the tree holds
+#      /dev, /tmp, the apt caches and the build logs that SQUASH_EXCLUDES drops,
+#      so `file_uids` listed uid 100 (_apt) for modules whose artefact contains
+#      no file owned by 100 at all. It now mounts the artefact read-only and
+#      derives from THAT, so the content fields and the recorded digest come
+#      from the same bytes. `binding.source` records which was used.
+#
+#   2. OMISSION. Deleting two keys from a manifest silently disabled class 7's
+#      numeric-ownership check (round 2 finding R2-9). `binding.fields_sha256`
+#      is a canonical digest over exactly the fields the checks read, so a field
+#      that is edited, or simply removed, no longer passes unnoticed.
+#      `binding.sidecar_sha256` does the same for the class-4 sidecar.
+#
+#   WHAT THIS IS AND IS NOT. It is INTEGRITY, not AUTHENTICITY: the digest lives
+#   in the document it protects, so anyone who can rewrite the manifest can
+#   rewrite the digest. That is the same property `artifact.sha256` already has,
+#   and it closes drift, partial refreshes and quiet omission -- which is what
+#   actually goes wrong here. Authenticity needs a key outside the artefact set
+#   and is deliberately out of scope (ARCHITECTURE H1).
+#
 # Output: $MOD_DIR/<name>.json
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -41,6 +70,7 @@ NAME=""
 PARENT="base"
 MOD_VERSION=""
 REQUESTED=""
+CHECK_ONLY=0
 
 while [ $# -gt 0 ]; do
     case "$1" in
@@ -53,6 +83,14 @@ while [ $# -gt 0 ]; do
         --requested)
             [ $# -ge 2 ] || die "--requested needs a value"
             REQUESTED="$2"; shift 2 ;;
+        --check)
+            # Re-derive from the artefact and COMPARE against the manifest on
+            # disk instead of writing. Used by 12_verify_binding.sh. Reusing
+            # this script rather than reimplementing the derivation is
+            # deliberate: a second implementation would drift, and the question
+            # being asked is "is the manifest still what this artefact
+            # produces", not "is the extractor correct".
+            CHECK_ONLY=1; shift ;;
         -*)
             die "unknown option: $1" ;;
         *)
@@ -76,8 +114,35 @@ module_tree() {          # module_tree <name> -> path on stdout, empty if none
     fi
 }
 
-TREE="$(module_tree "$NAME")"
-[ -n "$TREE" ] || die "no build tree for '${NAME}' in ${MOD_DIR} (expected ${NAME}.upper or ${NAME}.dir)"
+# THE ARTEFACT IS THE SOURCE OF TRUTH, and the build tree is the fallback.
+# Mounting is ~5-18 ms per artefact (measured) and this runs once per build, so
+# the cost is irrelevant here -- it is the CHECK path that cannot afford it.
+MOUNT_ROOT="${BUILD_DIR}/metadata-${NAME}.$$"
+# Sets ARTIFACT_MNT rather than printing it. `$(mount_artifact ...)` would run
+# the mount in a SUBSHELL, so track_mount's push would be lost with the
+# subshell and the trap would never unmount it -- the exact class of leak
+# lib.sh's mount stack exists to prevent.
+ARTIFACT_MNT=""
+mount_artifact() {       # mount_artifact <name>  -> sets ARTIFACT_MNT ('' if none)
+    local n sq mp
+    n="$1"; sq="${MOD_DIR}/${n}.sqsh"; mp="${MOUNT_ROOT}/${n}"
+    ARTIFACT_MNT=""
+    [ -f "$sq" ] || return 0
+    mkdir -p "$mp" || return 0
+    if mount -o loop,ro "$sq" "$mp" 2>/dev/null; then
+        track_mount "$mp"; ARTIFACT_MNT="$mp"
+    fi
+}
+
+SOURCE=artifact
+mount_artifact "$NAME"; TREE="$ARTIFACT_MNT"
+if [ -z "$TREE" ]; then
+    SOURCE=tree
+    TREE="$(module_tree "$NAME")"
+    [ -n "$TREE" ] || die "no artefact ${MOD_DIR}/${NAME}.sqsh and no build tree in ${MOD_DIR}"
+    warn "deriving from the BUILD TREE ${TREE}, not the artefact;"
+    warn "  binding.source will say 'tree' and 12_verify_binding.sh will not pass"
+fi
 [ -f "${TREE}/var/lib/dpkg/status" ] || die "no dpkg status in ${TREE}"
 
 PARENT_TREE=""
@@ -85,8 +150,16 @@ case "$PARENT" in
     ""|none|NONE|None)
         PARENT="" ;;
     *)
-        PARENT_TREE="$(module_tree "$PARENT")"
-        [ -n "$PARENT_TREE" ] || die "no build tree for parent '${PARENT}' in ${MOD_DIR}"
+        # The parent comes from ITS artefact too, for the same reason: `removed`
+        # and every package's origin are computed against it, so a parent read
+        # from a build tree would make this module's contribution a statement
+        # about scratch rather than about what ships.
+        mount_artifact "$PARENT"; PARENT_TREE="$ARTIFACT_MNT"
+        if [ -z "$PARENT_TREE" ]; then
+            SOURCE=tree
+            PARENT_TREE="$(module_tree "$PARENT")"
+            [ -n "$PARENT_TREE" ] || die "no artefact or build tree for parent '${PARENT}'"
+        fi
         [ -f "${PARENT_TREE}/var/lib/dpkg/status" ] || die "no dpkg status in ${PARENT_TREE}"
         ;;
 esac
@@ -110,6 +183,7 @@ export M_SUITE="$SUITE"
 export M_ARCH="$ARCH"
 export M_SQSH="$SQSH"
 export M_OUT="$OUT"
+export M_CHECK_ONLY="$CHECK_ONLY"
 export M_BUILT="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 # The assigned window, so the manifest records the policy the build ran under.
 # base has none: it is the baseline, not a partitioned sibling.
@@ -119,9 +193,14 @@ else
     M_UID_RANGE=""
 fi
 export M_UID_RANGE
+export M_SOURCE="$SOURCE"
+export M_SQUASH_EXCLUDES="$SQUASH_EXCLUDES"
 export M_SPEC_DIR="$SPEC_DIR"
 
-python3 - <<'PY' || die "metadata extraction failed"
+# --check exits 1 on a MISMATCH, which is a verdict and not a crash, so the
+# status is captured rather than turned into die().
+RC=0
+python3 - <<'PY' || RC=$?
 import hashlib, json, os, sys, tempfile
 
 E = os.environ
@@ -464,6 +543,121 @@ for unit_dir in ('lib/systemd/system', 'usr/lib/systemd/system', 'etc/systemd/sy
             units[entry] = rec
 
 # ---------------------------------------------------------------- assemble
+# ------------------------------------------------- file ownership sidecar
+# Conflict class 4 needs to know which package owns which PATH. That comes
+# from dpkg's own /var/lib/dpkg/info/<pkg>.list files, which for a delta
+# contain exactly the packages the delta installed -- overlayfs leaves the
+# parent's list files in the lower layer. Written as a separate, compressed
+# sidecar because it is 10-20x the size of module.json and only the
+# file-collision check ever reads it.
+#
+# Directories are DROPPED. dpkg lists them in every owning package's .list,
+# so co-ownership of /usr/bin is normal and would swamp the signal; on a
+# merged-/usr system /bin, /lib and /sbin are symlinks to directories and
+# must go too, which is why the test follows symlinks.
+import glob as _glob
+import subprocess as _sp
+
+# Directories are dropped because dpkg names them in every owning package's
+# .list, so co-ownership of /usr/bin is normal and would swamp the signal; on a
+# merged-/usr system /bin, /lib and /sbin are symlinks to directories and must
+# go too, which is why the test follows symlinks.
+def is_dir(rel):
+    for root in (tree, parent_tree):
+        if root and os.path.isdir(os.path.join(root, rel.lstrip('/'))):
+            return True
+    return False
+
+# EXCLUDED PATHS ARE NOT SHIPPED, and this case appeared the moment derivation
+# moved from the build tree to the artefact. `base-files` owns /dev, /tmp,
+# /proc, /run, /sys and /var/tmp and `apt` owns the archive caches -- every one
+# of them in SQUASH_EXCLUDES. Against the build tree they tested as directories
+# and were dropped; against the artefact they do not exist at all, so `is_dir`
+# called them files and base's sidecar gained nine phantom package-owned paths.
+#
+# The test is the exclude list itself rather than "absent from the artefact",
+# and the difference matters: on merged-/usr jammy a delta's
+# /lib/systemd/system/<unit>.service exists only in the MERGED view, because the
+# /lib -> usr/lib symlink lives in base and the unit file lives in the delta.
+# Testing absence dropped 143 such paths across 27 sidecars -- real files, and
+# exactly the kind class 4 exists to catch colliding.
+EXCLUDED = tuple('/' + x for x in (E.get('M_SQUASH_EXCLUDES') or '').split() if x)
+def excluded(rel):
+    return any(rel == x or rel.startswith(x + '/') for x in EXCLUDED)
+
+files, dirs_skipped, not_shipped = {}, 0, 0
+for lst in sorted(_glob.glob(os.path.join(tree, 'var/lib/dpkg/info/*.list'))):
+    pkg = os.path.basename(lst)[:-5].split(':')[0]
+    try:
+        with open(lst, encoding='utf-8', errors='replace') as f:
+            paths = f.read().split('\n')
+    except OSError as exc:
+        warn("cannot read %s (%s)" % (lst, exc)); continue
+    for path in paths:
+        if not path.startswith('/'):
+            continue
+        if excluded(path):
+            not_shipped += 1; continue
+        if is_dir(path):
+            dirs_skipped += 1; continue
+        files[path] = pkg
+
+# dpkg diversions legitimise one package overriding another's file.
+diversions = []
+dpath = os.path.join(tree, 'var/lib/dpkg/diversions')
+if os.path.exists(dpath):
+    try:
+        with open(dpath, encoding='utf-8', errors='replace') as f:
+            lines = [l for l in f.read().split('\n') if l]
+        for i in range(0, len(lines) - 2, 3):
+            diversions.append({'path': lines[i], 'to': lines[i+1],
+                               'by': None if lines[i+2] == ':' else lines[i+2]})
+    except OSError as exc:
+        warn("cannot read %s (%s)" % (dpath, exc))
+
+sidecar = {'schema': SCHEMA, 'module': E['M_NAME'],
+           'files': dict(sorted(files.items())), 'diversions': diversions}
+side_path = out_path[:-5] + '.files.json.zst'
+blob = json.dumps(sidecar, indent=None, sort_keys=False).encode('utf-8')
+# Digest of the UNCOMPRESSED sidecar, so it does not depend on the zstd level
+# or version. This is what binds class 4's input to the manifest that names it.
+sidecar_sha256 = hashlib.sha256(blob).hexdigest()
+if E.get('M_CHECK_ONLY') == '1':
+    # The blob and its digest are already computed; writing is the only part
+    # that is skipped, so --check exercises exactly the same derivation.
+    print("  files    : %d path(s), %d dir(s), %d not shipped, %d diversion(s)"
+          " [not written]"
+          % (len(files), dirs_skipped, not_shipped, len(diversions)))
+else:
+    try:
+        _sp.run(['zstd', '-q', '-f', '-19', '-o', side_path], input=blob, check=True)
+        os.chmod(side_path, 0o644)
+        print("  files    : %d path(s), %d dir(s), %d not shipped, %d diversion(s)"
+              " -> %s" % (len(files), dirs_skipped, not_shipped, len(diversions),
+                          os.path.basename(side_path)))
+    except Exception as exc:
+        warn("could not write %s (%s); class-4 checking will skip this module"
+             % (side_path, exc))
+# ------------------------------------------------- manifest binding
+# BIND_FIELDS is the list of keys the checks actually read, and it is stored in
+# the manifest rather than only in this script, so a verifier can reproduce the
+# digest without knowing this version of the code. class 4 reads the sidecar
+# (bound separately by its own digest) plus `packages`; class 7 reads
+# `accounts` and `units`; PRE reads parent/snapshot/suite/arch/version; class 6
+# reads `packages` and `removed`; the module-dependency layer reads
+# requires/conflicts/provides.
+BIND_FIELDS = ['module', 'version', 'parent', 'snapshot', 'suite', 'arch',
+               'requires', 'conflicts', 'provides', 'requested', 'removed',
+               'uid_range', 'accounts', 'units', 'artifact', 'packages']
+
+def bind_digest(d, fields):
+    """Canonical digest over `fields` of `d`. sort_keys and a fixed separator,
+    so it does not move with dict ordering or with json.dump's formatting."""
+    payload = {k: d.get(k) for k in fields}
+    return hashlib.sha256(json.dumps(payload, sort_keys=True,
+                                     separators=(',', ':'),
+                                     ensure_ascii=True).encode('utf-8')).hexdigest()
+
 doc = {
     'schema':   SCHEMA,
     'module':   E['M_NAME'],
@@ -491,6 +685,61 @@ doc = {
     'artifact':  artifact,
     'packages':  packages,
 }
+
+# Computed over the finished doc, then inserted, so the digest covers exactly
+# what a reader sees. `binding` itself is never one of BIND_FIELDS -- a digest
+# cannot cover the field that holds it.
+doc['binding'] = {
+    'schema':          SCHEMA,
+    'source':          E.get('M_SOURCE') or 'tree',
+    'artifact_sha256': (artifact or {}).get('sha256'),
+    'sidecar_sha256':  sidecar_sha256,
+    'fields':          list(BIND_FIELDS),
+    'fields_sha256':   bind_digest(doc, BIND_FIELDS),
+}
+
+if E.get('M_CHECK_ONLY') == '1':
+    # Compare, do not write. Only the BOUND fields are compared: `built` is a
+    # wall-clock stamp and is deliberately outside the binding, so a manifest
+    # does not become "wrong" merely by being older than a re-derivation.
+    old = prev or {}
+    ob = (old.get('binding') or {})
+    nb = doc['binding']
+    problems = []
+    if not ob.get('fields_sha256'):
+        problems.append("manifest carries no binding")
+    elif ob.get('fields') != nb['fields']:
+        problems.append("binding covers different fields: %s vs %s"
+                        % (ob.get('fields'), nb['fields']))
+    else:
+        # TWO DISTINCT QUESTIONS, and the first version of this asked only the
+        # second: comparing the STORED digest against the re-derived one passes
+        # a manifest whose fields were edited while its digest was left alone,
+        # because the stored digest still equals what the artefact produces.
+        # The digest must be recomputed from the manifest AS IT IS ON DISK.
+        old_actual = bind_digest(old, ob['fields'])
+        if old_actual != ob['fields_sha256']:
+            differing = [k for k in ob['fields'] if old.get(k) != doc.get(k)]
+            problems.append("manifest fields were edited after extraction"
+                            " (digest says %s, content hashes to %s); differs"
+                            " from the artefact in: %s"
+                            % (ob['fields_sha256'][:16], old_actual[:16],
+                               ', '.join(differing) or '<none: digest only>'))
+        elif old_actual != nb['fields_sha256']:
+            differing = [k for k in nb['fields'] if old.get(k) != doc.get(k)]
+            problems.append("re-derivation differs from the manifest in: %s"
+                            % (', '.join(differing) or '<canonicalisation only>'))
+    if ob.get('sidecar_sha256') != nb['sidecar_sha256']:
+        problems.append("class-4 sidecar differs from a re-derivation")
+    if ob.get('artifact_sha256') != nb['artifact_sha256']:
+        problems.append("binding names a different artefact digest")
+    if nb['source'] != 'artifact':
+        problems.append("could not read the artefact; derived from %r" % nb['source'])
+    for x in problems:
+        print("  MISMATCH %s: %s" % (E['M_NAME'], x))
+    print("  %s: %s" % (E['M_NAME'], "re-derived from the artefact and identical"
+                        if not problems else "DOES NOT MATCH ITS ARTEFACT"))
+    sys.exit(1 if problems else 0)
 
 # Atomic replace, so an interrupted run never leaves a truncated manifest.
 d = os.path.dirname(out_path) or '.'
@@ -526,69 +775,18 @@ for kind in ('out-of-range', 'malformed'):
 if artifact:
     print("  artifact : %s (%d bytes)" % (artifact['file'], artifact['bytes']))
     print("  sha256   : %s" % artifact['sha256'])
+print("  source   : %s" % doc['binding']['source'])
+print("  binding  : fields %s  sidecar %s"
+      % (doc['binding']['fields_sha256'][:16], doc['binding']['sidecar_sha256'][:16]))
 print("  written  : %s" % out_path)
 
-# ------------------------------------------------- file ownership sidecar
-# Conflict class 4 needs to know which package owns which PATH. That comes
-# from dpkg's own /var/lib/dpkg/info/<pkg>.list files, which for a delta
-# contain exactly the packages the delta installed -- overlayfs leaves the
-# parent's list files in the lower layer. Written as a separate, compressed
-# sidecar because it is 10-20x the size of module.json and only the
-# file-collision check ever reads it.
-#
-# Directories are DROPPED. dpkg lists them in every owning package's .list,
-# so co-ownership of /usr/bin is normal and would swamp the signal; on a
-# merged-/usr system /bin, /lib and /sbin are symlinks to directories and
-# must go too, which is why the test follows symlinks.
-import glob as _glob
-import subprocess as _sp
-
-def is_dir(rel):
-    for root in (tree, parent_tree):
-        if root and os.path.isdir(os.path.join(root, rel.lstrip('/'))):
-            return True
-    return False
-
-files, dirs_skipped = {}, 0
-for lst in sorted(_glob.glob(os.path.join(tree, 'var/lib/dpkg/info/*.list'))):
-    pkg = os.path.basename(lst)[:-5].split(':')[0]
-    try:
-        with open(lst, encoding='utf-8', errors='replace') as f:
-            paths = f.read().split('\n')
-    except OSError as exc:
-        warn("cannot read %s (%s)" % (lst, exc)); continue
-    for path in paths:
-        if not path.startswith('/'):
-            continue
-        if is_dir(path):
-            dirs_skipped += 1; continue
-        files[path] = pkg
-
-# dpkg diversions legitimise one package overriding another's file.
-diversions = []
-dpath = os.path.join(tree, 'var/lib/dpkg/diversions')
-if os.path.exists(dpath):
-    try:
-        with open(dpath, encoding='utf-8', errors='replace') as f:
-            lines = [l for l in f.read().split('\n') if l]
-        for i in range(0, len(lines) - 2, 3):
-            diversions.append({'path': lines[i], 'to': lines[i+1],
-                               'by': None if lines[i+2] == ':' else lines[i+2]})
-    except OSError as exc:
-        warn("cannot read %s (%s)" % (dpath, exc))
-
-sidecar = {'schema': SCHEMA, 'module': E['M_NAME'],
-           'files': dict(sorted(files.items())), 'diversions': diversions}
-side_path = out_path[:-5] + '.files.json.zst'
-blob = json.dumps(sidecar, indent=None, sort_keys=False).encode('utf-8')
-try:
-    _sp.run(['zstd', '-q', '-f', '-19', '-o', side_path], input=blob, check=True)
-    os.chmod(side_path, 0o644)
-    print("  files    : %d path(s), %d dir(s) skipped, %d diversion(s) -> %s"
-          % (len(files), dirs_skipped, len(diversions), os.path.basename(side_path)))
-except Exception as exc:
-    warn("could not write %s (%s); class-4 checking will skip this module"
-         % (side_path, exc))
 PY
 
+unmount_all
+rmdir "${MOUNT_ROOT}"/* "${MOUNT_ROOT}" 2>/dev/null || true
+
+if [ "$CHECK_ONLY" = 1 ]; then
+    exit "$RC"
+fi
+[ "$RC" -eq 0 ] || die "metadata extraction failed"
 log "metadata written -> ${OUT}"
