@@ -160,7 +160,7 @@ modules:
     provokes: shared-toolchain
   - name: postgres
     packages: [postgresql]
-    probe: 'test -x /usr/lib/postgresql/14/bin/postgres && getent passwd postgres >/dev/null && [ "$(stat -c %U /var/lib/postgresql)" = postgres ]'
+    probe: '/usr/lib/postgresql/14/bin/postgres --version >/dev/null && getent passwd postgres >/dev/null && [ "$(stat -c %U /var/lib/postgresql)" = postgres ]'
     provokes: service-account
     note: allocates a system account; with ranges in place it must not collide.
   - name: mysql

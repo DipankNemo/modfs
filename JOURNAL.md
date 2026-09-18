@@ -2927,3 +2927,13 @@ direction only, and every finding in this round is in the negative one.
   a real curl re-derivation and mixed present/missing requests.
 - Existing attacks: V7 4/4; round2 11/11. bash -n passed. Logs M3-before.log
   and M3-after.log are under /srv/modfs/build/codex-fixes-20260918.
+
+## 2026-09-18 (independent-review corrections M4: execute PostgreSQL)
+- PostgreSQL's probe now executes the server's --version command before its
+  account and state-directory checks. This establishes that the server loads;
+  it does not claim a running database or successful SQL transactions.
+- Added 2 real base+postgres composition tests. BEFORE: broken-server case
+  fails (probe incorrectly succeeds); original-server control passes. AFTER:
+  2/2 pass. Scratch and logs retained under /srv/modfs/build (M4-*.log in the
+  correction evidence directory). Original SquashFS files remain unchanged.
+- Existing attacks rerun: V7 4/4, round2 11/11. Python compilation passed.
