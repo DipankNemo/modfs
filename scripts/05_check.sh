@@ -226,46 +226,22 @@ print("\n" + "=" * 72)
 print(" BIND. MANIFEST <-> ARTEFACT  (does this document describe that .sqsh?)")
 print("=" * 72 + "\n")
 
-def bind_digest(doc, fields):
-    payload = {k: doc.get(k) for k in fields}
-    return hashlib.sha256(json.dumps(payload, sort_keys=True,
-                                     separators=(',', ':'),
-                                     ensure_ascii=True).encode('utf-8')).hexdigest()
+sys.path.insert(0, os.path.join(os.environ['MODFS_SRC'], 'scripts'))
+from manifest_binding import validate_manifest, load_sidecar as verified_sidecar
 
-unbound, from_tree, bound = [], [], 0
+bound = 0
 for m in ['base'] + modules:
-    d = docs.get(m) or base_doc
-    b = d.get('binding') or {}
-    if not b.get('fields_sha256'):
-        unbound.append(m); continue
-    if bind_digest(d, b.get('fields') or []) != b['fields_sha256']:
+    try:
+        validate_manifest(docs.get(m) or base_doc)
+    except ValueError as exc:
         ERRORS += 1
-        print("    BINDING MISMATCH %s: a bound field was edited or removed"
-              " since extraction" % m)
-        continue
-    art = (d.get('artifact') or {}).get('sha256')
-    if b.get('artifact_sha256') != art:
-        ERRORS += 1
-        print("    BINDING MISMATCH %s: binding names artefact %s, manifest"
-              " records %s" % (m, str(b.get('artifact_sha256'))[:16], str(art)[:16]))
-        continue
-    if b.get('source') != 'artifact':
-        WARNINGS += 1
-        WARN_REASONS.append("manifest derived from a build tree, not an artefact")
-        from_tree.append(m)
-    bound += 1
-if unbound:
-    WARNINGS += 1
-    WARN_REASONS.append("manifest binding absent for %d module(s)" % len(unbound))
-    print("    NOT BOUND: %s" % ', '.join(unbound))
-    print("    those manifests predate binding; re-run 06_extract_metadata.sh."
-          " Their content is NOT tied to any artefact.")
-if from_tree:
-    print("    DERIVED FROM A BUILD TREE, not the artefact: %s" % ', '.join(from_tree))
-if bound and not unbound:
-    print("    %d manifest(s) bound to their artefact by digest  [OK]" % bound)
-print("    (bytes are verified by verify_bundle before composing, and the"
-      " manifest is re-derived from the artefact by 12_verify_binding.sh)")
+        print("    BINDING MISMATCH %s: %s" % (m, exc))
+    else:
+        bound += 1
+if bound == len(modules) + 1:
+    print("    %d manifest field seals verified [OK]" % bound)
+print("    (sidecar seals are checked before class 4; artefact bytes are checked"
+      " by verify_bundle before composing)")
 
 # ------------------------------------------------- PRE: composability
 # ARCHITECTURE section 2: modules are composable only with siblings sharing
@@ -464,15 +440,13 @@ print("=" * 72)
 
 def load_sidecar(m):
     """<name>.files.json.zst -- path -> owning package, plus diversions."""
+    global ERRORS
     path = os.path.join(mod_dir, m + '.files.json.zst')
-    if not os.path.exists(path):
-        return None
     try:
-        blob = subprocess.run(['zstd', '-dcq', path],
-                              capture_output=True, check=True).stdout
-        return json.loads(blob)
-    except Exception as exc:
-        print("    cannot read %s: %s" % (path, exc))
+        return verified_sidecar(docs.get(m) or base_doc, path, m)
+    except ValueError as exc:
+        ERRORS += 1
+        print("    SIDECAR BINDING FAILURE %s: %s" % (m, exc))
         return None
 
 sidecars = {m: load_sidecar(m) for m in ['base'] + modules}

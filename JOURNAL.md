@@ -2819,3 +2819,20 @@ direction only, and every finding in this round is in the negative one.
   Its fixtures were not preserved and had to be rebuilt on 18 September to test
   the fix, which is recorded in that entry. An open finding with no test is a
   sentence in a journal; with a test it is a fact the build keeps checking.
+
+## 2026-09-18 (independent-review corrections H1: mandatory binding policy)
+- H1 fixed: tier 1 now hashes the decompressed class-4 sidecar before using it.
+  Both consumers require a well-formed sidecar_sha256; omission/empty values no
+  longer disable integrity checking. Binding stays outside BIND_FIELDS, but its
+  schema and complete field coverage are mandatory consumer policy.
+- Shared manifest_binding.py supplies that policy and BIND_FIELDS to 05, 06 and
+  verify_bundle. Missing bindings, reduced/resealed coverage, wrong source and
+  invalid digests fail closed. This does not add authenticity/signatures.
+- Added tests/review_binding.py: 8 real-bundle-copy cases, each exercised against
+  tier 1 and verify_bundle. BEFORE: 10 failing consumer subtests. AFTER: 8/8
+  tests, all 16 consumer assertions pass. Original bundles remain unchanged.
+- Existing attacks rerun after the change: V7 4/4; round2 11/11, including the
+  root-only whiteout case. bash -n and Python compilation passed. Stage 12
+  re-derived curl through the shared extractor: 1 matched, bytes verified.
+- Logs and retained scratch: /srv/modfs/build/codex-fixes-20260918/H1-*.log.
+  No published CSV was overwritten. Full evaluation follows the ordered fixes.

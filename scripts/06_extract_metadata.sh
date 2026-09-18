@@ -646,17 +646,8 @@ else:
 # `accounts` and `units`; PRE reads parent/snapshot/suite/arch/version; class 6
 # reads `packages` and `removed`; the module-dependency layer reads
 # requires/conflicts/provides.
-BIND_FIELDS = ['module', 'version', 'parent', 'snapshot', 'suite', 'arch',
-               'requires', 'conflicts', 'provides', 'requested', 'removed',
-               'uid_range', 'accounts', 'units', 'artifact', 'packages']
-
-def bind_digest(d, fields):
-    """Canonical digest over `fields` of `d`. sort_keys and a fixed separator,
-    so it does not move with dict ordering or with json.dump's formatting."""
-    payload = {k: d.get(k) for k in fields}
-    return hashlib.sha256(json.dumps(payload, sort_keys=True,
-                                     separators=(',', ':'),
-                                     ensure_ascii=True).encode('utf-8')).hexdigest()
+sys.path.insert(0, os.path.join(E['MODFS_SRC'], 'scripts'))
+from manifest_binding import BIND_FIELDS, bind_digest
 
 doc = {
     'schema':   SCHEMA,
