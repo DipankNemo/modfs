@@ -2156,3 +2156,293 @@ Evaluation chapters — do not skip it.
   systemd, and a booted system with systemd's restricted PATH. That is the check
   I said had to happen before calling the probe audit done, and it has now
   happened.
+
+## 2026-09-18 (adversarial round 2, part 1: attacking the 18 September fixes)
+
+Context: every fix made on 18 September was written and tested by the author of
+the check it fixed, mostly against fixtures that author also wrote. This session
+attacks that code from outside. Every finding below has a reproduction that runs
+here; findings are marked LIVE (fires on the real catalogue today) or LATENT
+(the defect is real, the catalogue does not currently reach it).
+
+### R2-1  The published `alt_groups` column is the /etc/gshadow record count  [LIVE]
+- `verify_compose.py` builds V3's expectation in `want` (line 77), computes
+  `alt_bad` from it (line 96), and then REBINDS `want` twice: once as the loop
+  variable of V6 (`for rel, want in acct_expected.items()`, line 152) and once
+  as a local string inside V7's ALTERED branch (line 258). The CSV is printed at
+  line 269 with `len(want)`, long after both.
+- So the column labelled `alt_groups` reports whatever `want` last held. In a
+  passing composition that is `acct_expected['etc/gshadow']` -- the number of
+  gshadow records.
+- REPRODUCTION, fixture: two layers with exactly 3 alternatives groups and
+  exactly 5 gshadow records. `verify_compose.py` prints `alt_groups=5`.
+- CONFIRMED ON THE REAL DATA, sample 1 of the published sweep
+  (`base nc-traditional rust`, /srv/modfs/logs/compose-sweep.csv line 2):
+        published alt_groups            42
+        true alternatives groups        10   (5 base + 1 nc-traditional + 4 rust)
+        union of /etc/gshadow records   42   <- what the column actually reports
+  and the neighbouring column confirms the mechanism arithmetically:
+  acct_expected = 126 = passwd 21 + group 42 + shadow 21 + gshadow 42.
+- IMPACT: ARCHITECTURE section 7's tier-2 table publishes this column as
+  "alt groups | 42-44 ... 49-50" across all twelve N rows. Every one of those
+  numbers is a gshadow count and the true figure is roughly 4x smaller.
+- WHAT IS NOT AFFECTED: `alt_groups_bad` is computed from `want` at line 96,
+  BEFORE the rebinding, so the VERDICT is sound. "No alternatives group was
+  short a candidate in 152/152" still stands. Only the reported count is wrong.
+- Same shape as the 09-17 CSV misalignment: correct logic, wrong number reaching
+  the evidence. This one survived two full sweeps and a documentation pass.
+
+### R2-2  V7 v2 verifies kind and SIZE, and is defeated by padding  [LIVE mechanism]
+- V7's stated invariant is "require the merged entry to match SOME layer's
+  version of that path ... content arriving from outside every layer does not
+  [stay legal]". It records `(kind, size)`. Size is not content.
+- REPRODUCTIONS, all against the real V7 block executed out of
+  verify_compose.py (`tests/round2_attacks.py`), all `vis_ok=True`, 0 findings:
+    A  same-size substitution: layer ships /usr/share/app/table.dat = 21 bytes
+       of `REAL-TABLE-0123456789`; merged holds 21 bytes of
+       `EVIL-TABLE-9876543210`. Matches no layer. PASSES.
+    C  sparse hole: layer ships a 4096-byte file of 'D'; merged ships a 4096-byte
+       file that is entirely a hole. Same st_size, zero content. PASSES.
+    D  hardlink substitution: merged makes /usr/bin/real a hardlink onto the
+       12-byte stub, so `real` now runs the stub. Both sizes exist in the layer.
+       PASSES.
+- This is FN-2b's own attack with the payload PADDED. The 09-18 entry records
+  the fix as killing FN-2b because "1 MB payload -> 5 bytes" moved the size;
+  pad the decoy to 1 MB and the check is back where it was. The type-conflict
+  rule still catches the symlink-shaped variant, so the fix was not worthless --
+  but the size comparison is not the content check the comment claims.
+
+### R2-3  V7 collapses every non-regular, non-directory, non-symlink node  [LATENT]
+- `vis_scan` maps FIFOs, sockets, character devices and block devices all to
+  `('o', 0)`. Any of the four can be substituted for any other and V7 passes.
+  REPRODUCTION (case B): layer ships a FIFO at /usr/lib/svc/ctl, merged holds a
+  unix socket at the same path -> `vis_ok=True`, 0 findings.
+- Device major/minor is never recorded either, so /dev/null (1:3) and a device
+  node pointing anywhere else are the same value to V7.
+- LATENT, and measured rather than assumed: swept all 39 artefact trees for
+  `-type p -o -type s -o -type c -o -type b`. Zero FIFOs, zero sockets, and the
+  only device nodes are the eight in `base.dir/dev`, which V7's SKIP_TOP
+  excludes anyway. No module ships one today.
+
+### R2-4  The RECONCILED exemption list is unbounded loss, exactly as predicted  [LIVE]
+- Nine exact paths plus two prefixes are skipped before the MISSING test, not
+  only before the ALTERED test. So for those paths V7 cannot see total
+  destruction, let alone alteration.
+  REPRODUCTIONS: E, two layers each carrying a distinct debconf record, merged
+  `templates.dat` emptied to zero bytes -> `vis_ok=True`. F, layers ship
+  `/etc/alternatives/editor` and `/etc/alternatives/README`, merged ships
+  neither -> `vis_ok=True`.
+- The exemption is necessary (reconciliation rewrites these deliberately), but
+  "exempt from ALTERED" and "exempt from MISSING" are different concessions and
+  only the first is justified. Nothing else covers the gap: V3 checks the dpkg
+  alternatives REGISTRY, never the `/etc/alternatives` symlinks it is supposed
+  to produce, and stage 10 only checks `update-alternatives --auto`'s exit code.
+
+### R2-5  V7 reports a legitimate whiteout as file loss  [FALSE POSITIVE, LATENT]
+- A whiteout is a character device 0:0 in the layer. `vis_scan` records it as
+  `('o', 0)` and demands to find it in the merged view -- where OverlayFS has
+  correctly turned it into the ABSENCE of the file it deletes.
+  REPRODUCTION (case G): layer G1 ships /etc/keepme, layer G2 ships a 0:0 char
+  device at /etc/keepme, merged correctly has neither ->
+  `MISSING /etc/keepme`, vis_ok=False.
+- Latent only because `02_build_delta.sh` refuses to build a module containing a
+  whiteout. That assertion exists to make opaque-stripping safe, not to protect
+  V7 -- so the day removal support lands (ARCHITECTURE H6, "removal, whiteout
+  and opaque-directory composition are effectively untested"), V7 fails every
+  composition that uses it. A check that rejects correct composition is as
+  damaging as one that misses a defect, and this one is waiting.
+
+### R2-6  merge_debconf drops a stanza with no `Name`, silently  [LATENT]
+- `if not key: continue`. The record is discarded, nothing is appended to
+  `problems`, and the summary counts OUTPUT records, so the loss cannot be seen
+  in the count either.
+  REPRODUCTION: two stanzas in (`Name: q/a`, and one with only
+  `Template:`/`Value:`/`Owners:`), one stanza out, `problems=0`,
+  `summary={'config.dat': 1}`.
+- LATENT, measured: across all 39 artefact trees, config.dat, templates.dat and
+  passwords.dat have 74 `Name:` lines, 74 blank lines and 74 parsed stanzas
+  each -- every stanza carries a Name and no record contains an embedded blank
+  line. The parser is not being fooled by the real data. It would simply not
+  say so if it were.
+
+### R2-7  A three-layer debconf conflict is reported against the wrong module  [LATENT]
+- `records[key] = (out, prev_from)` keeps the FIRST layer's name forever, while
+  `out` carries the value of the most recent layer. On the third disagreement
+  the message names layer 1 as the source of layer 2's value.
+  REPRODUCTION: three layers answering `q/a` AAA / BBB / CCC ->
+        PROBLEM debconf: config.dat 'q/a' is 'AAA' in d5a and 'BBB' in d5b
+        PROBLEM debconf: config.dat 'q/a' is 'BBB' in d5a and 'CCC' in d5c
+  The second line is false: BBB came from d5b. The conflict IS detected and the
+  composition IS failed, so this is evidence quality, not a missed defect.
+
+### R2-8  Reconciliation is order-independent semantically, not byte-wise  [LIVE]
+- ARCHITECTURE section 4 says the merged passwd/group/shadow/gshadow are
+  "identical under order reversal", and section 7 says "reconciliation also
+  makes composition order-independent". Measured on the real artefacts,
+  base+postgres+mysql+java+webserver, forward against reversed:
+        etc/passwd   set-equal YES   byte-equal NO
+        etc/group    set-equal YES   byte-equal NO
+        etc/shadow   set-equal YES   byte-equal NO
+        etc/gshadow  set-equal YES   byte-equal NO
+        etc/subuid   set-equal YES   byte-equal NO
+        etc/subgid   set-equal YES   byte-equal NO
+        debconf config.dat / templates.dat  same 79 records, 0 differing in
+        content, record ORDER different, sha256 different
+- Record order follows first appearance, so reversing the stack reorders the
+  output. The SEMANTIC claim holds and is what V6 actually tests (record by
+  record). The word "identical" does not, and the sentence is in the canonical
+  document. A composed system is therefore not byte-reproducible with respect to
+  layer order, which is worth knowing beside section 7's reproducibility claims.
+
+### R2-9  Class 7's numeric-ownership check is disabled by OMITTING a field  [LIVE]
+- `if 'file_uids' not in acc: continue`, per module. The "manifests predate this
+  field" warning fires only when NO module in the set has it. One module without
+  it is skipped in silence.
+- REPRODUCTION, real manifests, real sidecars, sandbox MOD_DIR:
+        redis + atk-control  (curl.json, file_uids [0,100,4600])
+            IDENTITY BORROWED atk-control ships files owned by uid 4600 ...
+            -- redis allocated it
+            VERDICT: 1 error(s), 0 warning(s)   REJECT   exit=1
+        redis + atk-nofield  (the SAME manifest with file_uids/file_gids deleted)
+            every file owner resolves to base or to the module's own accounts [OK]
+            VERDICT: 0 error(s), 0 warning(s)   ACCEPT   exit=0
+  Deleting two keys flips REJECT to a clean ACCEPT with no warning at all, and
+  the checker prints an affirmative OK about a module it never examined.
+- The 09-18 entry states the rule as "manifests predating the field are reported
+  as NOT CHECKED rather than passed, which is the rule the rest of this checker
+  already follows". That is true of the set and false of the module.
+- Same file, weaker variant: `"accounts": null` makes `have_accounts` short and
+  SKIPS class 7 for the whole set -- reported, but as a WARNING, so the exit
+  code is 0 and stage 10 admits and composes the set.
+
+### R2-10  The int-vs-string fix of 18 September was applied to one of two sites  [LATENT]
+- The numeric-ownership check got `_ids()`, which `int()`s both sides. The
+  identity-collision comparison above it still keys `name_ids` and `id_names` on
+  the raw manifest string.
+  REPRODUCTION: module A allocates `alpha` uid '2500', module B allocates `beta`
+  uid '02500'. Numerically one id, two names -- the exact shape of the
+  msmtp/redis/tcpdump/memcached defect class 7 exists for:
+        23 user(s), 44 group(s) across the set, no id reused  [OK]
+        VERDICT: 0 error(s), 0 warning(s)   ACCEPT
+- Same site, different input: a manifest carrying uid as a JSON NUMBER rather
+  than a string crashes `sorted(id_names.items())` with
+  `TypeError: '<' not supported between instances of 'int' and 'str'`. The
+  exit-code discipline holds -- it exits 2 BROKEN, not 1 REJECT -- but nothing
+  validates the manifest's types at load.
+
+### R2-11  Positive result: merge_debconf raises no false positive on the catalogue
+- A debconf field disagreement becomes a `problem`, reconcile returns 2 and the
+  composition is recorded RECONCILE_FAIL, so a spurious one would cost a whole
+  composition. Swept every (Name, field) pair across all 39 artefact trees and
+  all 741 tree pairs, Owners excluded because it is unioned by design:
+        config.dat     0 disagreements
+        templates.dat  0 disagreements
+        passwords.dat  0 disagreements
+  The 09-18 entry inferred this from 152 passing compositions; this measures it
+  directly over every pair, which is the stronger statement.
+- Round-trip fidelity on real data, postgres' own databases merged alone:
+  25 180 -> 25 183 bytes and 942 717 -> 942 716 bytes. The whole difference is
+  `Variables:` re-rendered as `Variables: ` (four occurrences) and one trailing
+  blank line. No record, field or value is lost.
+
+### Latent and bounded, recorded without inflating them
+- `merge_status` keys on the `Package:` field alone, so two architectures of one
+  package name would be read as a class-2 version divergence and fail the
+  composition. Measured: 39 trees, 4 945 installed stanzas, ZERO trees carry the
+  same package name at two architectures. x86-64 only (ARCHITECTURE M4).
+- `vis_scan` swallows `OSError` and skips the subtree. In a LAYER that silently
+  removes files from `vis_expected`, i.e. they are never checked. Tier 2 runs as
+  root against a read-only squashfs, so there is no live path to it today.
+- V2's `versioned` fallback claims to "say so rather than silently reporting a
+  weaker check as if it were the strong one". It does not: nothing in the CSV or
+  on stderr records that the comparison degraded to names.
+
+### R2-2 reproduced on the REAL artefacts, not a fixture  [LIVE]
+- `base + curl` composed from the shipped `.sqsh` files exactly as
+  `10_compose_sweep.sh` does it: loop-mount each layer read-only, overlay,
+  reconcile, `update-alternatives --auto`, `ldconfig`, collect from inside the
+  chroot, run `verify_compose.py`. Then overwrite `/usr/bin/curl` in the merged
+  view with the SAME NUMBER OF BYTES of the letter X.
+        size before / after : 260328 / 260328
+        sha256 before       : 0ca2b923679ab186
+        sha256 after        : cec6a2f49cb7ad93
+        does /usr/bin/curl run inside the chroot? NO -- the module is destroyed
+        tier-2 row BEFORE : 0,2,base curl,yes,...,126,1,0,1,PASS
+        tier-2 row AFTER  : 0,2,base curl,yes,...,126,1,0,1,PASS
+  Byte-for-byte the same row. `vis_missing=0`, `vis_ok=1`, verdict PASS, and
+  every other column unchanged as well: dpkg still reports curl installed at the
+  right version (V2), the linker cache is intact (V4), `dpkg --audit` is clean
+  (V5), the accounts are the union (V6).
+- This is the 16 September opaque-directory failure in its purest form --
+  metadata perfectly correct about a file that is no longer the file -- and V7
+  exists specifically to catch that. It catches the shape where the size moves.
+- Incidental confirmation of R2-1 from the same run: `alt_groups` reads 42 for
+  `base + curl`, which has nowhere near 42 alternatives groups. It is the
+  gshadow count again.
+- Work dir `/srv/modfs/build/r2v7`, mounts torn down (0 entries in
+  /proc/self/mountinfo afterwards).
+
+### R2-12  Three of the 33 replaced probes PASS with the module absent  [LIVE]
+- The dangerous direction, and the probe audit could not have seen it: every
+  check on 18 September ran the probes and confirmed they PASS. Nothing ran them
+  against a broken module.
+- METHOD: run each of the 38 probes under `env -i PATH=<stub dir>` where the stub
+  dir holds only base utilities (grep, sed, cat, test, stat, readlink, cmp, ls)
+  plus stubs for the two METADATA oracles -- an `update-alternatives --list`
+  that prints its registry entry without stat-ing it (which is what the real one
+  does) and a `dpkg -S` that answers from the file list. No module binary is
+  present at all.
+- THREE PASS:
+        tmux            exit 0   -- passes with an EMPTY PATH, no stubs needed
+        vim             exit 0
+        mta-nullmailer  exit 0
+  The other 35 correctly fail. (`nc-openbsd` also passed and is NOT a finding:
+  this host genuinely has `/bin/nc.openbsd` installed, which the probe's
+  absolute path reached past the stub PATH.)
+- CAUSE, all three the same one-character error:
+        tmux    '... && tmux kill-server 2>/dev/null; true'
+                The probe ENDS in `; true`. It cannot fail. It reports PASS on a
+                system with nothing installed.
+        vim     'vim --version && printf x | vim -es ...; update-alternatives
+                 --list editor | grep -q /usr/bin/vim'
+                The `;` throws away the functional half. The verdict is a lookup
+                in the alternatives REGISTRY, which reconcile.py writes and which
+                never stats the path it names. /usr/bin/vim can be absent.
+        mta-nullmailer  'nullmailer-inject --help ...; dpkg -S /usr/sbin/sendmail
+                 | grep -q "^nullmailer:"'
+                Same `;`. The verdict is a lookup in dpkg's file-ownership
+                metadata.
+- `emacs` is the same design as `vim` and uses `&&`, so the intent was right and
+  the separator is the defect.
+- ALL THREE ARE REGRESSIONS INTRODUCED BY THE AUDIT (git show f5ebe4e):
+        tmux  `tmux -V`        -> a probe that cannot fail
+        vim   `vim --version`  -> a probe that does not run vim
+  The old probes were weak -- they only proved a binary loads -- but both at
+  least required the binary to EXIST and exit 0. The replacements do not.
+- These three answer from exactly the registry files that were "correctly
+  reporting a package whose files were not visible" on 16 September. A module
+  whose payload is shadowed passes all three.
+
+### R2-13  Four more probes are satisfied by a sibling module  [LIVE]
+- The audit's own stated criterion was "two modules shared a probe with a
+  sibling that also ships the binary, which is what makes a false positive". It
+  fixed `postgres`/`pgclient` and the two `nc` modules and left four:
+        gawk    probe runs `gawk`   -- mysql ships /usr/bin/gawk,  704 984 B, identical
+        gcc     probe runs `gcc`    -- rust  ships /usr/bin/gcc-11 AND cc1
+        rsync   probe runs `rsync`  -- mysql ships /usr/bin/rsync, 534 624 B, identical
+        socat   probe runs `socat`  -- mysql ships /usr/bin/socat, 392 824 B, identical
+  Byte-identical sizes: these are the same package version pulled in twice as a
+  dependency, i.e. ordinary class-1 benign overlap.
+- All four pairs are tier-1 ADMISSIBLE, verified by running 05_check.sh, so the
+  false positive is reachable in a real composition: `gawk+mysql`, `gcc+rust`,
+  `rsync+mysql`, `socat+mysql` all ACCEPT.
+- gawk's is the worst of the four because both halves fall to the sibling: mysql
+  supplies the binary AND pulls in the gawk package, so
+  `update-alternatives --list awk | grep -q /usr/bin/gawk` is satisfied too.
+- Not counted as findings, because the spec already says so via `probe_note`:
+  `pgclient` (psql comes from postgres) and `control-oldsnap` (curl comes from
+  the `curl` module, and the pair is never composed anyway).
+- So the probe audit's score is: 33 replaced, 3 made strictly weaker than what
+  they replaced, and 4 still answerable by a sibling. The replacements that do
+  real work -- gcc compiling, git committing, sqlite inserting, zstd round
+  tripping -- are a genuine improvement and the finding does not touch them.
