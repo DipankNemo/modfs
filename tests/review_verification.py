@@ -138,5 +138,85 @@ class SymlinkTests(VerificationFixture):
         self.verify(True)
 
 
+class AccountTests(VerificationFixture):
+    def test_control(self):
+        self.verify(True)
+
+    def test_shadow_names_only(self):
+        (self.merged / 'etc/shadow').write_text('root:*\n')
+        self.verify(False)
+
+    def test_shadow_password(self):
+        p = self.merged / 'etc/shadow'
+        p.write_text(p.read_text().replace('root:!', 'root:'))
+        self.verify(False)
+
+    def test_shadow_age(self):
+        p = self.merged / 'etc/shadow'
+        p.write_text(p.read_text().replace('20000', '20001'))
+        self.verify(False)
+
+    def test_shadow_mode(self):
+        (self.merged / 'etc/shadow').chmod(0o644)
+        self.verify(False)
+
+    @unittest.skipUnless(os.geteuid() == 0, 'chown needs root')
+    def test_shadow_owner(self):
+        os.chown(self.merged / 'etc/shadow', 1234, 1234)
+        self.verify(False)
+
+    def test_passwd_shell(self):
+        p = self.merged / 'etc/passwd'
+        p.write_text(p.read_text().replace('/bin/sh', '/bin/false'))
+        self.verify(False)
+
+    def test_extra_account(self):
+        p = self.merged / 'etc/passwd'
+        p.write_text(p.read_text() + 'extra:x:0:0::/root:/bin/sh\n')
+        self.verify(False)
+
+    def test_extra_member(self):
+        (self.merged / 'etc/group').write_text('root:x:0:root,extra\n')
+        self.verify(False)
+
+    def test_lost_subuid(self):
+        (self.merged / 'etc/subuid').write_text('')
+        self.verify(False)
+
+    def test_changed_subgid(self):
+        (self.merged / 'etc/subgid').write_text('root:200000:65536\n')
+        self.verify(False)
+
+    def test_duplicate_account(self):
+        p = self.merged / 'etc/passwd'
+        p.write_text(p.read_text() * 2)
+        self.verify(False)
+
+    def test_member_order(self):
+        (self.layer / 'etc/group').write_text('root:x:0:root,other\n')
+        (self.merged / 'etc/group').write_text('root:x:0:other,root\n')
+        self.verify(True)
+
+    def test_range_order(self):
+        (self.layer / 'etc/subuid').write_text('root:100000:65536\nroot:200000:65536\n')
+        (self.merged / 'etc/subuid').write_text('root:200000:65536\nroot:100000:65536\n')
+        self.verify(True)
+
+    def test_declared_nonidentity_override(self):
+        upper = self.root / 'upper'
+        text = 'root:x:0:0:root:/srv/root:/bin/bash\n'
+        self.put(upper, 'etc/passwd', text)
+        self.layers.append(('upper', upper))
+        (self.merged / 'etc/passwd').write_text(text)
+        self.verify(True)
+
+    def test_member_union(self):
+        upper = self.root / 'upper'
+        self.put(upper, 'etc/group', 'root:x:0:other\n')
+        self.layers.append(('upper', upper))
+        (self.merged / 'etc/group').write_text('root:x:0:other,root\n')
+        self.verify(True)
+
+
 if __name__ == '__main__':
     unittest.main(verbosity=2)

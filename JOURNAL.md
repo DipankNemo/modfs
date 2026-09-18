@@ -2864,3 +2864,23 @@ direction only, and every finding in this round is in the negative one.
 - Combined new verifier tests 13/13; existing V7 4/4 and round2 11/11; Python
   compilation passed. Logs: codex-fixes-20260918/H3-{before,after,real}.log.
   Same-size REGULAR-file content substitution remains explicitly out of scope.
+
+## 2026-09-18 (independent-review corrections H4: complete account verification)
+- V6 now checks all six account files: exact record schemas, all fields, numeric
+  identity/range/age fields, extra and duplicate accounts, membership equality,
+  subordinate ranges, and the expected mode/uid/gid. Sensitive field values are
+  never printed. Symlink account databases are rejected without reading them.
+- Policy is explicit: members/ranges are sets; non-identity fields and file
+  attributes follow the existing highest-layer merge policy. Identity-field
+  disagreement is an error. This verifies that policy; it does not claim that
+  choosing between conflicting password/home/shell values is order-independent.
+- Added 16 AccountTests. BEFORE: 11 failures, 5 controls pass. AFTER: 16/16;
+  combined verifier regression suite 29/29. Controls include member/range order,
+  member union and a declared non-identity override. Both attack suites rerun:
+  V7 4/4, round2 11/11. Python compilation passed.
+- Real six-layer baseline PASS; the malformed/world-readable shadow attack now
+  FAILs with acct_ok=0. Its acct_expected is now 134 (previously 132): the two
+  subordinate-ID records formerly omitted by V6 are finally counted. This is a
+  definition/coverage change, not an added account or an artefact modification.
+- Evidence: codex-fixes-20260918/H4-{before,after,real}.log. Published CSVs have
+  not yet been overwritten; the final evaluation will report this count change.

@@ -118,68 +118,84 @@ def main(argv):
     ld_actual = cache_libs(read(os.path.join(work, 'actual.ld')) or '')
     ld_ok = ld_expected <= ld_actual        # regeneration may legitimately add
 
-    # ---- V6: account databases are the exact semantic union ---------------
-    # The invariant that was missing. Numeric uniqueness (disjoint UID windows)
-    # and database composition are different properties: OverlayFS shows one
-    # complete passwd, so without reconciliation a composed system silently
-    # loses every account except the top layer's. This compares the COMPOSED
-    # files against the union of the layers, by record, not by count.
-    def accounts(root):
-        out = {}
-        for rel, key_at, member_at in (('etc/passwd', 0, ()), ('etc/group', 0, (3,)),
-                                       ('etc/shadow', 0, ()), ('etc/gshadow', 0, (2, 3))):
-            recs = {}
-            for line in (read(os.path.join(root, rel)) or '').split('\n'):
-                if not line.strip():
-                    continue
-                f = line.split(':')
-                if len(f) < 3 and rel in ('etc/passwd', 'etc/group'):
-                    continue
-                recs[f[key_at]] = f
-            out[rel] = recs
-        return out
+    # ---- V6: all account fields, record shape, access mode and ownership ---
+    # Match the declared merge policy, not arbitrary equality to one layer:
+    # member lists and subordinate ranges union as sets; other fields and file
+    # attributes come from the highest layer providing the record/file.
+    # Conflicting numeric identities are never a legitimate override.
+    account_schema = {
+        'etc/passwd': (7, (2, 3), (), False),
+        'etc/group': (4, (2,), (3,), False),
+        'etc/shadow': (9, tuple(range(2, 9)), (), False),
+        'etc/gshadow': (4, (), (2, 3), False),
+        'etc/subuid': (3, (1, 2), (), True),
+        'etc/subgid': (3, (1, 2), (), True),
+    }
+    acct_bad, n_acct = [], 0
 
-    acct_expected, acct_bad = {}, []
-    for _, root in layers:
-        for rel, recs in accounts(root).items():
-            tgt = acct_expected.setdefault(rel, {})
-            for k, f in recs.items():
-                if k not in tgt:
-                    tgt[k] = list(f); continue
-                member_at = {'etc/group': (3,), 'etc/gshadow': (2, 3)}.get(rel, ())
-                cur = tgt[k]
-                new = list(f)
-                for mi in member_at:
-                    if mi < len(cur) and mi < len(f):
-                        mem = [x for x in cur[mi].split(',') if x]
-                        for x in f[mi].split(','):
-                            if x and x not in mem:
-                                mem.append(x)
-                        new[mi] = ','.join(mem)
-                tgt[k] = new
-    got = accounts(merged)
-    for rel, acct_want in acct_expected.items():
-        missing = sorted(set(acct_want) - set(got.get(rel, {})))
-        if missing:
-            acct_bad.append("%s missing %d: %s" % (rel, len(missing), ', '.join(missing[:6])))
+    def account_records(root, rel):
+        path = os.path.join(root, rel)
+        try:
+            st = os.lstat(path)
+        except FileNotFoundError:
+            return {}, None
+        if not stat.S_ISREG(st.st_mode):
+            raise ValueError('not a regular account database')
+        count, numbers, members, ranges = account_schema[rel]
+        records = {}
+        for line in (read(path) or '').splitlines():
+            if not line.strip(): continue
+            fields = line.split(':')
+            if len(fields) != count or not fields[0]:
+                raise ValueError('malformed record (wrong field count or empty name)')
+            for i in numbers:
+                if rel == 'etc/shadow' and fields[i] == '': continue
+                try:
+                    fields[i] = int(fields[i])
+                except ValueError:
+                    raise ValueError('non-numeric identity/range/age field')
+                if rel != 'etc/shadow' and fields[i] < 0:
+                    raise ValueError('negative identity/range field')
+            for i in members:
+                fields[i] = frozenset(x for x in fields[i].split(',') if x)
+            key = tuple(fields) if ranges else fields[0]
+            if not ranges and key in records:
+                raise ValueError('duplicate account name')
+            records[key] = tuple(fields)
+        return records, (stat.S_IMODE(st.st_mode), st.st_uid, st.st_gid)
+
+    for rel, (_, _, member_fields, _) in account_schema.items():
+        wanted, expected_attr = {}, None
+        for name, root in layers:
+            try:
+                records, attr = account_records(root, rel)
+            except ValueError as exc:
+                acct_bad.append('%s in %s: %s' % (rel, name, exc))
+                continue
+            if attr is not None: expected_attr = attr
+            for key, fields in records.items():
+                if key in wanted:
+                    old = wanted[key]
+                    identity = (2, 3) if rel == 'etc/passwd' else ((2,) if rel == 'etc/group' else ())
+                    if any(old[i] != fields[i] for i in identity):
+                        acct_bad.append('%s: layers disagree on identity for %s' % (rel, key))
+                    fields = list(fields)
+                    for i in member_fields:
+                        fields[i] = old[i] | fields[i]
+                wanted[key] = tuple(fields)
+        n_acct += len(wanted)
+        try:
+            got, actual_attr = account_records(merged, rel)
+        except ValueError as exc:
+            acct_bad.append('%s in composed system: %s' % (rel, exc))
             continue
-        for k, f in acct_want.items():
-            g = got[rel][k]
-            # identity fields only: gecos/home/shell may legitimately differ
-            id_fields = (2, 3) if rel == 'etc/passwd' else ((2,) if rel == 'etc/group' else ())
-            for i in id_fields:
-                if i < len(f) and i < len(g) and f[i] != g[i]:
-                    acct_bad.append("%s '%s' field %d is %s, union says %s"
-                                    % (rel, k, i, g[i], f[i]))
-            for mi in {'etc/group': (3,), 'etc/gshadow': (2, 3)}.get(rel, ()):
-                if mi < len(f) and mi < len(g):
-                    wm = {x for x in f[mi].split(',') if x}
-                    gm = {x for x in g[mi].split(',') if x}
-                    if wm - gm:
-                        acct_bad.append("%s '%s' lost members %s"
-                                        % (rel, k, ','.join(sorted(wm - gm))))
+        if got != wanted:
+            # Do not print field values: shadow hashes are sensitive.
+            acct_bad.append('%s: missing, extra or changed records' % rel)
+        if actual_attr != expected_attr:
+            acct_bad.append('%s: mode/uid/gid %r, expected %r'
+                            % (rel, actual_attr, expected_attr))
     acct_ok = not acct_bad
-    n_acct = sum(len(v) for v in acct_expected.values())
 
     # ---- V8: exact debconf record contents, with Owners treated as sets ----
     # Separate parser from the merger: a missing field/answer must not become
