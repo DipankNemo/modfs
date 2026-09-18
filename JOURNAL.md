@@ -2946,3 +2946,18 @@ direction only, and every finding in this round is in the negative one.
   files. BEFORE: 2 failures; AFTER: 2/2 pass (4/4 combined probe tests).
 - Existing attacks rerun: V7 4/4, round2 11/11; Python compilation passed.
   Evidence: codex-fixes-20260918/L1-{before,after}.log.
+
+## 2026-09-18 (independent-review corrections L2: Replaces policy rationale)
+- Correction to the historical "FN-3 FIXED" rationale: dpkg DOES allow partial
+  file takeover with Replaces alone while both packages remain installed.
+  Breaks/Conflicts are not required for that operation. ModFS still rejects the
+  collision conservatively because it does not model ownership transfer or
+  installation order. The checker now says so; no admission rule was relaxed.
+- Added 1 real-dpkg regression: independently installed A and B into sibling
+  overlays, squashed/extracted both, then installed A followed by B together.
+  Both stay installed, B owns visible shared contents, dpkg --audit is empty;
+  ModFS rejects the sibling collision with the corrected policy explanation.
+  BEFORE: 1 failure (missing explanation); AFTER: 1 pass. This is a rationale
+  correction, not a new claim that arbitrary Replaces overlays are safe.
+- V7 4/4, round2 11/11; shell syntax and Python compilation passed. Evidence:
+  codex-fixes-20260918/L2-{before,after}.log and retained replaces-review-* roots.

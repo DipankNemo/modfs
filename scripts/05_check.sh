@@ -468,16 +468,12 @@ else:
     def replaces_pkg(a, b):
         """Does package a legitimately supersede b's files?
 
-        Replaces ALONE is not enough, and accepting it was a false negative
-        reproduced on 2026-09-17: two modules owning the same paths from
-        different packages flipped from REJECT to ACCEPT by adding one
-        `Replaces:` line to a manifest while the artefact bytes stayed
-        identical. Debian Policy 7.6 is explicit -- Replaces on its own permits
-        overwriting only while the other package is being REMOVED or UPGRADED.
-        For two packages installed SIDE BY SIDE, which is exactly what composing
-        two modules produces, dpkg requires Breaks or Conflicts as well. Without
-        that pairing a bare Replaces is a claim about an upgrade path that this
-        composition is not on."""
+        Conservative ModFS policy, not dpkg's co-installability rule.
+        Replaces alone permits dpkg to transfer individual files while both
+        packages remain installed. OverlayFS priority does not perform that
+        ownership transfer, and ModFS does not model the installation order.
+        Retain the stricter gate until takeover semantics are implemented;
+        paired Breaks/Conflicts are independently checked by class 3."""
         da, db = union.get(a), union.get(b)
         if not da or not db: return False
         bnames = set([b]) | set(n for grp in db['provides'] for (n, _, _) in grp)
@@ -506,6 +502,9 @@ else:
                 if why: break
         (soft if why else hard).append((path, owners, why))
 
+    if hard:
+        print("    ModFS conservatively rejects file takeover: ownership transfer and installation order are not modelled.")
+        print("    Replaces alone can permit dpkg co-installation; that is not proof of safe overlay composition.")
     for path, owners, _ in hard[:20]:
         ERRORS += 1
         print("    FILE COLLISION %s -- %s"
