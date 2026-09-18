@@ -2086,3 +2086,42 @@ Evaluation chapters — do not skip it.
   re-renders a great deal of text that never changed. Skipping records present in
   only one layer would recover most of it. That is performance work, it is not
   needed at N=36, and it would be premature to complicate the merge for it.
+
+## 2026-09-18 (probe audit applied: 33 probes replaced, 4 kept weak on purpose)
+- Applied the experiment session's probe table. 33 of 38 probes replaced, 4 kept
+  deliberately, 1 (pipdemo) already adequate.
+- WHAT WAS WRONG, in one sentence: nearly every probe tested that a BINARY LOADS
+  rather than that the MODULE WORKS, and two modules shared a probe with a
+  sibling that also ships the binary, which is what makes a false positive.
+        postgres      psql --version   <- psql comes from postgresql-client,
+        pgclient      psql --version      which BOTH modules ship. Identical
+                                          probes; postgres passes with no server.
+        nc-openbsd    command -v nc    <- both resolve the same alternatives link
+        nc-traditional command -v nc
+- The replacements execute the module's actual function: gcc compiles AND RUNS a
+  C program; java compiles and runs HelloWorld; rust and llvm likewise; jq
+  evaluates an expression; rsync copies a file and compares it; zstd and socat do
+  round trips; sqlite creates, inserts and selects; git inits, commits and logs.
+  The daemons that cannot be started in a chroot are probed by the pair that
+  actually matters -- server binary present AND the identity it runs as resolving
+  AND its state directory owned by that identity -- which is the class-7 chain,
+  not a version string.
+- VERIFIED, not assumed. All 38 probes pass `sh -n`. 22 are runnable on this
+  host; 16 of those pass and the other 6 fail only because the host lacks the
+  tool (no numpy, no /usr/lib/postgresql, no javac/rustc/clang, no
+  /usr/games/sl). No probe failed for a reason of its own.
+  NOT verified: numpy.linalg.det(eye(3))==1 could not be executed here because
+  numpy is absent from the host. The arithmetic is not in doubt; the fact that I
+  could not run it is recorded rather than glossed.
+- FOUR KEPT WEAK, and now they say so IN THE SPEC via a new `probe_note` field
+  rather than only in a journal nobody will read next to the data:
+        control-oldsnap  exists to be REJECTED; a functional probe would only
+                         ever run inside a known-negative observation
+        wget             no file:// scheme, so no offline functional probe exists
+        htop             no batch mode; there is nothing to execute
+        pgclient         psql needs a server and this module ships none
+  Writing the limitation next to the probe is the point: the previous version
+  looked exactly as strong as the others.
+- STILL TO RUN: 07_smoke_test.sh and a tier-3 boot, because a probe that passes
+  in a chroot can still fail as a systemd service -- that is precisely the
+  fake-cuda PATH defect, and these probes have not yet been run under systemd.

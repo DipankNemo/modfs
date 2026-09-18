@@ -32,13 +32,13 @@ modules:
   # ---- adversarial: alternatives on the same generic name ----------------
   - name: vim
     packages: [vim]
-    probe: vim --version
+    probe: 'vim --version >/dev/null && printf x | vim -es -u NONE -c "%s/x/ok/" -c wq /dev/stdin 2>/dev/null; update-alternatives --list editor | grep -q /usr/bin/vim'
     provokes: alternatives
     note: registers /usr/bin/editor. Pair with emacs.
 
   - name: emacs
     packages: [emacs-nox]
-    probe: emacs --version
+    probe: 'emacs --batch --eval "(princ (emacs-version))" >/dev/null 2>&1 && update-alternatives --list editor | grep -q /usr/bin/emacs'
     provokes: alternatives
     note: >
       also registers /usr/bin/editor. The classic alternatives collision.
@@ -47,13 +47,13 @@ modules:
 
   - name: gawk
     packages: [gawk]
-    probe: awk --version
+    probe: 'gawk "BEGIN{print substr(\"modfs\",1,5)}" | grep -qx modfs && update-alternatives --list awk | grep -q /usr/bin/gawk'
     provokes: alternatives
     note: second awk provider; base already ships mawk.
 
   - name: original-awk
     packages: [original-awk]
-    probe: command -v awk
+    probe: 'original-awk "BEGIN{print \"ok\"}" | grep -qx ok && update-alternatives --list awk | grep -q /usr/bin/original-awk'
     provokes: alternatives
     note: third awk provider. gawk+original-awk is a two-module collision
           over a link group base already owns.
@@ -61,25 +61,25 @@ modules:
   # ---- adversarial: diversions and Replaces ------------------------------
   - name: nc-openbsd
     packages: [netcat-openbsd]
-    probe: command -v nc
+    probe: '/bin/nc.openbsd -h 2>&1 | grep -q OpenBSD'
     provokes: diversions
     note: pair with nc-traditional; both own /bin/nc.
 
   - name: nc-traditional
     packages: [netcat-traditional]
-    probe: command -v nc
+    probe: '/bin/nc.traditional -h 2>&1 | grep -qi "connect to somewhere"'
     provokes: diversions
 
   # ---- adversarial: runtime resource conflict ----------------------------
   - name: webserver
     packages: [nginx]
-    probe: nginx -t
+    probe: 'nginx -t && nginx -T >/dev/null'
     provokes: runtime-port
     note: pair with apache. Both claim port 80.
 
   - name: apache
     packages: [apache2]
-    probe: apache2ctl configtest
+    probe: 'apache2ctl configtest && apache2ctl -t -D DUMP_MODULES 2>/dev/null | grep -q mpm_'
     provokes: runtime-port
     note: >
       composes cleanly and passes every static check -- the collision is
@@ -89,13 +89,13 @@ modules:
   # ---- adversarial: two providers of one virtual package -----------------
   - name: mta-msmtp
     packages: [msmtp-mta]
-    probe: command -v sendmail
+    probe: 'msmtp --version >/dev/null && readlink -f /usr/sbin/sendmail | grep -q msmtp'
     provokes: virtual-provider
     note: Provides mail-transport-agent.
 
   - name: mta-nullmailer
     packages: [nullmailer]
-    probe: command -v sendmail
+    probe: 'nullmailer-inject --help >/dev/null 2>&1; dpkg -S /usr/sbin/sendmail | grep -q "^nullmailer:"'
     provokes: virtual-provider
     note: >
       also Provides mail-transport-agent. Worth watching: C4 in 05_check.sh
@@ -106,7 +106,7 @@ modules:
   # ---- class 6 provocation ------------------------------------------------
   - name: pytools
     packages: [python3-numpy, python3-pip]
-    probe: python3 -c "import numpy"
+    probe: 'python3 -c "import numpy; assert round(numpy.linalg.det(numpy.eye(3)))==1" && pip3 --version >/dev/null'
     provokes: base-upgrade
     note: >
       the original class-6 case: numpy -> liblapack3 -> libgfortran5 ->
@@ -115,7 +115,7 @@ modules:
 
   - name: pyyaml
     packages: [python3-yaml]
-    probe: python3 -c "import yaml"
+    probe: 'python3 -c "import yaml; assert yaml.safe_load(\"a: 1\")=={\"a\":1}"'
     provokes: benign-overlap
     note: shares the python3 dependency cone with pytools.
 
@@ -125,33 +125,33 @@ modules:
   # SIZE and REALISM rather than to provoke a class.
   - name: gcc
     packages: [build-essential]
-    probe: gcc --version
+    probe: 'printf "int main(){return 0;}" > /tmp/p.c && gcc -o /tmp/p /tmp/p.c && /tmp/p'
     provokes: scale
   - name: java
     packages: [default-jdk-headless]
-    probe: javac -version
+    probe: 'cd /tmp && printf "public class H{public static void main(String[] a){System.out.print(1);}}" > H.java && javac H.java && java H | grep -qx 1'
     provokes: scale
   - name: rust
     packages: [rustc, cargo]
-    probe: rustc --version
+    probe: 'printf "fn main(){}" > /tmp/p.rs && rustc -o /tmp/pr /tmp/p.rs && /tmp/pr && cargo --version >/dev/null'
     provokes: shared-toolchain
     note: pair with llvm; both pull large parts of the LLVM runtime.
   - name: llvm
     packages: [llvm, clang]
-    probe: clang --version
+    probe: 'printf "int main(){return 0;}" > /tmp/l.c && clang -c -o /tmp/l.o /tmp/l.c && llvm-nm /tmp/l.o | grep -q main'
     provokes: shared-toolchain
   - name: postgres
     packages: [postgresql]
-    probe: psql --version
+    probe: 'test -x /usr/lib/postgresql/14/bin/postgres && getent passwd postgres >/dev/null && [ "$(stat -c %U /var/lib/postgresql)" = postgres ]'
     provokes: service-account
     note: allocates a system account; with ranges in place it must not collide.
   - name: mysql
     packages: [mariadb-server]
-    probe: mariadbd --version
+    probe: 'mariadbd --version >/dev/null && getent passwd mysql >/dev/null && [ "$(stat -c %U /var/lib/mysql)" = mysql ]'
     provokes: service-account
   - name: docker
     packages: [docker.io]
-    probe: dockerd --version
+    probe: 'dockerd --version >/dev/null && command -v containerd >/dev/null && command -v runc >/dev/null && getent group docker >/dev/null'
     provokes: service-account
 
   # ---- module-level dependency exercise -----------------------------------
@@ -164,14 +164,14 @@ modules:
     packages: [hello]
     version: "550"
     provides: [nvidia-driver]
-    probe: command -v hello
+    probe: 'hello | grep -qi hello'
     provokes: module-dependency
   - name: fake-cuda
     packages: [sl]
     requires:
       - module: nvidia-driver
         constraint: ">= 550"
-    probe: command -v sl
+    probe: 'test -x /usr/games/sl'
     provokes: module-dependency
     note: >
       must REJECT alone (unsatisfied requirement) and ACCEPT with
@@ -196,6 +196,10 @@ modules:
     packages: [curl]
     snapshot: "20250401T000000Z"
     probe: curl --version
+    probe_note: >-
+      PROBE DELIBERATELY WEAK and unfixable. This module exists to be REJECT
+      ED at tier 1, so any functional probe would only ever run in a known-n
+      egative observation. `curl --version` is honest about proving nothing.
     provokes: positive-control
     note: >
       Deliberately built from a DIFFERENT archive snapshot to the rest of the
@@ -211,62 +215,77 @@ modules:
   # ---- benign overlap and general filler ---------------------------------
   - name: curl
     packages: [curl]
-    probe: curl --version
+    probe: 'curl -sS file:///etc/hostname | grep -q .'
     provokes: benign-overlap
   - name: wget
     packages: [wget]
     probe: wget --version
+    probe_note: >-
+      PROBE DELIBERATELY WEAK. wget has no file:// scheme, so there is no of
+      fline functional probe; every real transfer needs a network the build 
+      and the boot test both deny. Recorded rather than hidden: this probe p
+      roves the binary loads, not that wget works.
     provokes: benign-overlap
   - name: git
     packages: [git]
-    probe: git --version
+    probe: 'cd /tmp && rm -rf g && git init -q g && cd g && git -c user.email=a@b -c user.name=c commit -q --allow-empty -m x && git log --oneline | grep -q x'
     provokes: benign-overlap
   - name: jq
     packages: [jq]
-    probe: jq --version
+    probe: 'echo "{\"a\":1}" | jq -e ".a==1" >/dev/null'
     provokes: benign-overlap
   - name: rsync
     packages: [rsync]
-    probe: rsync --version
+    probe: 'printf data > /tmp/r1 && rsync /tmp/r1 /tmp/r2 && cmp /tmp/r1 /tmp/r2'
     provokes: benign-overlap
   - name: tmux
     packages: [tmux]
-    probe: tmux -V
+    probe: 'tmux -f /dev/null new-session -d -s t true && tmux kill-server 2>/dev/null; true'
     provokes: benign-overlap
   - name: htop
     packages: [htop]
     probe: htop --version
+    probe_note: >-
+      PROBE DELIBERATELY WEAK. htop has no batch or one-shot mode, so there 
+      is nothing to execute non-interactively. The probe proves the ELF load
+      s and its libraries resolve, and nothing more.
     provokes: benign-overlap
   - name: socat
     packages: [socat]
-    probe: socat -V
+    probe: 'printf data > /tmp/s1 && socat -u FILE:/tmp/s1 CREATE:/tmp/s2 && cmp /tmp/s1 /tmp/s2'
     provokes: benign-overlap
   - name: zstd
     packages: [zstd]
-    probe: zstd --version
+    probe: 'printf data > /tmp/z1 && zstd -q -o /tmp/z1.zst /tmp/z1 && zstd -dq -o /tmp/z2 /tmp/z1.zst && cmp /tmp/z1 /tmp/z2'
     provokes: benign-overlap
   - name: sqlite
     packages: [sqlite3]
-    probe: sqlite3 --version
+    probe: 'sqlite3 :memory: "create table t(a);insert into t values(1);select a from t;" | grep -qx 1'
     provokes: benign-overlap
   - name: tcpdump
     packages: [tcpdump]
-    probe: tcpdump --version
+    probe: 'tcpdump --version >/dev/null 2>&1 && getent passwd tcpdump >/dev/null'
     provokes: benign-overlap
   - name: dnsutils
     packages: [bind9-dnsutils]
-    probe: dig -v
+    probe: 'dig -v 2>&1 | grep -qi dig && dig -f /dev/null >/dev/null 2>&1'
     provokes: benign-overlap
   - name: pgclient
     packages: [postgresql-client]
     probe: psql --version
+    probe_note: >-
+      PROBE DELIBERATELY WEAK. psql cannot do useful work without a server t
+      o connect to, and this module deliberately ships no server. Note this 
+      probe was IDENTICAL to postgres' until 2026-09-18, which made postgres
+       a demonstrated false positive: psql comes from postgresql-client, whi
+      ch both modules carry.
     provokes: benign-overlap
   - name: redis
     packages: [redis-server]
-    probe: redis-server --version
+    probe: 'redis-server --version >/dev/null && getent passwd redis >/dev/null && [ "$(stat -c %U /var/lib/redis)" = redis ]'
     provokes: runtime-port
     note: claims 6379; pair with memcached for a non-colliding control.
   - name: memcached
     packages: [memcached]
-    probe: memcached --version
+    probe: 'memcached --version >/dev/null && getent passwd memcache >/dev/null'
     provokes: benign-overlap
