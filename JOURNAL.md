@@ -1846,3 +1846,47 @@ Evaluation chapters — do not skip it.
   duration_s straight out of result.json. A third bundle this morning reads
   2142 s and is deliberately NOT used -- it is the interactive boot session,
   which measures how long I left a shell open, not the test.
+
+## 2026-09-18 (V7 hardened: it was checking names, not files)
+- Code freeze lifted today, so the strengthening the attack session stated but
+  could not apply is now applied.
+- V7 v1 compared DIRECTORY ENTRY NAMES. Rebuilt all three defeats as fixtures
+  (the attack session's were not preserved) and confirmed each against the real
+  shipped code BEFORE changing anything:
+        FN-2b  decoy symlink    v1 vis_ok=True   1 MB payload -> 5 bytes
+        FN-2c  host escape      v1 vis_ok=True   answered from the HOST's /etc
+        FN-8   real lib dir     v1 vis_ok=True   nothing can execute
+- THE FIX, three parts, each tied to a reproduction:
+    1. Descend only into REAL directories. No symlink is ever traversed, so
+       every path component is a real directory and resolution cannot leave the
+       artefacts. This alone kills FN-2c: v1 used os.path.join against a merged
+       root it did not control, so an absolute /etc symlink was answered by the
+       checking machine's own /etc. Its verdict was not a function of the
+       artefacts, in BOTH directions -- false negative where the host had
+       matching names, false positive where it did not.
+    2. Record (kind, size) per path, not names, and require the merged entry to
+       match SOME layer's version of that path. Last-wins between layers stays
+       legal; content arriving from outside every layer does not. Kills FN-2b.
+    3. TYPE CONFLICT: a path that is a symlink in one layer and a real directory
+       in another is reported whatever the merge chose, because whichever loses
+       takes its path resolution with it. Kills FN-8, where every file was still
+       present -- what was missing was not a file but a PATH.
+- Reconciled registries are exempt by name (passwd/group/shadow/gshadow/subuid/
+  subgid, dpkg status and diversions, extended_states, ld.so.cache, alternatives)
+  since reconciliation deliberately rewrites them and they match no single layer.
+- CONTROL, and it matters as much as the attacks: an ordinary last-wins override
+  (two modules ship /etc/cfg, merged has the top one's) must NOT fire. It does
+  not. A check that reports legitimate composition is worse than no check.
+- tests/v7_attacks.py makes all four permanent, and it EXECUTES THE REAL BLOCK
+  out of verify_compose.py rather than a copy, so the test cannot drift from the
+  code it tests. 4/4. Runs unprivileged.
+- WHAT I AM NOT CLAIMING. This is verified on fixtures only. It has not run
+  against a real composition, so the cost is unmeasured -- V7 now stats every
+  regular file where before it only listed directories, and tier 2's published
+  model is 148 + 19.9N ms. Re-running the sweep is the next step, and if the
+  model moves, the model moves and gets republished.
+- The other five false negatives are untouched: debconf content loss, class 4
+  flipped by a bare Replaces, class 7 defeated by an understating manifest and by
+  numeric file ownership, an alternatives demotion by a module owning no files,
+  and tier 2's blindness to class-2 skew. V7 was first because it was the one
+  whose shipped claim was stronger than its code.

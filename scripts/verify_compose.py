@@ -152,38 +152,85 @@ def main(argv):
     # ---- V5 ---------------------------------------------------------------
     audit_ok = not (read(os.path.join(work, 'audit.txt')) or '').strip()
 
-    # ---- V7: every file in any layer is VISIBLE in the merged view --------
-    # The check nothing had. V1-V6 verify dpkg status, alternatives,
-    # ld.so.cache, dpkg --audit and the account databases -- all METADATA. On
-    # 2026-09-16 the 36-module set passed every one of them while silently
-    # losing the whole of pytools' numpy tree, because pyyaml's
-    # trusted.overlay.opaque on /usr/lib/python3 told OverlayFS to ignore every
-    # lower layer at that path. dpkg was right that python3-numpy was
-    # installed. The files were simply not there.
+    # ---- V7: every file in any layer is VISIBLE, AND IS THE SAME FILE ----
+    # V7 v1 compared directory ENTRY NAMES and was defeated three ways on
+    # 2026-09-17, each with a reproduction:
+    #   (a) a module shipping `dir -> decoy` plus decoy/<same name> replaced
+    #       1 MB of another module's payload with 6 bytes. The name was present,
+    #       so v1 passed. This is EXACTLY what V7 was written to catch.
+    #   (b) an ABSOLUTE symlink (/etc) was resolved by os.path.join against the
+    #       HOST's root, because this runs outside the chroot. v1's verdict
+    #       therefore depended on the checking machine in both directions:
+    #       false negative when the host had matching names, false positive
+    #       when it did not. That breaks "artefact + manifest is self-sufficient".
+    #   (c) jammy is merged-/usr, so base ships lib -> usr/lib. A module shipping
+    #       a REAL lib/ directory outranks the symlink, /lib/x86_64-linux-gnu/
+    #       ld-linux-*.so becomes unreachable and NOTHING in the system can
+    #       execute -- with every file still present and v1 clean.
     #
-    # Compare DIRECTORY ENTRY SETS, not stat() per file: one listdir per
-    # (layer, directory) instead of millions of stats, and it catches exactly
-    # the failure mode -- a name present in a layer, absent from the merge.
-    # Cause-agnostic on purpose, so it still fires if file loss ever arrives by
-    # a route we have not met.
-    SKIP = {'proc', 'sys', 'dev', 'run', 'tmp'}
-    vis_missing = []
-    for lname, root in layers:
-        for dirpath, dirnames, filenames in os.walk(root):
-            rel = os.path.relpath(dirpath, root)
-            if rel == '.':
-                dirnames[:] = [d for d in dirnames if d not in SKIP]
-                rel = ''
-            names = set(dirnames) | set(filenames)
-            if not names:
-                continue
+    # So: descend only into REAL directories (no symlink is ever traversed, which
+    # is what confines resolution to the artefacts), record (kind, size) rather
+    # than names, and require the merged entry to match SOME layer's version of
+    # that path. Last-wins between layers stays legal; content arriving from
+    # outside every layer does not.
+    SKIP_TOP = {'proc', 'sys', 'dev', 'run', 'tmp'}
+    # Reconciliation deliberately rewrites these, so they match no single layer.
+    RECONCILED = {'etc/passwd', 'etc/group', 'etc/shadow', 'etc/gshadow',
+                  'etc/subuid', 'etc/subgid', 'etc/ld.so.cache',
+                  'var/lib/dpkg/status', 'var/lib/dpkg/status-old',
+                  'var/lib/dpkg/diversions', 'var/lib/apt/extended_states',
+                  'var/cache/ldconfig/aux-cache'}
+    RECONCILED_PREFIX = ('var/lib/dpkg/alternatives/', 'etc/alternatives/')
+
+    def vis_scan(root):
+        """rel -> (kind, size), descending only into real directories."""
+        out, stack = {}, ['']
+        while stack:
+            rel = stack.pop()
             try:
-                seen = set(os.listdir(os.path.join(merged, rel) if rel else merged))
+                with os.scandir(os.path.join(root, rel) if rel else root) as it:
+                    ents = list(it)
             except OSError:
-                vis_missing.append('%s:/%s (directory absent)' % (lname, rel))
                 continue
-            for g in sorted(names - seen)[:3]:
-                vis_missing.append('%s:/%s/%s' % (lname, rel, g))
+            for e in ents:
+                if not rel and e.name in SKIP_TOP:
+                    continue
+                r = rel + '/' + e.name if rel else e.name
+                try:
+                    if e.is_symlink():
+                        out[r] = ('l', 0)
+                    elif e.is_dir(follow_symlinks=False):
+                        out[r] = ('d', 0); stack.append(r)
+                    elif e.is_file(follow_symlinks=False):
+                        out[r] = ('f', e.stat(follow_symlinks=False).st_size)
+                    else:
+                        out[r] = ('o', 0)
+                except OSError:
+                    out[r] = ('?', 0)
+        return out
+
+    vis_expected = {}
+    for _, lroot in layers:
+        for r, v in vis_scan(lroot).items():
+            vis_expected.setdefault(r, set()).add(v)
+    vis_got = vis_scan(merged)
+    vis_missing = []
+    for r in sorted(vis_expected):
+        if r in RECONCILED or r.startswith(RECONCILED_PREFIX):
+            continue
+        kinds = {k for k, _ in vis_expected[r]}
+        if len(kinds) > 1 and 'l' in kinds:
+            vis_missing.append('TYPE CONFLICT /%s: layers disagree %s -- whichever '
+                               'loses, paths through it break' % (r, '/'.join(sorted(kinds))))
+            continue
+        g = vis_got.get(r)
+        if g is None:
+            vis_missing.append('MISSING /%s' % r)
+        elif g not in vis_expected[r]:
+            want = ','.join(sorted('%s%s' % (k, (' %dB' % sz) if k == 'f' else '')
+                                   for k, sz in vis_expected[r]))
+            vis_missing.append('ALTERED /%s: merged=%s%s but layers have {%s}'
+                               % (r, g[0], (' %dB' % g[1]) if g[0] == 'f' else '', want))
     vis_ok = not vis_missing
 
     ok = pkg_ok and not alt_bad and ld_ok and audit_ok and acct_ok and vis_ok
