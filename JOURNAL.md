@@ -2836,3 +2836,18 @@ direction only, and every finding in this round is in the negative one.
   re-derived curl through the shared extractor: 1 matched, bytes verified.
 - Logs and retained scratch: /srv/modfs/build/codex-fixes-20260918/H1-*.log.
   No published CSV was overwritten. Full evaluation follows the ordered fixes.
+
+## 2026-09-18 (independent-review corrections H2: verify debconf contents)
+- V8 now independently parses complete records in all three debconf databases.
+  It compares exact field values, unions Owners as sets, and fails on missing,
+  extra, duplicate or malformed records/fields and disagreeing layer values.
+  The verifier does not call the merge parser to compute its expectation.
+- Added 8 DebconfTests in tests/review_verification.py. Executed against the
+  saved pre-fix verifier: 6 failures, 2 controls pass. New verifier: 8/8 pass.
+  Corrected my test's initial exit-code assumption: this helper emits FAIL in
+  CSV while returning 0 for a completed observation. No exit contract changed.
+- Real base+curl+pyyaml+postgres+java+zstd composition: baseline PASS (148 debconf
+  records); replacing both databases with Name-only records now yields FAIL,
+  dbc_ok=0. The review's original identical-PASS-row attack is caught.
+- Existing suites after this change: V7 4/4, round2 11/11. Python compilation
+  passed. Evidence: /srv/modfs/build/codex-fixes-20260918/H2-{before,after,real}.log.

@@ -181,38 +181,67 @@ def main(argv):
     acct_ok = not acct_bad
     n_acct = sum(len(v) for v in acct_expected.values())
 
-    # ---- V8: every debconf question any layer answered survives the merge --
-    # The debconf databases became the sixth reconciled registry on 2026-09-18.
-    # The account databases got V6 when they were added; debconf got NOTHING --
-    # it was added to reconcile.py and, on the same day, added to V7's
-    # RECONCILED exemption list so that V7 would stop reporting the merged copy
-    # as ALTERED. Between those two changes the newest and least-tested merge in
-    # the project became the only one with no verification at all, and a merged
-    # templates.dat truncated to zero bytes passed every column.
-    #
-    # Same invariant as V6, by record rather than by count. Cheap on purpose:
-    # `Name:` starts a record in this format and appears nowhere else (checked
-    # across all 39 artefact trees -- 74 `Name:` lines, 74 blank lines, 74
-    # parsed stanzas in every one), so this is a line scan, not a second parse.
+    # ---- V8: exact debconf record contents, with Owners treated as sets ----
+    # Separate parser from the merger: a missing field/answer must not become
+    # invisible merely because the same parser discarded it on both sides.
     DEBCONF = ('var/cache/debconf/config.dat',
                'var/cache/debconf/templates.dat',
                'var/cache/debconf/passwords.dat')
-    def dbc_names(root, rel):
-        return {l[6:] for l in (read(os.path.join(root, rel)) or '').split('\n')
-                if l.startswith('Name: ')}
+
+    def dbc_records(root, rel):
+        records, fields, key = {}, {}, None
+        for line in (read(os.path.join(root, rel)) or '').splitlines() + ['']:
+            if not line:
+                if fields:
+                    name = fields.pop('Name', None)
+                    if not name or name in records:
+                        raise ValueError('missing or duplicate Name')
+                    if 'Owners' in fields:
+                        fields['Owners'] = {x.strip() for x in fields['Owners'].split(',')
+                                            if x.strip()}
+                    records[name], fields = fields, {}
+                key = None
+            elif line[0].isspace():
+                if key is None:
+                    raise ValueError('continuation without a field')
+                fields[key] += '\n' + line
+            else:
+                key, sep, value = line.partition(':')
+                if not sep or not key or key in fields:
+                    raise ValueError('malformed or duplicate field')
+                fields[key] = value.lstrip(' ')
+        return records
+
     dbc_bad, n_dbc = [], 0
     for rel in DEBCONF:
-        want_n = set()
-        for _, root in layers:
-            want_n |= dbc_names(root, rel)
-        if not want_n:
+        wanted = {}
+        for name, root in layers:
+            try:
+                recs = dbc_records(root, rel)
+            except ValueError as exc:
+                dbc_bad.append('%s in %s: %s' % (rel, name, exc))
+                continue
+            for record, fields in recs.items():
+                target = wanted.setdefault(record, {})
+                for key, value in fields.items():
+                    if key == 'Owners':
+                        target.setdefault(key, set()).update(value)
+                    else:
+                        if key in target and target[key] != value:
+                            dbc_bad.append('%s: layers disagree on %s field %s'
+                                           % (rel, record, key))
+                        target[key] = value
+        n_dbc += len(wanted)
+        try:
+            got = dbc_records(merged, rel)
+        except ValueError as exc:
+            dbc_bad.append('%s in composed system: %s' % (rel, exc))
             continue
-        n_dbc += len(want_n)
-        lost = sorted(want_n - dbc_names(merged, rel))
-        if lost:
-            dbc_bad.append("%s lost %d of %d: %s"
-                           % (rel.split('/')[-1], len(lost), len(want_n),
-                              ', '.join(lost[:6])))
+        if wanted != got:
+            changed = sorted(k for k in wanted.keys() | got.keys()
+                             if wanted.get(k) != got.get(k))
+            dbc_bad.append('%s: %d missing/extra/changed record(s): %s'
+                           % (rel, len(changed), ', '.join(changed[:6])))
     dbc_ok = not dbc_bad
 
     # ---- V5 ---------------------------------------------------------------
@@ -375,7 +404,7 @@ def main(argv):
         for a in acct_bad[:5]:
             sys.stderr.write("  accounts: %s\n" % a)
         for d in dbc_bad[:5]:
-            sys.stderr.write("  DEBCONF RECORDS LOST: %s\n" % d)
+            sys.stderr.write("  DEBCONF MISMATCH: %s\n" % d)
         for v in vis_missing[:5]:
             sys.stderr.write("  NOT VISIBLE IN MERGE: %s\n" % v)
     return 0
