@@ -138,7 +138,13 @@ modules:
   # SIZE and REALISM rather than to provoke a class.
   - name: gcc
     packages: [build-essential]
-    probe: 'printf "int main(){return 0;}" > /tmp/p.c && gcc -o /tmp/p /tmp/p.c && /tmp/p'
+    probe: '{ echo "#include <cstdio>"; echo "int main(){std::printf(\"1\");return 0;}"; } > /tmp/gp.cc && g++ -o /tmp/gpp /tmp/gp.cc && /tmp/gpp | grep -qx 1 && make --version >/dev/null'
+    probe_note: >-
+      Uses g++ and make, which are UNIQUE to this module. The previous probe
+      ran , and rust pulls in gcc-11 and cc1 as build dependencies, so it
+      passed with this module absent. Measured 2026-09-19: gcc contributes 16
+      packages rust does not, including g++, g++-11, make, dpkg-dev and
+      build-essential, so a C++ compile plus make cannot be satisfied by rust.
     provokes: scale
     probe_note: >
       satisfied by a sibling. `rust` pulls in gcc-11 AND cc1 as build
