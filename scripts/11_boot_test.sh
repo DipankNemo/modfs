@@ -115,16 +115,22 @@ RJ
 FINISHED=0
 finish() {               # finish <verdict> <exit-code>
     FINISHED=1
-    python3 - "$B/result.json" "$B/run.json" "$1" "$2" <<'FJ' 2>/dev/null || true
+    python3 - "$B/result.json" "$B/run.json" "$1" "$2" "$B/kernel.json" <<'FJ' 2>/dev/null || true
 import json, sys, time, os
-out, runf, verdict, rc = sys.argv[1:5]
+out, runf, verdict, rc, kernf = sys.argv[1:6]
 try:    run = json.load(open(runf))
 except Exception: run = {}
+# The resolved kernel ABI is recorded by the pack step into its own file, so
+# a run that dies before the kernel install still produces a result.json --
+# with kernel null, which is the truth about that run rather than a guess.
+try:    kern = json.load(open(kernf))
+except Exception: kern = None
 started = run.get('started_utc', '')
 json.dump({'run_id': run.get('run_id'), 'verdict': verdict, 'exit_code': int(rc),
            'expectation': run.get('expectation'),
            'known_negative': run.get('known_negative'),
            'modules': run.get('modules'),
+           'kernel': kern,
            'started_utc': started,
            'finished_utc': time.strftime('%Y%m%dT%H%M%SZ', time.gmtime()),
            'duration_s': int(time.time() - os.path.getmtime(runf))},
@@ -275,6 +281,70 @@ ln -s ../run/systemd/resolve/stub-resolv.conf "$M/etc/resolv.conf"
 KVER=$(in_chroot "$M" sh -c 'ls -1 /boot/vmlinuz-* 2>/dev/null | sed "s|.*/vmlinuz-||" | sort -V | tail -1' </dev/null)
 [ -n "$KVER" ] || die2 "no kernel in /boot after install"
 log "kernel ${KVER}"
+
+# ---- 2b. RECORD THE RESOLVED KERNEL ABI ----------------------------------
+# linux-image-generic is a META package: its version (5.15.0.185.166) is NOT
+# the ABI, and the thing a prebuilt out-of-tree module must match is the ABI
+# package version (5.15.0-185.195) and the /lib/modules/<abi> directory name.
+# Until now the pack step resolved that at run time and threw it away, so
+# nothing downstream could check that a driver module matches the kernel it
+# will meet -- STATE_OF_PLAY section 7 item 9 names exactly this as the CUDA
+# blocker. It is recorded here, next to the boot it describes.
+#
+# Written to its OWN file rather than into run.json, for the same reason
+# run.json is written before the first mount: this is evidence, and evidence
+# must survive the run that produced it failing later. finish() folds it into
+# result.json on every exit path, and records null when the run died first.
+log "recording resolved kernel ABI"
+in_chroot "$M" dpkg-query -W -f '${binary:Package}\t${Version}\n' \
+    'linux-image*' 'linux-modules*' 'linux-headers*' 'linux-generic*' \
+    'linux-firmware' 'linux-objects-*' 'linux-signatures-*' \
+    </dev/null 2>/dev/null | sort > "$C/kernel-packages.tsv" || true
+KSHA=$(sha256sum "$M/boot/vmlinuz-${KVER}" 2>/dev/null | cut -d" " -f1)
+python3 - "$B/kernel.json" "$KVER" "$C/kernel-packages.tsv" "${KSHA:-}" \
+         "$SNAPSHOT_ID" "$SUITE" "$ARCH" "$M" <<'KJ' \
+    || die2 "cannot record the resolved kernel ABI"
+import json, os, sys
+out, kver, pkgf, ksha, snap, suite, arch, merged = sys.argv[1:9]
+pkgs = {}
+try:
+    for line in open(pkgf, encoding='utf-8'):
+        if '\t' in line:
+            n, v = line.rstrip('\n').split('\t', 1)
+            if n: pkgs[n] = v
+except OSError:
+    pass
+# The ABI package version is what an out-of-tree module package must equal.
+# Prefer linux-modules-<abi>, because that is the package whose version the
+# nvidia module packages are built against; fall back to linux-image-<abi>.
+abi_version = None
+abi_source = None
+for cand in ('linux-modules-' + kver, 'linux-image-' + kver,
+             'linux-image-unsigned-' + kver):
+    if cand in pkgs:
+        abi_version, abi_source = pkgs[cand], cand
+        break
+# <abi> is the /lib/modules directory name a .ko must live under. Record what
+# actually exists rather than asserting it: a composed system that carries a
+# REAL lib/ directory outranks base's lib -> usr/lib symlink, and the two
+# paths below are how that is told apart afterwards.
+moddir = os.path.join(merged, 'usr/lib/modules', kver)
+real_lib_modules = os.path.join(merged, 'lib/modules', kver)
+lib_is_symlink = os.path.islink(os.path.join(merged, 'lib'))
+json.dump({'abi': kver,
+           'abi_package': abi_source,
+           'abi_package_version': abi_version,
+           'meta_package_version': pkgs.get('linux-image-generic'),
+           'vmlinuz_sha256': ksha or None,
+           'snapshot': snap, 'suite': suite, 'arch': arch,
+           'usr_lib_modules_present': os.path.isdir(moddir),
+           'lib_is_symlink': lib_is_symlink,
+           'real_lib_modules_present': (not lib_is_symlink
+                                        and os.path.isdir(real_lib_modules)),
+           'packages': pkgs},
+          open(out, 'w'), indent=2, sort_keys=True)
+print("  abi %s  (%s = %s)" % (kver, abi_source, abi_version))
+KJ
 
 # ---- 3. in-guest test harness -------------------------------------------
 python3 - "${SPEC_DIR}/modules.yaml" "$M/etc/modfs-probes" "${MODULES[@]}" <<'PY' \

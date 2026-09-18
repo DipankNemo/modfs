@@ -3147,3 +3147,68 @@ direction only, and every finding in this round is in the negative one.
   ~1313 MB full toolkit, 46% headers) are therefore treated here as UNVERIFIED
   ESTIMATES with no provenance, and are measured from the snapshot below rather
   than reused.
+
+## 2026-09-19 (task 2: the resolved kernel ABI is now recorded, and it is the hinge the GPU work turns on)
+
+- THE GAP. `11_boot_test.sh` installs `linux-image-generic` into the image at
+  PACK time, resolves the concrete kernel with `ls /boot/vmlinuz-*`, logs it,
+  and throws it away. STATE_OF_PLAY section 7 item 9 already names this as the
+  CUDA blocker -- "the blocker is not the absence of a kernel ... it is that the
+  resolved ABI is recorded nowhere" -- and it is exactly right. Nothing in the
+  artefact set could state which kernel a driver module would meet, so nothing
+  could check a driver module against it.
+- WHY THE META VERSION IS NOT THE ABI, which is the trap here.
+  `linux-image-generic` is a meta package; against snapshot 20260701T000000Z it
+  resolves to **5.15.0.185.166**, a number that appears in no module path and
+  matches no out-of-tree module package. The two things that matter are the ABI
+  directory name **5.15.0-185-generic** and the ABI package version
+  **5.15.0-185.195**, and they are different strings again. Recording the meta
+  version would have looked like a fix and checked nothing.
+- CHANGE, in `11_boot_test.sh`, no rebuild of anything:
+  1. after the kernel install, query dpkg in the merged view for every
+     `linux-image*`, `linux-modules*`, `linux-headers*`, `linux-generic*`,
+     `linux-objects-*` and `linux-signatures-*` package, and write
+     `<bundle>/kernel.json` with the resolved `abi`, the `abi_package` it came
+     from and its version, the meta version, the vmlinuz sha256, the snapshot/
+     suite/arch, and the full package->version map.
+  2. `finish()` folds that file into `result.json` under `kernel`.
+- TWO DESIGN CHOICES WORTH THE WORDS.
+  * It is written to its OWN file, not into `run.json`. `run.json` is written
+    before the first mount precisely so an aborted run still records what was
+    attempted; evidence produced mid-run has the same requirement, and a run
+    that dies before the kernel install now records `"kernel": null` rather
+    than nothing or a guess.
+  * It records the /lib layout as measured, not as assumed:
+    `usr_lib_modules_present`, `lib_is_symlink` and `real_lib_modules_present`.
+    A composed system carrying a REAL `lib/` directory outranks base's
+    `lib -> usr/lib` symlink and cannot execute anything -- `round2_attacks.py`
+    already reproduces that -- and the nvidia packages ship their payload under
+    `./lib/modules/...`, so this is not a hypothetical for this catalogue.
+- TESTED BEFORE PRESENTED, on fixtures, since the real path needs a boot:
+  `bash -n` clean; both embedded Python blocks `py_compile` clean; four
+  fixtures -- correct usrmerge layout (records abi 5.15.0-185-generic from
+  linux-modules-5.15.0-185-generic = 5.15.0-185.195); the FAILURE layout, a
+  real `lib/modules` tree, correctly reported `lib_is_symlink=false,
+  real_lib_modules_present=true, usr_lib_modules_present=false`; an empty dpkg
+  query (records nulls, exits 0); and a missing package file (degrades, exits
+  0). `finish()` was exercised on both paths and emits the kernel block when
+  present and `null` when absent. The real path runs in task 4.
+- THE ABI RESOLVED FROM THE PINNED SNAPSHOT, verified against the archive
+  indices rather than waiting for a boot:
+
+      linux-image-generic                        5.15.0.185.166   (meta)
+      linux-image-5.15.0-185-generic             5.15.0-185.195
+      linux-modules-5.15.0-185-generic           5.15.0-185.195
+      linux-modules-nvidia-535-generic           5.15.0-185.195
+
+  The brief's claim that the nvidia module package version IS the ABI is
+  CORRECT and now checked: `linux-modules-nvidia-535-generic` carries version
+  `5.15.0-185.195`, identical to the kernel our pinned snapshot resolves to.
+  That is not luck -- linux-restricted-modules is rebuilt per ABI -- but it is
+  the fact the whole approach rests on, and it had never been written down.
+- WHY THIS IS NOT A CHORE. A GPU driver module is ABI-PINNED: it is valid only
+  against one kernel. Every other module in this catalogue is a free-floating
+  sibling whose only constraint is (parent, snapshot). The driver is the first
+  module whose correctness depends on something the MODULE SET does not
+  contain, because the kernel is pack-time scaffolding by design. Recording the
+  ABI is what turns "hope it matches" into a comparison someone can run.
