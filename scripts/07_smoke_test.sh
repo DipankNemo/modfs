@@ -74,6 +74,22 @@ do_mount -t overlay overlay \
     "${C}/merged"
 M="${C}/merged"
 mount_chroot_fs "$M"
+
+# RUNTIME DIRECTORIES THE ARTEFACTS EXCLUDE BY DESIGN. SQUASH_EXCLUDES drops
+# tmp, var/tmp and run -- the DIRECTORIES, not merely their contents -- because
+# they are runtime state and not module content. 11_boot_test.sh already creates
+# them before packing an image; this script never did, and nothing noticed
+# because no probe had ever written a file. The moment the probes started doing
+# real work instead of printing version strings, eight of them failed here and
+# passed under systemd:
+#     gcc, git, java, llvm, rsync, rust, socat, zstd  -- all write to /tmp
+#     apache                                          -- mktemp in /var/lock,
+#                                                        which is a symlink to
+#                                                        /run/lock
+# Those were failures of the harness, not of the modules. mount_chroot_fs
+# creates proc/sys/dev/run, which is why /run itself exists; /run/lock does not.
+mkdir -p "$M/tmp" "$M/var/tmp" "$M/run/lock"
+chmod 1777 "$M/tmp" "$M/var/tmp" "$M/run/lock"
 write_chroot_policy "$M"
 
 echo

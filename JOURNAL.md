@@ -2125,3 +2125,34 @@ Evaluation chapters — do not skip it.
 - STILL TO RUN: 07_smoke_test.sh and a tier-3 boot, because a probe that passes
   in a chroot can still fail as a systemd service -- that is precisely the
   fake-cuda PATH defect, and these probes have not yet been run under systemd.
+
+## 2026-09-18 (the new probes were right; 07 was missing the runtime directories)
+- Ran the 33 replaced probes in both environments for the first time.
+        11_boot_test (systemd, 37 layers) : 36 probes PASS, 0 FAIL
+        07_smoke_test (chroot, 37 layers) : 66 passed, 9 FAILED
+  The boot test's only failure was apache2.service -- the class-8 port-80 clash
+  with nginx, which is not a probe.
+- THE NINE CHROOT FAILURES WERE A HARNESS DEFECT, NOT PROBE DEFECTS, and the
+  pattern named it immediately: eight of the nine write to /tmp
+  (gcc, git, java, llvm, rsync, rust, socat, zstd) and the ninth is apache,
+  whose apache2ctl does mktemp in /var/lock -- a symlink to /run/lock.
+        mktemp: failed to create directory via template '/var/lock/apache2.XXXXXXXXXX'
+- CAUSE: SQUASH_EXCLUDES drops tmp, var/tmp and run -- the DIRECTORIES, not
+  merely their contents -- because they are runtime state and not module content.
+  11_boot_test.sh creates them before packing an image and says so in a comment.
+  07_smoke_test.sh never did. Nothing noticed for the life of the project because
+  no probe had ever written a file: every one of them printed a version string.
+  The moment the probes started doing real work, the gap appeared.
+- This is the same shape as the fake-cuda finding, in the opposite direction.
+  There the harness's PATH made a working module look broken; here the harness's
+  missing /tmp made eight working modules look broken. Both times the instrument
+  was the thing under test, and neither was visible while the probes were weak.
+  A stronger probe does not only test the module better -- it tests the harness.
+- FIX: 07 now creates tmp, var/tmp and run/lock with mode 1777 after
+  mount_chroot_fs, mirroring what 11 already did.
+        RESULT: 75 passed, 0 failed, 1 skipped    (exit 0)
+  The skip is base, which has no probe and needs none.
+- SO ALL 33 REPLACEMENT PROBES PASS IN BOTH ENVIRONMENTS: a chroot with no
+  systemd, and a booted system with systemd's restricted PATH. That is the check
+  I said had to happen before calling the probe audit done, and it has now
+  happened.
