@@ -283,7 +283,7 @@ def main(argv):
     RECONCILED_PREFIX = ('var/lib/dpkg/alternatives/', 'etc/alternatives/')
 
     def vis_scan(root):
-        """rel -> (kind, size), descending only into real directories."""
+        """rel -> (kind, size/target), without traversing symlinks."""
         out, stack = {}, ['']
         while stack:
             rel = stack.pop()
@@ -298,7 +298,7 @@ def main(argv):
                 r = rel + '/' + e.name if rel else e.name
                 try:
                     if e.is_symlink():
-                        out[r] = ('l', 0)
+                        out[r] = ('l', os.readlink(e.path))
                     elif e.is_dir(follow_symlinks=False):
                         out[r] = ('d', 0); stack.append(r)
                     elif e.is_file(follow_symlinks=False):
@@ -359,10 +359,14 @@ def main(argv):
         if g is None:
             vis_missing.append('MISSING /%s' % r)
         elif g not in vis_expected[r]:
-            shape = ','.join(sorted('%s%s' % (k, (' %dB' % sz) if k == 'f' else '')
-                                    for k, sz in vis_expected[r]))
-            vis_missing.append('ALTERED /%s: merged=%s%s but layers have {%s}'
-                               % (r, g[0], (' %dB' % g[1]) if g[0] == 'f' else '', shape))
+            def describe(entry):
+                kind, value = entry
+                if kind == 'f': return 'f %dB' % value
+                if kind == 'l': return 'l -> %r' % value
+                return kind
+            shape = ','.join(sorted(describe(v) for v in vis_expected[r]))
+            vis_missing.append('ALTERED /%s: merged=%s but layers have {%s}'
+                               % (r, describe(g), shape))
     vis_ok = not vis_missing
 
     # Not a failure and not silence: a path V7 declined to judge is written to

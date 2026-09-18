@@ -2851,3 +2851,16 @@ direction only, and every finding in this round is in the negative one.
   dbc_ok=0. The review's original identical-PASS-row attack is caught.
 - Existing suites after this change: V7 4/4, round2 11/11. Python compilation
   passed. Evidence: /srv/modfs/build/codex-fixes-20260918/H2-{before,after,real}.log.
+
+## 2026-09-18 (independent-review corrections H3: symlink target visibility)
+- V7 records each symlink's target text using readlink, without resolving or
+  traversing it. Matching any offered layer target remains legal, consistent
+  with V7's existing last-wins allowance. Alteration diagnostics print targets.
+- Added 5 SymlinkTests: BEFORE 2 failed (same-length and different-length
+  substitutions); AFTER all 5 pass. Controls cover identical relative and
+  absolute/dangling targets and a target legitimately offered by another layer.
+- Real review composition: baseline PASS; python3 -> no-such-python now FAIL,
+  vis_missing=1, vis_ok=0. The independent chroot execution still exits 127.
+- Combined new verifier tests 13/13; existing V7 4/4 and round2 11/11; Python
+  compilation passed. Logs: codex-fixes-20260918/H3-{before,after,real}.log.
+  Same-size REGULAR-file content substitution remains explicitly out of scope.

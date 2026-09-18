@@ -21,6 +21,7 @@ class VerificationFixture(unittest.TestCase):
         self.layer = self.root / 'layer'
         self.merged = self.root / 'merged'
         self.layer.mkdir()
+        self.layers = [('fixture', self.layer)]
         self.put(self.layer, 'var/lib/dpkg/status',
                  'Package: fixture\nStatus: install ok installed\nVersion: 1\n')
         self.put(self.layer, 'var/cache/debconf/config.dat',
@@ -54,7 +55,8 @@ class VerificationFixture(unittest.TestCase):
                             '--merged', str(self.merged), '--work', str(self.root),
                             '--index', '1', '--n', '1', '--admitted', 'yes',
                             '--mount-ms', '0', '--reconcile-ms', '0', '--total-ms', '0',
-                            'fixture=' + str(self.layer)], text=True, capture_output=True)
+                            *[name + '=' + str(path) for name, path in self.layers]],
+                           text=True, capture_output=True)
         self.assertEqual(p.stdout.strip().split(',')[-1], 'PASS' if good else 'FAIL',
                          p.stdout + p.stderr)
         # This CSV-producing helper returns 0 for a completed FAIL observation.
@@ -99,6 +101,41 @@ class DebconfTests(VerificationFixture):
         p = self.merged / 'var/cache/debconf/config.dat'
         p.write_text(p.read_text() + 'Value: no\n')
         self.verify(False)
+
+
+class SymlinkTests(VerificationFixture):
+    def link(self, root, target):
+        p = root / 'usr/bin/python3'
+        p.parent.mkdir(parents=True, exist_ok=True)
+        p.symlink_to(target)
+
+    def test_relative_control(self):
+        self.link(self.layer, 'python3.10')
+        self.link(self.merged, 'python3.10')
+        self.verify(True)
+
+    def test_absolute_not_traversed(self):
+        self.link(self.layer, '/nonexistent-on-host')
+        self.link(self.merged, '/nonexistent-on-host')
+        self.verify(True)
+
+    def test_different_length_target(self):
+        self.link(self.layer, 'python3.10')
+        self.link(self.merged, 'no-such-python')
+        self.verify(False)
+
+    def test_same_length_target(self):
+        self.link(self.layer, 'python3.10')
+        self.link(self.merged, 'python9.99')
+        self.verify(False)
+
+    def test_offered_replacement_allowed(self):
+        self.link(self.layer, 'python3.10')
+        upper = self.root / 'upper'
+        self.link(upper, 'python3.11')
+        self.layers.append(('upper', upper))
+        self.link(self.merged, 'python3.11')
+        self.verify(True)
 
 
 if __name__ == '__main__':
