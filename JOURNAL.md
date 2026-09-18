@@ -2902,3 +2902,18 @@ direction only, and every finding in this round is in the negative one.
   lists rsync, and apt-get -s autoremove mariadb-server no longer lists Remv
   rsync. No package transaction was performed. Evidence: M1-{before,after,real}
   logs under /srv/modfs/build/codex-fixes-20260918.
+
+## 2026-09-18 (independent-review corrections M2: inherited identities)
+- Extraction now includes changed inherited UID/primary-GID/group-GID records,
+  and records removals when a replacement database omits a parent identity.
+  Missing delta databases still inherit base. Tier 1 rejects numeric changes
+  and explicit removals; legitimate group-member additions remain accepted.
+- Added 7 real-artefact repacking tests. BEFORE: 5 failures, 2 controls pass.
+  AFTER: 7/7 pass. Every repacked bundle was honestly extracted and successfully
+  re-derived with stage 12 before checking admission. Initial test scaffolding
+  used sidecar symlinks rejected by zstd; corrected to copies before the recorded
+  before/after comparison. Negative cases require an identity diagnostic.
+- Both existing suites passed again: V7 4/4, round2 11/11. Shell syntax passed.
+  Re-derived all original bundles: 39 matched, 0 mismatched, bytes verified.
+  No catalogue metadata refresh or artefact change was needed. Logs: M2-*.log
+  under /srv/modfs/build/codex-fixes-20260918.

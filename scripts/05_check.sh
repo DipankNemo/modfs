@@ -566,9 +566,17 @@ else:
     for m in ['base'] + modules:
         d = docs.get(m) or base_doc
         acc = d.get('accounts') or {}
+        for kind in ('users', 'groups'):
+            for n in acc.get('removed_' + kind) or []:
+                ERRORS += 1
+                print("    IDENTITY REMOVAL %s removes inherited %s '%s'; unsupported"
+                      % (m, kind, n))
         for n, rec in (acc.get('users') or {}).items():
             uid = _num(rec.get('uid'), m, 'user', n)
             if uid is None: continue
+            gid = _num(rec.get('gid'), m, 'primary group', n)
+            if gid is not None:
+                name_ids[('primary group', n)][gid].append(m)
             name_ids[('user', n)][uid].append(m)
             id_names[('user', uid)][n].append(m)
             merged_users.setdefault(n, uid)
