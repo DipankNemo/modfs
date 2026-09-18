@@ -547,25 +547,35 @@ else:
     # Rule: every numeric owner of a file a module ships must resolve to an
     # account base provides or one the module itself declares. Anything else is
     # an identity the module is borrowing without saying so.
-    base_uids = {r['uid'] for r in ((base_doc.get('accounts') or {}).get('users') or {}).values()}
-    base_gids = {r['gid'] for r in ((base_doc.get('accounts') or {}).get('groups') or {}).values()}
+    # int() EVERYWHERE. Manifests store ids as STRINGS (they come from fields of
+    # /etc/passwd) while os.lstat gives ints, so the first version of this check
+    # compared 100 against '100', matched nothing, and reported every module as
+    # borrowing base's _apt and adm. Caught by running it, not by reading it.
+    def _ids(doc, kind, key):
+        out = set()
+        for r in ((doc.get('accounts') or {}).get(kind) or {}).values():
+            try: out.add(int(r[key]))
+            except (KeyError, TypeError, ValueError): pass
+        return out
+    base_uids = _ids(base_doc, 'users', 'uid')
+    base_gids = _ids(base_doc, 'groups', 'gid')
     unowned = 0
     for m in modules:
         d = docs.get(m) or {}
         acc = d.get('accounts') or {}
         if 'file_uids' not in acc:
             continue                      # manifest predates this field; see below
-        own_u = {r['uid'] for r in (acc.get('users') or {}).values()} | base_uids | {0}
-        own_g = {r['gid'] for r in (acc.get('groups') or {}).values()} | base_gids | {0}
+        own_u = _ids(d, 'users', 'uid') | base_uids | {0}
+        own_g = _ids(d, 'groups', 'gid') | base_gids | {0}
         for kind, seen, known in (('uid', acc.get('file_uids') or [], own_u),
                                   ('gid', acc.get('file_gids') or [], own_g)):
             for i in seen:
+                try: i = int(i)
+                except (TypeError, ValueError): continue
                 if i in known: continue
                 unowned += 1; ERRORS += 1
-                claimant = [o for o in modules if o != m
-                            and i in {r[kind] for r in
-                                      ((docs.get(o) or {}).get('accounts') or {}).get(
-                                          'users' if kind == 'uid' else 'groups', {}).values()}]
+                claimant = [o for o in modules if o != m and i in _ids(
+                    docs.get(o) or {}, 'users' if kind == 'uid' else 'groups', kind)]
                 print("    IDENTITY BORROWED %s ships files owned by %s %s, which it "
                       "never allocated%s" % (m, kind, i,
                       " -- %s allocated it" % '+'.join(claimant) if claimant else ""))

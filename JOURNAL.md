@@ -1987,3 +1987,34 @@ Evaluation chapters — do not skip it.
   every tier-1 verdict trusts a document. Recording file owners narrows it,
   because those numbers are now derived from the tree rather than declared, but
   it does not close it.
+
+## 2026-09-18 (the numeric-ownership check rejected the entire catalogue -- my bug)
+- After --refresh-metadata the sweep died: "largest admissible N: 32 of 37,
+  compositions planned: 0", with N=2 itself reported INFEASIBLE. Every requested
+  N had no admissible set. The sampler was right; tier 1 had started rejecting
+  almost everything.
+- CAUSE, and it is mine, introduced hours earlier in the class-7 numeric
+  ownership check. Manifests store ids as STRINGS -- they are fields of
+  /etc/passwd, so 06 writes {'uid': '100'} -- while os.lstat gives INTS. The
+  check compared 100 against '100', matched nothing, and concluded that every
+  module was borrowing base's _apt (uid 100) and adm (gid 4):
+        IDENTITY BORROWED curl ships files owned by uid 100, which it never allocated
+        IDENTITY BORROWED wget ships files owned by uid 100, which it never allocated
+  Two modules, four errors, REJECT. Across 703 pairs that is nearly everything,
+  which is why even N=2 went infeasible.
+- FIX: one `_ids()` helper that int()s both sides, used for base, for the
+  module's own accounts and for the claimant lookup, plus int() on the recorded
+  file ids. curl+wget now reports "every file owner resolves to base or to the
+  module's own accounts [OK]".
+- AND VERIFIED IT IS NOT NOW VACUOUS, which is the real risk when a check that
+  fired everywhere stops firing. Predicate exercised directly: a module
+  allocating gamma=2500 passes; a module allocating NOTHING but shipping a file
+  owned by 2500 is still caught, and still names the module that allocated it;
+  a module owning only base ids passes. The attack is still detected.
+- All 38 modules individually: 0 flagged. That matches what the attack session
+  measured independently -- every file owner in the real catalogue maps to base
+  or to the module's own accounts, so this defect is LATENT, not live.
+- LESSON, and it is the same one as the CSV misalignment on 09-17: I added a
+  field in one script and consumed it in another without once running the pair
+  together on real data. Both times the fixture passed and the catalogue broke.
+  A fixture proves the logic; only real data proves the INTERFACE.
