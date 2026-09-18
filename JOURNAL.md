@@ -3572,3 +3572,56 @@ ratio: **the method HANDLES a 680 MB module.** It builds, it is byte-exact, it
 composes at the same cost as a 0.5 MB module, it passes V1-V8 at every N up to
 38, and it boots. What it does not do is SAVE anything at that size, and the
 formula said so in advance.
+
+## 2026-09-19 (deferred decision assessed: do NOT pin a kernel into base)
+
+Full reasoning in `docs/DECISION_kernel_pinning_2026-09-19.md`. Summary and the
+measurements behind it:
+
+- WHAT PINNING WOULD BUY, and it is exactly one thing: the ABI becomes a
+  property of `base.json`, so `05_check.sh` could reject a driver/kernel
+  mismatch statically at tier 1 instead of it surfacing at boot or not at all.
+  That is a real benefit and it is the only one.
+- THE BRIEF'S "~45 MB" IS RIGHT FOR ONE OF TWO OPTIONS, and they differ by 12x.
+  Resolved against the pinned snapshot:
+
+      A  linux-image-generic + initramfs-tools   20 pkgs  1 582.5 MB installed
+      B  linux-image-<abi> + linux-modules-<abi> 13 pkgs    135.5 MB installed
+
+  Option A is what stage 11 installs today, and it is twelve times the estimate
+  because `linux-image-generic` hard-depends on `linux-firmware` (1 089.8 MB
+  alone), `linux-modules-extra` (336.4 MB) and both microcode packages -- the
+  16 September entry already recorded that `--no-install-recommends` cannot
+  avoid them. Option B matches the ~45 MB estimate (~47 MB stored at base's
+  2.9x) and drops device firmware, which is fine under QEMU and a real
+  narrowing on physical hardware.
+- THE REBUILD INVALIDATES EVIDENCE, NOT JUST ARTEFACTS. Base + 40 siblings +
+  the six monolithic `--compare` baselines (not optional -- the 18 September
+  entry records exactly the trap of measuring a fresh base against stale
+  monoliths). ~1-2 h, after which every hash, all three cohort ratios, the
+  10 660 tier-1 combinations, the tier-2 fit (a FOURTH generation) and every
+  boot bundle are superseded. Ten days before submission.
+- AND THE RATIO WOULD IMPROVE, WHICH IS THE REASON TO BE SUSPICIOUS OF IT. With
+  B = 41.7 -> ~88.7 MB the whole-catalogue ratio goes 1.84x -> ~2.74x, because
+  the monolithic column is N*B + sum d and all 40 hypothetical images now carry
+  a kernel. Today the kernel is fetched from the mirror at pack time and stored
+  ZERO times in either column, so the omission is neutral; pinning relocates it
+  to "stored once in base" and inflates the baseline 40-fold. It would make the
+  number look better by changing what is compared. Related open audit finding:
+  H9, the monolithic baseline is not a controlled equivalent.
+- WHY IT IS NOT NECESSARY. The ABI is a deterministic FUNCTION of the pinned
+  snapshot, now demonstrated at four independent points that all agree: the
+  snapshot index predicts 5.15.0-185-generic / 5.15.0-185.195; the pack step
+  resolved it; the booted guest reported `Ubuntu 5.15.0-185.195-generic`; and
+  the `.ko` files carry `vermagic=5.15.0-185-generic`. Pinning would buy
+  determinism the pin already provides.
+- RECOMMENDED INSTEAD, and both are NEW FEATURES that I have NOT built:
+  (1) record the resolved ABI in `base.json` as a derived field -- `06` can
+  compute it from the snapshot indices without installing anything, costing a
+  manifest refresh (~1 min) rather than a rebuild; sealing it means adding it to
+  `BIND_FIELDS`, which invalidates existing manifests until regenerated.
+  (2) have `05_check.sh` compare a module's declared ABI against it, turning a
+  driver/kernel mismatch into a tier-1 REJECT with a reason.
+- IF PINNED ANYWAY: choose option B, rebuild the monolithic baselines in the
+  same generation, and report the result as a NEW BASELINE DEFINITION rather
+  than as an improvement on 1.84x.
