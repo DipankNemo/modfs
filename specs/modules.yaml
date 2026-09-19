@@ -255,7 +255,7 @@ modules:
     probe: 'cd /tmp && rm -rf g && git init -q g && cd g && git -c user.email=a@b -c user.name=c commit -q --allow-empty -m x && git log --oneline | grep -q x'
     provokes: benign-overlap
   - name: jq
-    packages: [jq]
+    packages: [jq, moreutils]
     probe: 'echo "{\"a\":1}" | jq -e ".a==1" >/dev/null'
     provokes: benign-overlap
   - name: rsync

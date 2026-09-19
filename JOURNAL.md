@@ -4470,3 +4470,82 @@ generation uses the ORIGINAL spec so pin and package-list effects are isolated.
 SquashFS mkfs and every inode timestamp use SOURCE_EPOCH derived from the pin;
 therefore package-version equality alone cannot establish free transfers.
 Actual SHA256 and full new artefact size determine shipping, not size growth.
+
+## 2026-09-19 (intra-generation update measured: jq gains moreutils)
+
+Treatment: `specs/modules.yaml` changes jq from `[jq]` to `[jq, moreutils]`.
+Commands, from this worktree, with root and the preserved deletion guard:
+
+```sh
+sudo env MODFS_ROOT=/srv/modfs/build/update-strategy/intra \
+  /srv/modfs/build/update-strategy/run_guarded.sh \
+  ./scripts/08_build_catalogue.sh --force --only jq
+sudo env MODFS_ROOT=/srv/modfs/build/update-strategy/intra \
+  ./scripts/12_verify_binding.sh
+sudo env MODFS_ROOT=/srv/modfs/build/update-strategy/intra \
+  /srv/modfs/build/update-strategy/run_guarded.sh \
+  ./scripts/10_compose_sweep.sh --out /srv/modfs/results/update-2026-09-19/intra-tier2.csv
+```
+
+The actual first command was wrapped in `/usr/bin/time -p`: **29.67 s wall**
+(16.00 user, 1.96 system). This includes stage 08 and metadata extraction.
+Old jq **565,248 bytes**, new jq **10,432,512 bytes**; growth **9,867,264**.
+This is a package-list update at the SAME pin, not an apt upgrade to a package
+version unavailable under that pin. moreutils brings Perl and dependencies;
+its size is measured, not the expected size of one small executable.
+
+- Re-derived binding: **41 matched, zero mismatches**, including base.
+- Tier 1: **780 pairs; 667 ACCEPT, 113 REJECT**, same rejection set as the
+  preserved baseline. Of jq's 39 pairs, 36 ACCEPT; the old-snapshot control
+  and the two CUDA modules without their required drivers are rejected.
+- Tier 2: **152/152 PASS**, N=2 through 38; **59 contain updated jq**.
+  These timings overlap the new base/catalogue build and are correctness
+  evidence, not an isolated performance comparison or a replacement cost fit.
+- Actual artifact hashes: **one module changed, 39 byte-identical**, base
+  identical. The control is counted among those 39 retained sibling artefacts,
+  but remains inadmissible. Transfer only the new jq: **10.432512 MB**.
+
+### A controlled monolithic comparator, not the old H9 baseline
+
+NEW MEASUREMENT TOOL: `15_measure_monolith.sh jq` takes the exact same
+`base.sqsh + jq.sqsh`, applies the standard reconciliation/regeneration,
+requires tier-1 admission and tier-2 PASS, then squashes the entire merged
+root using the same zstd level, exclusions and timestamps as a delta.
+It measures the whole rootfs that a monolithic distribution would reship;
+there is no second apt resolution or different package list. No kernel or
+ext4/ESP envelope in EITHER compressed-rootfs comparison.
+
+Measured old whole rootfs **42,074,112 bytes**; updated whole rootfs
+**51,650,560 bytes**. The changed module ships **10,432,512 / 51,650,560 =
+20.20%**, saving **79.80% (4.9519x)**. Size growth is NOT transfer cost:
+neither the 9.867 MB delta growth nor the monolith's 9.576 MB growth is what
+this whole-artefact shipping model transmits. No binary patching is assumed.
+
+Reproduce comparator in a private mount namespace (parallel chroot bind mounts
+otherwise interfered with one unmount; the failed log and retry are retained):
+
+```sh
+sudo unshare --mount --propagation private \
+  env MODFS_ROOT=/srv/modfs/build/update-strategy/intra \
+  /srv/modfs/build/update-strategy/run_guarded.sh ./scripts/15_measure_monolith.sh jq
+```
+
+The tool refuses to overwrite its output; use a fresh copied root or preserve
+and move the previous output first. Use the original jq and original spec for
+`before`, the changed jq for `intra`. Both verification rows are retained.
+
+NEW REPORT TOOL: `14_report_update.sh --old-root OLD --new-root NEW --out NEW.csv`
+hashes every actual artefact, checks its manifest size/digest, and writes each
+old/new hash, old/new size, signed size difference, full shipping bytes and
+package-contribution equality. It handles additions/removals; the catalogue
+monolithic sum is explicitly labelled a `B+d` MODEL. Regression test exercises
+same-sized/different-hash artefacts (must ship), identical bytes (free), and
+added/removed modules. Intra report: `intra-transfer.csv` plus `.json`.
+
+The first baseline copy attempted Python copytree over base.dir's device
+nodes, reading /dev/random as bytes. It was terminated, only that partial
+scratch tree was removed through the guard, and `cp -a` correctly preserved
+device nodes. This run-harness mistake did not touch the source base or enter
+any measured build. `baseline-copy-correction.txt` records it. The verified
+pin fix has an executable dispatcher test, `sudo python3 tests/update_pin.py`,
+covering ordinary and control pins during both builds and metadata refresh.
