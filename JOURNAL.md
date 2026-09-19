@@ -1847,6 +1847,816 @@ Evaluation chapters — do not skip it.
   2142 s and is deliberately NOT used -- it is the interactive boot session,
   which measures how long I left a shell open, not the test.
 
+## 2026-09-17 (base fattening, part 1: the 53/32/31/24/23 numbers re-derived, and the fat base built)
+
+- FIRST, THE OLD NUMBERS. Section 7's sharing figures were flagged as possibly
+  stale. Re-derived from the manifests of the current (2026-09-16 rebuild)
+  catalogue, over the seven large modules gcc/java/rust/llvm/postgres/mysql/docker:
+        distinct packages across the 7 : 166   (251 instances)
+        appear in >= 2 modules         :  53
+        appear in >= 3 modules         :  32
+        appear in >= 4 modules         :   0
+        gcc+rust 31   gcc+llvm 24   llvm+rust 23
+  Every published figure reproduces exactly. They are NOT stale.
+- The ">= 4 is zero" line is new and it changes how the result should be read.
+  "The shared toolchain" is not one cluster, it is THREE disjoint ones:
+        gcc+rust+llvm     C toolchain: binutils, libc6-dev, gcc-11, linux-libc-dev
+        gcc+postgres+mysql perl + gdbm
+        llvm+postgres+mysql libedit / libbsd / libmd
+  Nothing is shared by four or more of the seven. java (2 shared packages) and
+  docker (3) are effectively disjoint from the rest of the catalogue.
+- SIZE, NOT COUNT, IS WHAT PAYS. 53 packages says nothing about bytes, so the
+  shared set was priced against the pinned snapshot with apt-cache (indices
+  only, nothing installed):
+        53 shared packages, installed       378.0 MB   (debs 95.9 MB)
+        of which libllvm14 109.5, gcc-11 54.0, libicu70 35.3, libperl5.34 29.1
+  Three packages are 53 % of the shared set.
+- PER-MODULE SHARE OF THE SHARED SET, uncompressed installed bytes:
+        module    pkgs  shared   total MB  sharedMB   share%
+        gcc         47      37      263.7     227.9    86.4
+        java        31       2      280.1       1.0     0.4
+        rust        45      35      556.3     162.3    29.2
+        llvm        47      30      481.9     240.2    49.8
+        postgres    29      18      269.7     197.2    73.1
+        mysql       39      13      219.0      52.8    24.1
+        docker      13       3      282.2       0.2     0.1
+        shared bytes counted per instance : 881.6 MB
+        stored once in a fat base         : 378.0 MB
+        dedup headroom (upper bound)      : 503.6 MB uncompressed
+  PREDICTION RECORDED BEFORE THE BUILD: gcc and postgres should shrink hard,
+  llvm and rust noticeably, mysql a little, and java and docker essentially not
+  at all. If java and docker do shrink, something in my model is wrong.
+- METHOD. A SECOND artefact tree at MODFS_ROOT=/srv/modfs-fat so /srv/modfs is
+  never touched; base built by the same 01_build_base.sh from the same snapshot
+  with the 53 shared packages appended to the four defaults. /srv/modfs/build
+  cleaned first (2.9 MB of tier-1 pair scratch, archived to the session
+  scratchpad before deletion; resolved path checked to be under
+  /srv/modfs/build and /proc/self/mountinfo checked for mounts underneath).
+  Space: 65 GB free against a 5.6 GB real tree. Fits with room to spare.
+- FAT BASE BUILT, and one result is already worth having:
+        thin base.sqsh   41 717 760 B =  41.7 MB   113 packages
+        fat  base.sqsh  155 172 864 B = 155.2 MB   166 packages
+        dB = +113.5 MB compressed, 3.72x   rootfs 461 MB
+  166 - 113 = 53 EXACTLY. apt pulled in no extra package: the >=2 shared set is
+  already dependency-closed against base. That is not something the count 53
+  predicted, and it matters for the analysis -- the fat base contains the
+  shared set and nothing else, so dB is attributable entirely to it.
+- 378 MB installed compresses to 113.5 MB of artefact, a factor of 3.33.
+- Catalogue rebuild of all 38 modules against the fat base is running.
+
+## 2026-09-17 (probe quality audit: nine demonstrated false positives and a second harness-measures-itself defect)
+
+- THE QUESTION. fake-cuda's probe fails although the module is fine; apache's
+  passes although the service is dead. Both are measurement defects. So:
+  across all 38 probes, does the probe prove the module WORKS, or only that a
+  file exists or a config parses?
+- CLASSIFICATION USED (four levels, by what the probe actually executes):
+        A  existence only     `command -v X`     -- never executes the payload
+        B  binary loads       `X --version`      -- ELF loads, ld.so resolves,
+                                                    main() reaches a printf
+        C  config parses      `nginx -t`         -- B, plus reads /etc
+        D  does the job       `import numpy`     -- B, plus loads the module's
+                                                    own data/plugins and runs
+  Counted over the catalogue: A = 7, B = 26, C = 2, D = 3.
+  So 33 of 38 probes never touch anything the module is FOR.
+- NINE DEMONSTRATED FALSE POSITIVES. Not argued -- each was run against a real
+  composition that deliberately EXCLUDES the module owning the probe. Every
+  line below is a reproduction (private mount namespace, squashfs layers
+  mounted read-only, reconcile.py + ldconfig exactly as 07 does):
+
+        probe owner      probe                      composed set            rc
+        original-awk     command -v awk             base                     0
+        original-awk     command -v awk             base gawk                0
+        gawk             awk --version              base mysql               0
+        postgres         psql --version             base pgclient            0
+        pgclient         psql --version             base postgres            0
+        nc-openbsd       command -v nc              base nc-traditional      0
+        nc-traditional   command -v nc              base nc-openbsd          0
+        mta-msmtp        command -v sendmail        base mta-nullmailer      0
+        mta-nullmailer   command -v sendmail        base mta-msmtp           0
+        curl             curl --version             base control-oldsnap     0
+
+  rc=0 means the probe passed with its own module entirely absent.
+- THE MECHANISM IS THE SAME EVERY TIME and it is worth naming: the probe tests
+  a SHARED NAME, not the module's own artefact. `/usr/bin/awk`,
+  `/usr/bin/nc` and `/usr/sbin/sendmail` are alternatives or diversion link
+  names owned by whichever provider wins; `/usr/bin/psql` is literally owned by
+  both postgres and pgclient (both get it from postgresql-client-common);
+  `curl` is the same binary in the control as in the module. A probe on a
+  shared name cannot identify its module BY CONSTRUCTION.
+- A MEASUREMENT I DID NOT EXPECT: base alone already carries
+  /usr/bin/awk -> /etc/alternatives/awk -> /usr/bin/mawk, so original-awk's
+  probe passes on a 113-package base with no catalogue module present at all.
+  That is the weakest probe in the catalogue.
+- AND ONE I GOT WRONG BEFORE TESTING: I expected `awk --version` to pass on
+  base alone too. It exits 2 -- jammy's mawk (1.3.4.20200120-3) has no
+  --version, though the host's newer mawk does. gawk's probe therefore needs a
+  composed sibling that ships a GNU awk to become a false positive, and mysql
+  is one: mariadb-server depends on gawk, so /usr/bin/gawk is owned by the
+  mysql module as well as the gawk module.
+- pgclient CANNOT BE PROBED AT ALL, and this is a fact about the catalogue
+  rather than about the probe. Of the 1 978 paths pgclient owns, 1 976 are also
+  owned by postgres; the two that are not are
+  /usr/share/doc/postgresql-client/{changelog.gz,copyright}. pgclient's file
+  set is a SUBSET of postgres's, so no runtime probe can distinguish them.
+  Recorded as a limitation, not given a replacement.
+- SECOND HARNESS-MEASURES-ITSELF DEFECT, and this one is live:
+
+        $ sudo ./scripts/07_smoke_test.sh base apache
+        F4  [FAIL] apache: apache2ctl configtest
+            mktemp: failed to create directory via template
+                    '/var/lock/apache2.XXXXXXXXXX': No such file or directory
+        RESULT: 4 passed, 1 failed  --  BROKEN
+
+  The module is fine. `/var/lock -> /run/lock`; SQUASH_EXCLUDES drops `run`
+  from every artefact and mount_chroot_fs only mkdir's /run, so /run/lock does
+  not exist in a chroot. apache2ctl is a WRAPPER that creates a lock directory
+  before calling apache2. Isolated exactly:
+        apache2ctl configtest                          rc=1
+        install -d -m 1777 /run/lock && apache2ctl ...  rc=0
+        . /etc/apache2/envvars && apache2 -t            rc=0
+  In tier 3 the same probe PASSES, because systemd creates /run/lock during
+  boot. So apache's probe reports the module broken under 07 and healthy under
+  11 -- identical module, identical composition, opposite verdicts. This is
+  fake-cuda's defect in the other direction and it means stage 07 has never
+  been run green on any set containing apache.
+- fake-cuda reproduced exactly as the earlier entry describes, with the numbers
+  this time: /etc/environment carries /usr/games, systemd's DefaultEnvironment
+  is unset so units get the compiled-in PATH without it,
+  `command -v sl` rc=127 under that PATH, `test -x /usr/games/sl` rc=0.
+- THE DANGEROUS HALF IS THE FALSE POSITIVES, and the postgres pair shows why.
+  Composing base+postgres+mysql WITHOUT reconciliation reproduces the class-5
+  account defect (mysql's /etc/passwd wins outright):
+        probe                                    reconciled   unreconciled
+        psql --version                    (now)      rc=0         rc=0
+        mariadbd --version                (now)      rc=0         rc=0
+        getent passwd postgres            (proposed) rc=0         rc=2
+        test "$(stat -c %U /var/lib/postgresql)" = postgres       rc=0  rc=1
+        su -s /bin/sh postgres -c true    (proposed) rc=0         rc=1
+  The current probes are IDENTICAL in both columns. They cannot see the defect
+  that section 4 spends its longest subsection on. The proposed ones separate
+  them cleanly. That is the whole case for changing the probes: not that
+  `--version` is inelegant, but that it has no discriminating power over the
+  failure classes this project actually produces.
+
+## 2026-09-17 (probe audit part 2: the 38 replacements, all run before proposing)
+
+- EVERY replacement below was executed inside a real composition before being
+  written down. 33 proposed probes were run in ONE 37-layer composition
+  (everything except mta-nullmailer, which conflicts with mta-msmtp and was run
+  separately): 33 of 33 exit 0. Nothing here is untested.
+- Also checked as YAML, since the probe is a plain scalar in modules.yaml:
+  every string round-trips, but TWO are not safe as plain scalars and must be
+  quoted when they go into the file -- `pyyaml` (contains `'a: 1'`) and
+  `sqlite` (contains `:memory:` and `values(1);select`). A `: ` inside a plain
+  scalar silently reparses as a nested mapping.
+
+  KEY: class A existence only / B binary loads / C config parses / D does the job.
+  verdict WEAK-FP = demonstrated false positive, WEAK-FN = demonstrated false
+  negative, WEAK = proves less than the module's function, OK = keep.
+
+        module        cls verdict  proposed probe (tested, exits 0)
+        vim            B  WEAK     real edit + `update-alternatives --list editor`
+                                   must contain /usr/bin/vim.basic
+        emacs          B  WEAK     emacs --batch --eval '(princ (emacs-version))'
+                                   + editor candidate /usr/bin/emacs
+                                   [--version needs only the ELF; --batch needs
+                                    the dumped image under /usr/share/emacs]
+        gawk           B  WEAK-FP  gawk 'BEGIN{print substr("modfs",1,5)}' + awk
+                                   candidate /usr/bin/gawk
+        original-awk   A  WEAK-FP  original-awk 'BEGIN{print "ok"}' + awk
+                                   candidate /usr/bin/original-awk
+        nc-openbsd     A  WEAK-FP  /bin/nc.openbsd -h 2>&1 | grep -q OpenBSD
+        nc-traditional A  WEAK-FP  /bin/nc.traditional -h | grep -qi 'connect to somewhere'
+        webserver      C  WEAK     nginx -t && nginx -T >/dev/null
+                                   [-T proves every `include` resolved, which is
+                                    a file-VISIBILITY test, the V7 failure mode]
+        apache         C  WEAK-FN  apache2ctl configtest && apache2ctl -t -D
+                                   DUMP_MODULES | grep -q mpm_
+                                   [see the harness fix below -- the probe was
+                                    not the thing that was wrong]
+        mta-msmtp      A  WEAK-FP  msmtp --version && readlink -f
+                                   /usr/sbin/sendmail | grep -q msmtp
+        mta-nullmailer A  WEAK-FP  nullmailer-inject --help && dpkg -S
+                                   /usr/sbin/sendmail | grep -q '^nullmailer:'
+                                   [nullmailer's sendmail is a REAL FILE, not a
+                                    symlink, so readlink cannot discriminate it]
+        pytools        D  OK       strengthen: numpy.linalg.det(eye(3)) == 1,
+                                   which exercises liblapack3 -> libgfortran5,
+                                   the exact class-6 chain; + pip3 --version,
+                                   since python3-pip was requested and never probed
+        pyyaml         D  OK       strengthen: yaml.safe_load('a: 1') == {'a': 1}
+        gcc            B  WEAK     compile AND RUN a C program
+                                   [exercises cpp headers, cc1, as, ld, crt,
+                                    libc6-dev -- `gcc --version` touches none]
+        java           B  WEAK     javac + java a HelloWorld
+        rust           B  WEAK     rustc -o + run + cargo --version
+        llvm           B  WEAK     clang -c then llvm-nm | grep main
+        postgres       B  WEAK-FP  server binary /usr/lib/postgresql/14/bin/postgres
+                                   + getent passwd postgres + stat -c %U
+                                   /var/lib/postgresql = postgres + su postgres
+        mysql          B  WEAK     mariadbd + getent passwd mysql + stat %U
+                                   /var/lib/mysql + su mysql
+        docker         B  WEAK     dockerd + containerd + runc + getent group docker
+        fake-nvidia-driver A WEAK  hello | grep -qi hello
+        fake-cuda      A  WEAK-FN  test -x /usr/games/sl
+        pipdemo        D  OK       keep
+        control-oldsnap B WEAK-FP  KEEP, cannot be fixed -- see limitations
+        curl           B  WEAK-FP  curl -sS file:///etc/hostname | grep -q .
+                                   [curl's file:// scheme is a real transfer, offline]
+        wget           B  WEAK     KEEP -- wget has no file:// scheme, so there is
+                                   no offline functional probe. Stated, not hidden.
+        git            B  WEAK     init, commit --allow-empty, log
+        jq             B  WEAK     echo '{"a":1}' | jq -e '.a==1'
+        rsync          B  WEAK     rsync a file and cmp it
+        tmux           B  WEAK     tmux -f /dev/null new-session -d + kill-server
+        htop           B  WEAK     KEEP -- htop has no batch mode
+        socat          B  WEAK     socat -u FILE:... CREATE:... and cmp
+        zstd           B  WEAK     compress/decompress round trip
+        sqlite         B  WEAK     sqlite3 :memory: create/insert/select  (QUOTE IT)
+        tcpdump        B  WEAK     tcpdump --version + getent passwd tcpdump
+        dnsutils       B  WEAK     dig -f /dev/null && dig -v  (marginal gain, said so)
+        pgclient       B  WEAK-FP  KEEP, UNPROBEABLE -- see limitations
+        redis          B  WEAK     redis-server --version + getent passwd redis
+                                   + stat %U /var/lib/redis = redis
+        memcached      B  WEAK     memcached --version + getent passwd memcache
+
+- THE APACHE DIAGNOSIS CHANGED WHEN I TESTED THE FIX, and the corrected version
+  is more useful. My first proposal was to bypass apache2ctl with
+  `. /etc/apache2/envvars && apache2 -t`. It passed on base+apache and then
+  FAILED in the 37-layer run:
+        apache2: Syntax error on line 80 of /etc/apache2/apache2.conf:
+                 DefaultRuntimeDir must be a valid directory
+  The first result was an artefact of test ORDER -- an earlier command in the
+  same overlay had already created the directory. The real story:
+        /run is in SQUASH_EXCLUDES, so NO artefact carries /run content
+        mount_chroot_fs only mkdir's /run, and mounts nothing on it
+        apache needs /run/lock (apache2ctl) and /var/run/apache2 (DefaultRuntimeDir)
+        a BOOTED system has systemd-tmpfiles create these; a chroot does not
+  So this is a HARNESS defect, not a probe defect, and the fix belongs beside
+  ldconfig and update-alternatives --auto in the reconcile step:
+        systemd-tmpfiles --create        rc=0, creates /run/{lock,log,sendsigs.omit.d}
+        then apache2ctl configtest       rc=0
+  Measured in that order. /run content is DERIVED STATE regenerated by the tool
+  that owns it -- exactly the argument section 4 already makes for
+  /etc/ld.so.cache and /etc/alternatives. With `systemd-tmpfiles --create` run
+  first, apache's ORIGINAL probe passes unchanged, and so does the strengthened
+  one. Recommendation: add the tmpfiles step to 07 (and to 04/10's compose
+  path), and keep apache2ctl.
+- TWO PROBES CANNOT BE FIXED AND SHOULD BE RECORDED AS LIMITATIONS:
+  * pgclient -- its file set is a subset of postgres's (1 976 of 1 978 shared
+    paths; the two exceptions are changelog.gz and copyright). No runtime probe
+    can distinguish them. Nothing to propose.
+  * control-oldsnap -- it is `curl` from a different snapshot. Both builds
+    report `curl 7.81.0`; only the Ubuntu revision differs, which curl does not
+    print. The control is validated by tier-1 REJECTION, not by its probe, so
+    this costs nothing -- but the probe should not be read as identifying it.
+- STRUCTURAL FINDING WORTH A LINE IN THE EVALUATION. One `probe` string serves
+  two environments that do not have the same capabilities: 07 runs it in a
+  chroot with policy-rc.d blocking daemons and no systemd; 11 runs it inside a
+  booted system as a systemd unit. fake-cuda fails in 11 and passes in 07;
+  apache fails in 07 and passes in 11. Both are the same bug -- a single field
+  describing a check whose meaning depends on where it runs. Service HEALTH is
+  already covered separately and correctly by 11's /etc/modfs-units matrix, so
+  the probe's job should be defined as the environment-independent functional
+  check, and that is how every replacement above is written.
+
+## 2026-09-17 (attacking the checkers: seven false negatives, six of which V7 passes)
+
+- METHOD. A synthetic artefact tree at MODFS_ROOT=<scratch>/attack holding a
+  copy of the real base plus hand-built modules (squashfs artefact + manifest +
+  class-4 sidecar, written by a fixture generator). Tier 1 is the REAL
+  05_check.sh; composition and verification are the REAL reconcile.py and
+  verify_compose.py, called exactly as 10_compose_sweep.sh calls them. Every
+  finding below is a reproduction, not an argument.
+
+- FN-1  DEBCONF CONTENT LOSS -- no synthetic metadata needed at all.
+        ./scripts/05_check.sh postgres java            -> ACCEPT, 0 errors
+        compose base+postgres+java, verify_compose.py  -> PASS, vis_ok=1
+        /var/cache/debconf/config.dat: base 14 151 B, postgres 25 180 B,
+        java 14 470 B -- all three DIFFER; merged == java's, byte for byte.
+  postgres' debconf database is gone and every checker is green. Section 4
+  already quantifies this (7 of 37 modules carry a diverging config.dat,
+  231 of 666 pairs affected) but records it as "last-wins"; this is the
+  demonstration that nothing detects it. Class 4 cannot: debconf paths appear
+  in ZERO sidecars, measured across all five modules that carry them.
+
+- FN-2b  V7 DEFEATED BY A RELATIVE SYMLINK. Module `atta` ships
+  /usr/lib/attlib/data.bin (1 048 576 B). Module `attsymrel` ships
+  /usr/lib/attlib as a symlink to `attdecoy`, plus /usr/lib/attdecoy/data.bin
+  (6 B).
+        tier 1                       -> ACCEPT
+        verify_compose.py            -> PASS, vis_missing=0, vis_ok=1
+        merged /usr/lib/attlib/data.bin  -> 6 bytes, content "decoy"
+  This is EXACTLY the failure V7 was written for -- a whole directory of one
+  module's files replaced, under /usr/lib, so that the payload is gone -- and
+  V7 does not see it. V7 compares DIRECTORY ENTRY NAMES. The decoy was built
+  to carry the same name, so the name check is satisfied.
+
+- FN-2c  V7 RESOLVES ABSOLUTE SYMLINKS AGAINST THE HOST'S ROOT, so its verdict
+  is not a function of the artefacts. Module `atte` ships
+  /usr/lib/attetc/{passwd,group}; module `atthost` ships /usr/lib/attetc as a
+  symlink to the ABSOLUTE path /etc.
+        verify_compose.py            -> PASS, vis_ok=1
+        merged /usr/lib/attetc/passwd -> the composed system's /etc/passwd
+  verify_compose.py runs on the HOST and does
+  `os.listdir(os.path.join(merged, rel))`, so the kernel resolved `/etc`
+  against the host root. The host has /etc/passwd and /etc/group, the names
+  matched, V7 passed. Had the symlink pointed somewhere the host lacks, V7
+  would have reported the directory absent -- which is what the earlier
+  absolute-symlink variant did. So V7's answer on any symlinked path depends
+  on the machine running the check, in BOTH directions: a false negative when
+  the host happens to have matching names, a false positive when it does not.
+  That breaks "an artefact plus its manifest is self-sufficient".
+
+- FN-3  CLASS 4 IS DEFEATED BY ONE LINE OF MANIFEST. Two modules own
+  /usr/bin/atttool and /etc/att/conf from different packages.
+        atta + attbplain  (nothing declared)         -> REJECT, 2 collisions
+        atta + attbrepl   (BYTE-IDENTICAL artefact,
+                           manifest adds Replaces: att-a)
+                                                     -> ACCEPT
+                          "2 collision(s) SUPPRESSED as legitimate"
+        composed: atttool prints B, /etc/att/conf says owner=attb
+        verify_compose.py                            -> PASS, vis_ok=1
+  The artefacts are identical; only the metadata changed. `replaces_pkg` is
+  tried in BOTH directions and a bare Replaces with no Breaks/Conflicts is
+  enough. Debian only permits that overwrite when the other package is being
+  removed or upgraded, never for two packages installed side by side. This is
+  audit finding H3, now with a reproduction.
+
+- FN-4  CLASS 7 IS DEFEATED BY A MANIFEST THAT UNDERSTATES ITS ARTEFACT.
+  `attu1` and `attu2` each write an /etc/passwd entry at uid 2500 -- `alpha`
+  and `beta` -- and each declares `accounts: {users:{}, groups:{}}`.
+        tier 1   -> ACCEPT, "22 user(s), 43 group(s), no id reused [OK]"
+        tier 2   -> PASS, acct_ok=1
+        composed: getent passwd alpha -> 2500
+                  getent passwd beta  -> 2500
+                  /var/lib/attu2/state, created BY beta, reads owner=alpha
+  The memcached/redis defect of section 4, reproduced, with every checker
+  green. Class 7 reads the manifest; nothing binds the manifest to the
+  artefact (audit finding H1).
+
+- FN-4b  AND IT DOES NOT NEED A FORGED MANIFEST. `attu3` allocates gamma=2500
+  and records it HONESTLY. `attu4` allocates nothing and ships a file owned by
+  the NUMBER 2500 -- the way a tarball, or a pip install preserving ownership,
+  does. Its empty `accounts` is entirely truthful.
+        tier 1 -> ACCEPT, "no id reused [OK]"      tier 2 -> PASS
+        /var/lib/attu4/state reads owner=gamma:gamma
+  ROOT CAUSE, and it is one sentence: class 7 compares ACCOUNT RECORDS, but
+  ownership on disk is a NUMBER, and no check ever looks at the numeric owners
+  of the files a module ships. `identity_audit` audits the accounts a module
+  created against its UID window; it does not audit file ownership.
+  MEASURED ON THE REAL CATALOGUE: every file owner in all 38 module upperdirs
+  maps either to a base account or to an account the module itself declares.
+  So this is LATENT, not live -- and pipdemo already does the dpkg-blind half
+  of it. Cheap fix, stated not implemented (code freeze): have 06 record the
+  set of uids/gids appearing as file owners, and have class 7 compare those.
+
+- FN-5  A MODULE WITH NO FILES CAN CHANGE WHICH BINARY WINS. `attp1` offers
+  candidates ed-a (priority 100) and ed-b (50) for link /usr/bin/atteditor.
+  `attp2` owns ZERO paths and ships one file: an alternatives registry entry
+  re-declaring ed-a at priority 1.
+        tier 1 -> ACCEPT      tier 2 -> PASS, alt_bad=0
+        update-alternatives --query attedit -> Best: /usr/bin/ed-b
+        /usr/bin/atteditor -> ED-B
+  reconcile.py does `e['alts'][path] = (prio, smap)` -- later layer wins, no
+  comparison. V3's invariant is "no group is short a candidate"; it says
+  nothing about WHICH candidate wins. In the real catalogue this is the
+  vim/emacs `editor` group and the gawk/original-awk `awk` group.
+
+- FN-6  TIER 2 CANNOT SEE VERSION SKEW AT ALL. Real artefacts, no fixtures:
+        ./scripts/05_check.sh curl control-oldsnap
+            -> REJECT: snapshot precondition + FIVE class-2 skews
+               (curl, libcurl4, libldap-2.5-0, libnghttp2-14, libssh-4)
+        compose base+curl+control-oldsnap, verify_compose.py
+            -> PASS: 123==123 packages, alt_bad=0, ld_ok=1, audit clean,
+               acct_ok=1, vis_ok=1 -- every column green
+  V2 does `expected.add(pkg.split(':')[0])`: it compares package NAME SETS.
+  reconcile.py does detect the divergence and PRINTS it, but does not add it
+  to `problems`, so it exits 0. Stage 10's admission gate is therefore not a
+  convenience -- it is load-bearing, because tier 2 has no independent view of
+  versions whatsoever. That is worth saying plainly next to the claim that
+  tier 2 "verifies each composed system against its own layers rather than
+  against metadata": for class 2 it does not, and cannot.
+
+- THE COMMON ROOT, and it is one sentence per checker:
+        05_check.sh   trusts the manifest, which nothing binds to the artefact
+        reconcile.py  resolves every conflict by LAST-WINS and reports only a
+                      subset of what it resolved
+        verify_compose V7 compares NAMES; V2 compares NAMES; V3 compares
+                      MEMBERSHIP; none compares CONTENT, TYPE or PRIORITY
+  Six of the seven reproductions pass V7. V7 is a real improvement -- it
+  catches the opaque-marker class it was built for -- but it is a check that
+  the right NAMES are present, and it is being read as a check that the right
+  FILES are present.
+- CONCRETE STRENGTHENING FOR V7, stated not implemented (code freeze):
+  (1) compare (type, size) as well as name for regular files, and a content
+      digest for the small non-package-owned set; (2) never traverse a symlink
+      on the merged side -- use os.lstat, and open the merged root once and
+      resolve every path relative to it (openat/O_NOFOLLOW) instead of
+      string-joining, which is what let the host's /etc answer for the guest's;
+  (3) count every missing name, not the first three per directory, so the CSV
+      column measures the damage rather than the number of directories touched.
+
+## 2026-09-17 (an eighth false negative, found while setting up the kernel spike)
+
+- A fixture that ships `/lib/modules/5.15.0-185-generic/updates/dkms/attdrv.ko`
+  as a REAL directory tree makes the composed system unable to execute
+  anything, and V7 is clean.
+        base layout:  bin -> usr/bin, lib -> usr/lib, lib64 -> usr/lib64,
+                      sbin -> usr/sbin      (jammy is merged-/usr)
+        the module's real `lib` DIRECTORY outranks base's `lib` SYMLINK, so
+        /lib/x86_64-linux-gnu/ld-linux-x86-64.so.2 is unreachable and every
+        binary fails to start.
+        tier 1                  -> ACCEPT, 0 errors
+        verify_compose.py       -> FAIL, but look at WHICH columns:
+                                   pkg 113 expected / 0 actual, ld 96 / 0,
+                                   and vis_missing=0, VIS_OK=1
+  V7 is satisfied because the NAME `lib` is still present in the merged root
+  listing, and `os.walk` does not follow symlinks, so V7 never descends
+  through base's `lib` and never looks at a single file under it. Tier 2
+  caught this only INCIDENTALLY -- V2 and V4 collapsed because the chroot
+  could not run `dpkg-query` or `ldconfig` at all. A module that broke
+  something less central would have passed everything.
+- STATED PRECISELY, because this is the sentence the Evaluation chapter needs:
+  V7's guarantee is "every name in every layer appears in the merged listing
+  of its parent directory". That is satisfied by a composition which cannot
+  execute one binary.
+- NOT A LIVE DEFECT IN THE CATALOGUE, and the reason is worth recording.
+  Measured across postgres, webserver, docker, gcc and mysql: no module
+  upperdir contains a real `lib` directory at all -- top-level entries are
+  etc, run, tmp, usr, var. When apt writes /lib/systemd/system/..., the kernel
+  resolves base's `lib -> usr/lib` symlink BEFORE the copy-up, so the
+  upperdir receives usr/lib/... Anything installed THROUGH dpkg is therefore
+  safe by construction. The hazard is confined to content placed outside dpkg
+  -- which is exactly the route a hand-built DKMS artefact or a tarball
+  would take, and exactly what task 4 is about.
+
+## 2026-09-17 (feasibility spike: kernel-module modules -- what actually blocks CUDA/TensorFlow)
+
+All figures measured against the pinned snapshot 20260701T000000Z with
+apt-cache / `apt-get install -s` over a dpkg status file copied from base, so
+every closure is what the package would ADD ON TOP OF BASE. Nothing installed.
+
+### 1. Where the kernel enters. Confirmed, with one correction to the premise.
+
+- CONFIRMED: no module and not base carries a kernel, headers, modules or
+  dkms. Checked every one of the 38 manifests plus base.json; base's only
+  `linux`-ish packages are libselinux1 and util-linux.
+- CONFIRMED: `11_boot_test.sh` installs `linux-image-generic initramfs-tools
+  iproute2` into the MERGED view at pack time (line 256), AFTER composition and
+  reconciliation, and the comment says so: "kernel: scaffolding, into the image
+  only".
+- CORRECTION, and it changes the problem. The kernel IS pinned. The merged view
+  carries base's /etc/apt/sources.list, which points at the snapshot, so at this
+  generation `linux-image-generic` resolves deterministically to
+        linux-image-generic 5.15.0.185.166 -> linux-image-5.15.0-185-generic
+  What is missing is not pinning but a RECORD and an ASSERTION: the resolved ABI
+  appears in NO manifest, and nothing checks that the kernel a pack step
+  installs is the ABI a driver was built against. So the blocker is not "there
+  is no kernel to build against" -- it is "the ABI is decided at the last stage
+  and written down nowhere".
+- AND THE ORDERING IS IN OUR FAVOUR. Composition happens first, kernel second,
+  so the kernel's postinst runs depmod inside the merged chroot and would index
+  .ko files already present in composed lower layers. NOT TESTED end to end --
+  the direct test needs a real 432 MB kernel install in the pack step, which I
+  did not run. What WAS tested is the failure mode above: the .ko must land
+  under /usr/lib/modules/<ABI>/, never a real /lib/modules/<ABI>/.
+
+### 2. The three options, assessed against the existing architecture.
+
+**(a) Pin a kernel into the BASE.** Least invasive of the three, and it is the
+only one that IMPROVES the reproducibility claim rather than denting it: the
+ABI stops being a pack-time accident and becomes a recorded property of
+base.json, checkable by tier 1 like any other package.
+        full `linux-image-generic` closure   28 pkgs  1663.3 MB installed
+              of which linux-firmware        1142.7 MB
+              of which linux-modules-extra    352.8 MB
+        MINIMAL pinned kernel                13 pkgs   142.1 MB installed
+              (linux-image-5.15.0-185-generic + linux-modules-…-generic
+               + initramfs-tools; no firmware, no modules-extra)
+        linux-headers-generic                 4 pkgs   103.8 MB installed
+Cost: base grows 142.1 MB installed ~ 45 MB stored (calibration below), and
+section 2's rule forces a rebuild of base and all 38 siblings -- about 2 h,
+measured today. Note the firmware is the elephant, not the kernel: dropping
+linux-firmware and modules-extra takes the closure from 1663 MB to 142 MB.
+
+**(b) DKMS at compose time.** Most invasive, and it breaks two load-bearing
+claims at once. Section 5: "Verification only, never search ... composition
+afterwards is linear checking." A compile at compose time is not checking.
+Section 6: tier 2 costs `148 ms + 19.9 ms x N`; an nvidia DKMS build is minutes,
+so the cost model does not survive. And section 8's byte-reproducibility took
+four separate fixes; a compiler invoked at compose time reintroduces exactly
+the class of non-determinism that was removed (build paths, parallelism,
+timestamps) at a stage where there is no artefact to hash. Recommend against.
+
+**(c) Prebuilt modules against a pinned ABI.** This is the one to take, and the
+reason is that UBUNTU HAS ALREADY DONE IT. At this snapshot:
+        linux-modules-nvidia-535-generic              5.15.0-185.195
+        linux-modules-nvidia-535-5.15.0-185-generic   5.15.0-185.195
+        linux-objects-nvidia-535-5.15.0-185-generic   5.15.0-185.195
+  The version IS the kernel ABI, and it matches what `linux-image-generic`
+  resolves to at the same snapshot. No DKMS, no headers, no compiler, and the
+  whole thing is inside the pin. Combine with (a) and a driver module's delta
+  is just the objects and the firmware.
+
+### 3. Three statements in specs/modules.yaml are wrong and should be corrected.
+
+The fake-cuda note says real CUDA is impossible here for three reasons. Two of
+them do not hold at this snapshot:
+
+  "it lives in NVIDIA's repository, which has no snapshot service, so it cannot
+   be pinned"
+        WRONG for the driver and the toolkit. Ubuntu restricted/multiverse
+        carries nvidia-driver-390 through nvidia-driver-595 and
+        nvidia-cuda-toolkit 11.5.1-1ubuntu1, all inside the pinned snapshot.
+        RIGHT for cuDNN (libcudnn8 is not in the archive at all) and for any
+        CUDA newer than 11.5.
+
+  "its driver is a DKMS kernel module while base ships no kernel"
+        WRONG. The prebuilt linux-modules-nvidia-535-generic exists, pinned,
+        built against exactly this snapshot's ABI. DKMS is one packaging
+        choice, not the only one.
+
+  "it is 3-4 GB against a 256 MB catalogue"
+        RIGHT ONLY FOR THE FULL TOOLKIT, and the catalogue figure is stale
+        (256 MB was the 28-module catalogue; it is 1 023.8 MB now).
+
+### 4. The cost driver, measured.
+
+CALIBRATION FIRST, so installed bytes can be compared with stored bytes.
+Measured over the 21 real catalogue modules above 5 MB, apt Installed-Size
+against the built .sqsh:
+        median 3.28x   mean 3.19x   range 1.87x (gawk) - 4.81x (memcached)
+        AGGREGATE 3 061.4 MB installed -> 969.6 MB stored = 3.16x
+The .deb download column is an independent cross-check: it is xz-compressed and
+runs about 2.9x on these package sets, so the two estimates bracket each other.
+
+        item                                    pkgs  installed   .deb   stored
+                                                            MB      MB   est MB
+        ------------------------------------------------------------------------
+        catalogue today (38 modules, measured)     -        -       -   1 023.8
+        base today (measured)                      -        -       -      41.7
+        ------------------------------------------------------------------------
+        kernel as stage 11 installs it now        28   1 663.3   432.3     ~526
+        minimal pinned kernel, no firmware        13     142.1    37.0      ~45
+        linux-headers-generic                      4     103.8    15.3      ~33
+        ------------------------------------------------------------------------
+        nvidia-driver-535, full (DKMS + GL)      146   1 383.3   482.1     ~438
+        linux-modules-nvidia-535-generic          17     346.3   136.0     ~110
+            (drags the kernel in; with (a) it does not)
+        linux-objects-nvidia-535-…-generic         7     154.5    61.7      ~49
+        libnvidia-compute-535 + nvidia-utils-535   2     176.5    41.1      ~56
+        ------------------------------------------------------------------------
+        nvidia-cuda-toolkit, full (with -dev)     75   4 150.5 1 448.7  ~1 313
+            of which nvidia-cuda-dev alone       1 920.9 MB installed
+        CUDA RUNTIME only (no -dev)                8   1 368.1   507.0     ~433
+        ------------------------------------------------------------------------
+
+READ OFF THAT TABLE:
+- A realistic GPU DRIVER module is ~105 MB stored (objects 49 + compute/utils
+  56), which is 10 % of the present catalogue. Affordable.
+- The FULL CUDA toolkit at ~1 313 MB stored is LARGER THAN THE ENTIRE
+  CATALOGUE, and 46 % of it is nvidia-cuda-dev -- headers and static libs that
+  a deployed node does not need.
+- CUDA runtime only is ~433 MB stored: 42 % of the catalogue, one module. Big,
+  but it is the same order as the seven large modules put together (751 MB) and
+  would not dominate the way the full toolkit would.
+
+### 5. TensorFlow: the number, and the reason it is the wrong question.
+
+Not in the Ubuntu archive at any snapshot -- `python3-tensorflow` and
+`tensorflow` do not exist; the nearest archive ML stack is python3-torch 1.8.1,
+which is from 2021. So the size had to come from PyPI metadata (one read-only
+metadata request per package, nothing downloaded or installed):
+
+        tensorflow 2.21.0, cp310 manylinux x86_64 wheel      572.2 MB
+        its 20 declared runtime dependencies, wheels total    62.1 MB
+            largest: libclang 26.5, numpy 18.5, grpcio 7.2, h5py 5.1
+        TOTAL DOWNLOAD (compressed wheels)                   634.3 MB
+
+Those are COMPRESSED wheel sizes; unpacked is larger and was not measured.
+Even at the download figure, one TensorFlow module is 62 % of the present
+1 023.8 MB catalogue, and the earlier rejection was arithmetically right.
+
+BUT THE SIZE IS THE SECOND PROBLEM, NOT THE FIRST. TensorFlow ships only as a
+PyPI wheel, and PyPI has no snapshot service. The whole method rests on section
+2's first sentence -- "every build draws from one fixed archive snapshot" -- and
+a pip install cannot. It would also be invisible to every check in the project,
+which is the defect `pipdemo` exists to MEASURE: 1 601 of pipdemo's 3 337 files
+(48 %) appear in no class-4 sidecar because they are not package-owned. A
+TensorFlow module would be that defect at 600 MB instead of 15 MB.
+Two further mismatches, for the record: TF 2.21 needs CUDA 12.x at runtime and
+the archive has 11.5; and TF's own GPU wheels bundle NVIDIA libraries again
+through pip, so the driver module and the TF module would ship two
+uncoordinated copies.
+
+### 6. Scoped plan, in order, with what each step buys.
+
+  1. RECORD THE ABI. Have the pack step write the resolved kernel version into
+     the run bundle's result.json, and have 06 record it for base once step 2
+     lands. Cheap, no rebuild, and it closes the "decided at the last stage,
+     written down nowhere" gap on its own.
+  2. PIN THE MINIMAL KERNEL INTO BASE (option a). +142.1 MB installed / ~45 MB
+     stored; forces a full catalogue rebuild (~2 h). Do it at the SAME TIME as
+     any base-fattening change so the rebuild is paid once.
+  3. ADD A `kernel_abi` PRECONDITION TO 05_check.sh alongside parent/snapshot/
+     suite/arch. A module carrying kernel objects declares the ABI it was built
+     for; the set is rejected if it disagrees with base's. This is exactly the
+     shape of the existing PRE check and needs no new machinery.
+  4. BUILD `nvidia-driver` AS AN ORDINARY DELTA from
+     linux-modules-nvidia-535-generic + libnvidia-compute-535 + nvidia-utils-535
+     (~105 MB stored once the kernel is in base). No DKMS, no compose-time
+     build, no change to the composition model at all.
+  5. ASSERT THE PATH. Add to 02_build_delta.sh's existing precondition
+     assertions: refuse any upperdir containing a real top-level `lib`, `bin`,
+     `sbin` or `lib64` directory. One `test -d`, and it prevents the
+     merged-/usr failure above, which no static check catches.
+  6. CUDA RUNTIME ONLY as a second module (~433 MB stored). Explicitly exclude
+     nvidia-cuda-dev, which is 46 % of the toolkit and is build-time content.
+  7. TENSORFLOW: do NOT make it a module. Record it as out of scope with the
+     numbers above -- it cannot be pinned, and pinning is the thesis.
+
+NOTHING IMPLEMENTED. No new module, no catalogue change, no code change.
+
+## 2026-09-17 (base fattening, part 2: RESULTS -- and the break-even is not a node count)
+
+Full rebuild against the fat base: 38 of 38 modules, 0 failed, 13 minutes
+(18:19:12 -> 18:32:17). All 38 artefacts verify against the sha256 in their own
+manifests. Evidence preserved at /srv/modfs/results/fatbase/.
+
+### The base
+
+        thin base.sqsh   41 717 760 B =  41.7 MB   113 packages
+        fat  base.sqsh  155 172 864 B = 155.2 MB   166 packages
+        dB              113 455 104 B = 113.5 MB   (3.72x)
+
+### Per-module delta, and the predictions
+
+EVERY ONE OF THE SEVEN PREDICTIONS HELD. Recorded before the build: "gcc and
+postgres should shrink hard, llvm and rust noticeably, mysql a little, and java
+and docker essentially not at all."
+
+        module        thin MB   fat MB  saved MB  saved %   pkgs t/f
+        gcc              84.0     14.4      69.6    82.9     47/10
+        llvm            128.2     61.5      66.6    52.0     47/17
+        rust            175.5    117.4      58.1    33.1     45/10
+        postgres         82.1     29.2      53.0    64.5     29/11
+        mysql            56.6     44.3      12.2    21.6     39/26
+        java            141.6    141.1       0.5     0.3     31/29
+        docker           83.1     83.1       0.0     0.0     13/10
+
+gcc drops from 84.0 MB to 14.4 MB and stops being an oversize module at all
+(the build report's oversize list goes from 5 to 4: java, rust, llvm, docker).
+
+### The unplanned result: the small catalogue benefited more than the design did
+
+The shared set was derived from the SEVEN LARGE MODULES ONLY, so the small
+modules were expected to pay dB and get nothing. Eight of them did much better:
+
+        apache      28.1 ->  4.1  (-85.3 %)    dnsutils  16.0 -> 2.1  (-87.1 %)
+        memcached   10.3 ->  0.6  (-94.2 %)    pgclient  12.1 -> 2.0  (-83.4 %)
+        webserver   21.0 ->  6.8  (-67.7 %)    git       17.1 -> 7.0  (-59.3 %)
+        emacs       37.0 -> 23.3  (-37.2 %)    gawk       3.1 -> 0.7  (-77.1 %)
+
+Cause: perl, perl-modules-5.34, libperl5.34, libicu70, libxml2, libreadline8,
+libedit2, ucf and netbase entered the shared set through gcc/postgres/mysql/llvm,
+and they are used far more widely than by those four. 24 of 38 modules shrank,
+totalling 360.5 MB.
+
+### And a tax I did not predict: every delta carries a bigger dpkg status
+
+14 modules got BIGGER, by 3-15 % each (tens of KB; -0.4 MB in total). Measured
+cause, identical in every one of them:
+
+        /var/lib/dpkg/status in the upperdir  111 618 B -> 162 627 B   (+51 009 B)
+        whole upperdir                      1 994 342 B -> 2 173 750 B (+179 408 B)
+
+apt rewrites /var/lib/dpkg/status, so OverlayFS copies the WHOLE file up into
+every delta. A base with 53 more packages means 51 009 more bytes of status in
+every module that touches apt at all, plus extended_states and friends. This is
+a PER-MODULE TAX PROPORTIONAL TO BASE'S PACKAGE COUNT, and it is the term that
+eventually bounds how fat a base can usefully get. At 38 modules it is 1.9 MB
+uncompressed and irrelevant; it is linear in N x |base|, so it is worth naming.
+
+### Cohort ratios -- and one convention has to be rejected
+
+        cohort              N   Sd thin -> fat      stored thin -> fat
+        small adversarial  31   231.0 -> 131.1      272.8 ->  286.2   (+13.5)
+        large realistic     7   751.0 -> 491.0      792.7 ->  646.2  (-146.6)
+        whole catalogue    38   982.1 -> 622.0     1023.8 ->  777.2  (-246.6)
+
+The monolithic column MUST stay fixed between the two worlds. A monolithic image
+is built for a use case; fattening OUR base does not change what an independent
+builder would put in a `jq` image. Keeping the published monolithic figures:
+
+        cohort              thin      fat
+        small adversarial   5.59x -> 5.33x     WORSE
+        large realistic     1.32x -> 1.61x     better
+        whole catalogue     2.51x -> 3.30x     better
+
+The thin column reproduces section 7's published 5.59 / 1.32 / 2.51 and the
+monolithic figures 1524.3 / 1043.1 / 2567.3 EXACTLY, which is the check that the
+measurement path is the same one.
+
+REJECTED CONVENTION, recorded so nobody re-derives it and believes it. Section
+7's formula (N*B + Sd)/(B + Sd), applied self-consistently inside the fat world,
+gives 17.26x / 2.44x / 8.39x. Those numbers are meaningless here: B appears N
+times in the numerator, so making the base fatter inflates the baseline it is
+being compared against. A monolithic `jq` image would never contain the GCC
+toolchain. Any fat-base ratio quoted in the thesis must use the FIXED monolithic
+numerator.
+
+### THE BREAK-EVEN
+
+A node's flattened image is B + sum of its modules' deltas (section 7: the
+saving is server-side storage and assembly; 11_boot_test flattens the overlay
+into an ext4 root). So a node deploying set S pays
+
+        delta(S) = dB - sum(saving(m) for m in S),      dB = 113.5 MB
+
+paid by EVERY node, including ones using none of the toolchain.
+
+**(1) No single-module node can ever win, and this is structural, not empirical.**
+
+        best single module: gcc, saving 69.6 MB, against dB 113.5 MB
+                            -> still loses by 43.8 MB
+        modules whose own saving exceeds dB: NONE
+
+  The reason is the definition of the shared set. A package is in it because it
+  appears in TWO OR MORE modules; dB is the cost of ALL of them; one module
+  carries only the subset it happened to use. So sigma(m) < dB for every m by
+  construction, unless a single module carries essentially the whole shared set
+  -- which the ">= 2" rule forbids. **Choosing the shared set by "appears in two
+  or more modules" GUARANTEES that a one-module node loses.**
+
+**(2) Two toolchain modules is the smallest winning workload.**
+
+        gcc + llvm        136.3 MB > dB     (k=2, the smallest such set)
+        gcc + rust        127.7 MB > dB
+        llvm + rust       124.7 MB > dB
+        postgres + mysql   65.2 MB < dB     -- loses
+
+**(3) The fleet condition.** n_T nodes run a toolchain workload saving sigma
+each; n_O nodes use none of it and pay +dB each. Fattening wins when
+
+        n_T * (sigma - dB) > n_O * dB    ->   share of fleet p* = dB / sigma
+
+        workload            sigma MB    p* (share of fleet that must run it)
+        any one module      <= 69.6     IMPOSSIBLE -- sigma <= dB
+        llvm + rust            124.7    91.0 %
+        gcc + rust             127.7    88.9 %
+        gcc + llvm             136.3    83.3 %
+        gcc + rust + llvm      194.3    58.4 %
+        all seven large        260.0    43.6 %
+
+**SO THE ANSWER TO "HOW MANY NODES" IS: THAT IS THE WRONG VARIABLE.** The
+per-node arithmetic is decided by the SHAPE of the workload, not the size of the
+fleet. A fleet of a million nodes each running gcc alone never breaks even,
+because every one of those nodes individually costs 43.8 MB more. Only nodes
+running two or more of {gcc, rust, llvm} beat dB at all, and then between 58 %
+and 91 % of the fleet must be such nodes.
+
+**(4) The server-side answer is different, and it needs no node count.**
+
+        sum of all 38 module savings = 360.0 MB   vs   dB = 113.5 MB
+        stored total 1 023.8 MB -> 777.2 MB, a fall of 246.6 MB (-24.1 %)
+
+  Fattening is an UNCONDITIONAL win for server-side storage, and section 7 already
+  says server-side storage and assembly is what the project claims. Under the
+  claim the thesis actually makes, fattening wins outright; under a per-node
+  transfer metric it needs most of the fleet to be multi-toolchain nodes. THE
+  THESIS SHOULD STATE WHICH METRIC IT IS CLAIMING, because the two give opposite
+  answers for the same build.
+
+### Validation: the fat modules still work
+
+Tier 1 on the fat tree: gcc+llvm ACCEPT; all seven large modules together ACCEPT.
+07_smoke_test.sh base gcc llvm rust postgres mysql: 13 passed, 0 failed.
+verify_compose.py at N=8 (base + all seven large): PASS, 279 packages, every
+column clean. And the STRONG probes from today's audit, which is the check that
+matters, all pass on the fat base:
+        gcc compiles and runs a C program                       rc=0
+        clang -c then llvm-nm reads the symbol                  rc=0
+        rustc compiles, links and runs                          rc=0
+        javac + java round trip                                 rc=0
+        postgres server binary + getent + file owner + su       rc=0
+        mariadbd + getent + file owner + su                     rc=0
+        dockerd + containerd + runc + getent group docker       rc=0
+A smaller delta that stopped working would be worthless; it did not.
+
+### What this measurement does NOT show
+
+- THE SHARED SET IS AN ORACLE. It was chosen knowing exactly which seven modules
+  would be built. A real deployment picks base content before it knows the
+  catalogue, so 360.0 MB is an UPPER BOUND on what set selection can achieve.
+- ONE HOST, ONE SNAPSHOT, ONE COMPRESSION SETTING.
+- The obvious follow-up, stated rather than run: derive the shared set over the
+  WHOLE 38-module catalogue instead of the seven large ones. Section (1) above
+  predicts what that changes -- to let a single-module node win, the base must
+  hold packages that nearly every module uses, which is a different rule from
+  ">= 2 of the large seven". That is a new experiment, not this one.
+
 ## 2026-09-18 (V7 hardened: it was checking names, not files)
 - Code freeze lifted today, so the strengthening the attack session stated but
   could not apply is now applied.
