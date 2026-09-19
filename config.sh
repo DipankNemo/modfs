@@ -5,8 +5,8 @@
 # Snapshot ID format: YYYYMMDDTHHMMSSZ (UTC). Any time after 2023-03-01.
 # This single value makes every build reproducible. Do not change it during
 # a build generation, or you reintroduce version skew between siblings.
-# Overridable so a POSITIVE CONTROL module can be built from a different
-# snapshot on purpose. Nothing else should ever set it.
+# Override for a complete generation in a separate MODFS_ROOT, or for the
+# explicit negative control. Ordinary siblings inherit the generation pin.
 SNAPSHOT_ID="${MODFS_SNAPSHOT_ID:-20260701T000000Z}"
 SNAPSHOT_BASE="https://snapshot.ubuntu.com/ubuntu/${SNAPSHOT_ID}"
 

@@ -95,7 +95,7 @@ if [ "$REFRESH" -eq 1 ]; then
         # A module built from another snapshot must have that snapshot
         # recorded, so the override has to be re-applied on refresh too --
         # otherwise the positive control would silently record the wrong one.
-        if MODFS_SNAPSHOT_ID="${snapshot}" \
+        if MODFS_SNAPSHOT_ID="${snapshot:-$SNAPSHOT_ID}" \
            "${HERE}/scripts/06_extract_metadata.sh" "$name" --version "$version" \
                > "${LOG_DIR}/refresh-${name}.log" 2>&1 </dev/null; then
             printf '  %-18s refreshed%s\n' "$name" \
@@ -125,12 +125,11 @@ while IFS=$'\t' read -r name version pkgs snapshot post; do
         require_ident "$name" "catalogue module name"
     log "building ${name}: ${pkgs}"
     fi
-    # MODFS_SNAPSHOT_ID is empty for every normal module, so config.sh keeps
-    # its default; only a declared control overrides it.
+    # Inherit the generation pin; only the explicit negative control overrides it.
     # shellcheck disable=SC2086
     POSTARGS=()
     [ -n "${post:-}" ] && POSTARGS=(--post-install "$post")
-    if MODFS_SNAPSHOT_ID="${snapshot}" \
+    if MODFS_SNAPSHOT_ID="${snapshot:-$SNAPSHOT_ID}" \
        "${HERE}/scripts/02_build_delta.sh" --version "$version" "${POSTARGS[@]}" "$name" $pkgs \
            > "${LOG_DIR}/catalogue-${name}.log" 2>&1 </dev/null; then
         BUILT+=("$name")

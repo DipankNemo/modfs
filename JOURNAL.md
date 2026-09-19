@@ -4435,3 +4435,38 @@ measurements behind it:
 - IF PINNED ANYWAY: choose option B, rebuild the monolithic baselines in the
   same generation, and report the result as a NEW BASELINE DEFINITION rather
   than as an improvement on 1.84x.
+
+## 2026-09-19 (update strategy: protected baseline and first findings)
+
+Worktree `~/modfs-update`, branch `experiment/update-strategy`, starts at
+`7376af9`. User authorizes root builds and lifts the older CLAUDE privilege
+boundary for this experiment. Pin changes are atomic across a catalogue;
+per-module snapshot updates are explicitly excluded.
+
+Evidence: `/srv/modfs/results/update-2026-09-19/`. Baseline artefacts, manifests,
+sidecars and all seven original log CSVs are copied before building. Experiments
+live under `/srv/modfs/build/update-strategy/{intra,next}` using MODFS_ROOT;
+current `/srv/modfs/modules` is never written. Guarded shell deletions print
+resolved paths and inspect `/proc/self/mountinfo`, refusing targets outside
+children of `/srv/modfs/build` and live mounts at/below deletion targets.
+Initial disk check: 52 GiB available (exact bytes saved in disk-before.txt).
+
+Snapshot `20260901T000000Z` verified available by downloading InRelease from
+all three pockets and checking each with gpgv against the Ubuntu archive
+keyring. Signed jammy-updates date is 31 August 2026. Full responses and HTTP
+headers retained in availability/. Reproduce with curl on
+`https://snapshot.ubuntu.com/ubuntu/20260901T000000Z/dists/{jammy,jammy-updates,jammy-security}/InRelease`
+and `gpgv --keyring /usr/share/keyrings/ubuntu-archive-keyring.gpg FILE`.
+
+BUG FOUND BEFORE THE PIN MOVE: stages 08 and 12 reset MODFS_SNAPSHOT_ID to
+an empty string for ordinary modules, discarding the caller's newer pin and
+silently falling back to July. Both now inherit SNAPSHOT_ID unless the spec
+explicitly declares the negative control's snapshot. This is a fix, not the
+generation feature.
+
+Intra-generation treatment: jq's packages change from `[jq]` to
+`[jq, moreutils]`; all siblings and base start as preserved copies. Inter-
+generation uses the ORIGINAL spec so pin and package-list effects are isolated.
+SquashFS mkfs and every inode timestamp use SOURCE_EPOCH derived from the pin;
+therefore package-version equality alone cannot establish free transfers.
+Actual SHA256 and full new artefact size determine shipping, not size growth.
