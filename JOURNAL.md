@@ -3890,3 +3890,548 @@ direction only, and every finding in this round is in the negative one.
 - Column width verified live rather than by reading: header 24 fields, emitted
   row 24 fields, one real composition, exit 0. That check exists because adding
   columns without it has now broken this CSV twice.
+
+## 2026-09-19 (precondition: is the build path reproducible? Yes -- rebuilt and compared)
+
+- CONTEXT. Everything downstream of `08_build_catalogue.sh` reads artefacts
+  nobody had ever rebuilt and compared. Three review passes assumed the
+  artefacts were correct; ARCHITECTURE section 8 claims byte reproducibility and
+  says it took four fixes, but its evidence is a table of three hashes from
+  **2026-08-22**, explicitly labelled historical and explicitly NOT a statement
+  about the current generation. Before adding the largest modules the catalogue
+  will ever hold, that claim had to be tested rather than inherited.
+- BASELINE FIRST. The three artefacts were preserved before anything was
+  overwritten, together with all seven of `logs/*.csv`, under
+  `/srv/modfs/results/gpu-2026-09-19/{repro-before,logs-before}/`. The on-disk
+  `.sqsh` already matched the `sha256` in its own manifest for all three, so the
+  comparison starts from a consistent state rather than a drifted one.
+- METHOD. `sudo ./scripts/08_build_catalogue.sh --force --only <name>` for curl,
+  jq and zstd. `--force` reaches `02_build_delta.sh`, which `rm -rf`s the
+  upperdir, re-mounts base, re-runs `apt-get update` and `apt-get install`
+  against the pinned snapshot, and re-squashes. This is a real rebuild, not a
+  skip: build logs record apt resolving and unpacking 10 packages for curl, and
+  the `.upper` trees and `.sqsh` files carry fresh mtimes.
+- RESULT -- the claim holds, and holds across a 2-day gap:
+
+      module  before (17 Sep)   after (19 Sep)    manifest         verdict
+      curl    3d354340071af55a  3d354340071af55a  3d354340071af55a IDENTICAL
+      jq      883d7420d147e7ff  883d7420d147e7ff  883d7420d147e7ff IDENTICAL
+      zstd    a04083d454151b44  a04083d454151b44  a04083d454151b44 IDENTICAL
+
+  Sizes identical to the byte (1 638 400 / 565 248 / 864 256). `cmp` agrees with
+  sha256 on all three.
+- THE ARTEFACT IS NOT ONLY THE .sqsh, so the class-4 sidecars were compared too,
+  and they reproduce **both compressed and uncompressed** -- zstd's own output
+  is deterministic here, which was not guaranteed and is now measured.
+- SOURCES OF DIFFERENCE: exactly one, and it is benign. `<name>.json` differs on
+  a single line, `built`, which records wall-clock build time and is the one
+  field that SHOULD move. It is deliberately absent from `manifest_binding.py`'s
+  `BIND_FIELDS`, so `binding.fields_sha256` did not move and the seal survives a
+  rebuild. Every other field in all three manifests is byte-identical, including
+  the whole `binding` block. There is no second source of difference to classify.
+- CORROBORATION: `12_verify_binding.sh` over the whole catalogue afterwards --
+  **39 matched, 0 mismatched**, 39 artefacts matching the digest their manifest
+  records, in 12.3 s. The rebuild did not desynchronise anything downstream.
+- WHAT THIS DOES AND DOES NOT LICENCE. It licences: the four fixes of section 8
+  (pinned mkfs/file times, excluded logs and aux-cache, stripped overlay
+  uuid/origin, emptied machine-id) still hold on the CURRENT generation, on this
+  host, two days later, so artefact bytes do not move with the wall clock. It
+  does NOT licence cross-host reproducibility, which ARCHITECTURE already calls
+  untested and which this run cannot address with one machine. It also does not
+  licence anything about LARGE modules: curl, jq and zstd are 0.5-1.6 MB and run
+  almost no maintainer-script logic. That gap is closed directly below rather
+  than argued -- the nvidia driver module is built twice on purpose.
+- CONSEQUENCE: the precondition is met and the GPU work proceeds on a build path
+  that has now been attacked instead of assumed.
+
+- SEPARATELY, A FALSE PREMISE IN THE TASK BRIEF, recorded because a thesis
+  should not cite a measurement that does not exist. The brief asks that the
+  "kernel feasibility spike of 17 September, which measured all the package
+  sizes" be read and its figures checked. **There is no such entry.** Neither
+  JOURNAL.md (this branch or main), nor ARCHITECTURE.md, nor any file in docs/
+  contains the strings `433`, `1313`, `linux-objects` or `nvidia-utils`, and
+  there is no 17 September entry about kernels or package sizing. The only
+  standing statement on the subject is STATE_OF_PLAY section 7 item 9, "CUDA/
+  TensorFlow: costed, not built" -- which asserts a costing without recording
+  one. The figures quoted in the brief (~105 MB driver, ~433 MB CUDA runtime,
+  ~1313 MB full toolkit, 46% headers) are therefore treated here as UNVERIFIED
+  ESTIMATES with no provenance, and are measured from the snapshot below rather
+  than reused.
+
+## 2026-09-19 (task 2: the resolved kernel ABI is now recorded, and it is the hinge the GPU work turns on)
+
+- THE GAP. `11_boot_test.sh` installs `linux-image-generic` into the image at
+  PACK time, resolves the concrete kernel with `ls /boot/vmlinuz-*`, logs it,
+  and throws it away. STATE_OF_PLAY section 7 item 9 already names this as the
+  CUDA blocker -- "the blocker is not the absence of a kernel ... it is that the
+  resolved ABI is recorded nowhere" -- and it is exactly right. Nothing in the
+  artefact set could state which kernel a driver module would meet, so nothing
+  could check a driver module against it.
+- WHY THE META VERSION IS NOT THE ABI, which is the trap here.
+  `linux-image-generic` is a meta package; against snapshot 20260701T000000Z it
+  resolves to **5.15.0.185.166**, a number that appears in no module path and
+  matches no out-of-tree module package. The two things that matter are the ABI
+  directory name **5.15.0-185-generic** and the ABI package version
+  **5.15.0-185.195**, and they are different strings again. Recording the meta
+  version would have looked like a fix and checked nothing.
+- CHANGE, in `11_boot_test.sh`, no rebuild of anything:
+  1. after the kernel install, query dpkg in the merged view for every
+     `linux-image*`, `linux-modules*`, `linux-headers*`, `linux-generic*`,
+     `linux-objects-*` and `linux-signatures-*` package, and write
+     `<bundle>/kernel.json` with the resolved `abi`, the `abi_package` it came
+     from and its version, the meta version, the vmlinuz sha256, the snapshot/
+     suite/arch, and the full package->version map.
+  2. `finish()` folds that file into `result.json` under `kernel`.
+- TWO DESIGN CHOICES WORTH THE WORDS.
+  * It is written to its OWN file, not into `run.json`. `run.json` is written
+    before the first mount precisely so an aborted run still records what was
+    attempted; evidence produced mid-run has the same requirement, and a run
+    that dies before the kernel install now records `"kernel": null` rather
+    than nothing or a guess.
+  * It records the /lib layout as measured, not as assumed:
+    `usr_lib_modules_present`, `lib_is_symlink` and `real_lib_modules_present`.
+    A composed system carrying a REAL `lib/` directory outranks base's
+    `lib -> usr/lib` symlink and cannot execute anything -- `round2_attacks.py`
+    already reproduces that -- and the nvidia packages ship their payload under
+    `./lib/modules/...`, so this is not a hypothetical for this catalogue.
+- TESTED BEFORE PRESENTED, on fixtures, since the real path needs a boot:
+  `bash -n` clean; both embedded Python blocks `py_compile` clean; four
+  fixtures -- correct usrmerge layout (records abi 5.15.0-185-generic from
+  linux-modules-5.15.0-185-generic = 5.15.0-185.195); the FAILURE layout, a
+  real `lib/modules` tree, correctly reported `lib_is_symlink=false,
+  real_lib_modules_present=true, usr_lib_modules_present=false`; an empty dpkg
+  query (records nulls, exits 0); and a missing package file (degrades, exits
+  0). `finish()` was exercised on both paths and emits the kernel block when
+  present and `null` when absent. The real path runs in task 4.
+- THE ABI RESOLVED FROM THE PINNED SNAPSHOT, verified against the archive
+  indices rather than waiting for a boot:
+
+      linux-image-generic                        5.15.0.185.166   (meta)
+      linux-image-5.15.0-185-generic             5.15.0-185.195
+      linux-modules-5.15.0-185-generic           5.15.0-185.195
+      linux-modules-nvidia-535-generic           5.15.0-185.195
+
+  The brief's claim that the nvidia module package version IS the ABI is
+  CORRECT and now checked: `linux-modules-nvidia-535-generic` carries version
+  `5.15.0-185.195`, identical to the kernel our pinned snapshot resolves to.
+  That is not luck -- linux-restricted-modules is rebuilt per ABI -- but it is
+  the fact the whole approach rests on, and it had never been written down.
+- WHY THIS IS NOT A CHORE. A GPU driver module is ABI-PINNED: it is valid only
+  against one kernel. Every other module in this catalogue is a free-floating
+  sibling whose only constraint is (parent, snapshot). The driver is the first
+  module whose correctness depends on something the MODULE SET does not
+  contain, because the kernel is pack-time scaffolding by design. Recording the
+  ABI is what turns "hope it matches" into a comparison someone can run.
+
+## 2026-09-19 (task 3: two real GPU modules, and what Ubuntu actually ships is not what the brief assumed)
+
+- BUILT, both from the pinned snapshot 20260701T000000Z, both on base:
+
+      nvidia-driver-535  535.309.01   220.8 MB stored   508.3 MB upperdir  12 pkgs
+      cuda-runtime       11.5.1       648.7 MB stored  1188.9 MB upperdir  11 pkgs
+
+  Both are reported OVER MODULE_MAX_MB (50) and not rejected, which is what
+  that setting is for. They are now the two largest artefacts in the catalogue
+  by a wide margin -- the next largest is gcc at 80 MB.
+
+### FINDING 1 -- Ubuntu does NOT ship prebuilt nvidia kernel modules
+
+The brief says "Ubuntu ships PREBUILT nvidia kernel modules ... so no DKMS and
+no compiler are needed". Half right, and the half that is wrong changes the
+design. Opening the packages:
+
+- `linux-objects-nvidia-535-<abi>` (133 MB) ships prebuilt **object files**,
+  a link script `BUILD`, a `CLEAN`, per-module `.mod.o`, `scripts/module.lds`
+  and a `SHA256SUMS`. It Depends on **binutils** and on nothing else.
+- The `.ko` is produced by `/usr/bin/ld.bfd` at INSTALL time, by
+  `linux-modules-nvidia-535-<abi>`'s postinst, gated on the debconf question
+  `linux/nvidia/latelink` (default **true**).
+
+So: no compiler and no DKMS, correct -- nothing is COMPILED, and that is what
+makes this feasible against a base with no kernel headers. But a **linker is
+required**, and the brief's framing would have led to a module with no `.ko`
+in it at all.
+
+### FINDING 2 -- the signed path costs a kernel inside a module
+
+`linux-modules-nvidia-535-<abi>` and `linux-signatures-nvidia-<abi>` both
+Depend on `linux-image-5.15.0-185-generic | linux-image-unsigned-...`.
+Installing either puts a kernel inside a MODULE, contradicting the design rule
+that the kernel is pack-time scaffolding (`11_boot_test.sh` installs it into
+the image only), and duplicating what the pack step installs anyway.
+
+`linux-objects-*` is the one package in the chain with no kernel dependency,
+which is why the brief names it -- and now there is a reason on record.
+The modules are therefore linked **UNSIGNED**, via `BUILD unsigned`. Stated as
+a limitation, not hidden: under Secure Boot an unsigned module is refused, so
+this module is for a node with Secure Boot off. Closing that needs the
+signatures package and therefore a decision about kernels in modules.
+
+### FINDING 3 -- `BUILD unsigned` leaves ZERO-BYTE kernel modules
+
+Canonical's own script:
+
+    [ "$1" = "unsigned" ] && { signed_only=:; shift; }
+    ...
+    $signed_only cat 'nvidia.ko' 'nvidia.ko.sig' >'../nvidia.ko'
+
+`signed_only=:` turns the COMMAND into a no-op. **The shell still performs the
+redirection.** So `unsigned` mode creates a zero-byte `nvidia.ko` at exactly
+the path `depmod` scans, and leaves the real linked module in `bits/`.
+
+The first build did this and I caught it by listing the upperdir, not by
+reasoning: five `.ko` files of 0 bytes. A probe written as `test -e .../nvidia.ko`
+would have passed on them -- the project's single most common defect shape.
+`post_install` now does what the SIGNED branch does, minus the signature: copy
+each linked `.ko` up to `nvidia-535/`, remove it from `bits/`, and remove the
+seven link intermediates that Canonical's own `CLEAN` lists. Verified that none
+of those seven is package-owned, so dpkg's file list stays truthful. That took
+the module from 286 MB to 220.8 MB stored.
+
+### FINDING 4 -- the pin is what makes the link verifiable, and it is measurable
+
+`BUILD` ends in `sha256sum -c SHA256SUMS`, comparing the locally linked `.ko`
+against the bytes Canonical produced. Result:
+
+      host binutils 2.42 (this workstation)   4 of 5 match, nvidia.ko FAILS
+      jammy binutils 2.38 (pinned snapshot)   5 of 5 match
+
+That is the pinning premise paying off somewhere nobody had looked: the same
+objects and the same link script give different bytes under different linkers,
+and only the pinned toolchain reproduces the vendor's output. The build now
+fails loudly if it ever stops matching -- the first build attempt failed
+exactly that way on the host fixture, which is how I know the gate works.
+
+### FINDING 5 -- the `/lib` trap did not fire, and was checked rather than assumed
+
+Both nvidia packages ship their payload under `./lib/modules/<abi>/...`, i.e.
+the real-`lib/` path that `round2_attacks.py` reproduces as fatal. Measured on
+the built upperdir: **there is no `lib` entry at all**; dpkg followed base's
+`lib -> usr/lib` symlink and everything landed under `usr/lib/modules/`.
+`post_install` asserts `test -L /lib` before it does anything, the probe
+asserts it in the composed system, and `kernel.json` now records it at pack
+time. Three independent places, because the failure is silent and total.
+
+### THE PROBES, and the line under what they prove
+
+`nvidia-driver-535` asserts: `/lib` is still a symlink; all five `.ko` exist
+under `/usr/lib/modules/5.15.0-185-generic/kernel/nvidia-535/` and are
+non-empty; each carries `vermagic=5.15.0-185-generic`, so it matches the kernel
+the pack step installs; all five are **byte-identical to Canonical's
+SHA256SUMS after surviving squash, overlay stacking and reconciliation** -- a
+per-file CONTENT check, stronger than V7's `(kind, size)`; and `nvidia-smi`,
+`libcuda.so.1` and `libnvidia-ml.so.1` are present with every dynamic
+dependency resolvable.
+
+`cuda-runtime` asserts all eleven runtime sonames are in the regenerated linker
+cache, present on disk, fully resolvable, and that `libcudart.so.11.0` really
+points at the 11.5 series.
+
+NOT PROVEN, and said in both `probe_note`s: that any module LOADS; that
+`nvidia-smi` finds a device (it exits non-zero without one, which is why the
+probe checks its linkage and not its exit status); that the driver initialises
+hardware; that CUDA computes anything. **There is no GPU on this machine and
+nothing here is evidence that CUDA works.**
+
+### THE PROBES WERE MADE TO FAIL BEFORE THEY WERE BELIEVED
+
+`tests/gpu_probe_attacks.sh` composes the real artefacts, runs each probe on
+the pristine merge, then mutates the overlay's writable upper and re-runs.
+**20 of 20 cases behaved**: 8 controls passed, 12 attacks failed the probe.
+
+    D1 .ko truncated to 0 bytes            <- exactly the BUILD-unsigned trap
+    D2 .ko removed
+    D3 .ko same-size substitution          <- V7's KNOWN OPEN blind spot
+    D4 nvidia-smi removed
+    D5 libcuda.so.1 removed
+    D6 /lib replaced by a real directory   <- the fatal layout
+    C1 soname target removed
+    C2 libcudart.so.11.0 repointed at a non-11.5 target
+    C3 libnvToolsExt.so.1 removed
+
+Two probe bugs were found by writing this and fixed before any of it was
+believed: `ldconfig -p` indents with a TAB, so the original
+`grep -q " $so "` could never match (a false NEGATIVE that would have failed
+every composition); and a missing `libcuda.so.1` slipped past an `ldd`-only
+check, because `ldd` on a missing file prints an error that contains no
+"not found" -- a false POSITIVE. Both are now covered by a case above.
+
+### SIZES: the brief's estimates are low, and the reason is Finding 1
+
+      component                      brief     measured
+      nvidia driver module          ~105 MB    220.8 MB stored
+      CUDA runtime module           ~433 MB    648.7 MB stored
+
+The driver overshoots because the brief assumed a prebuilt `.ko`: the module
+must carry Canonical's 133 MB of objects AND the 139 MB of `.ko` linked from
+them, because the objects are package-owned and removing them would make
+dpkg's file list a lie. The CUDA figure is simply 1 188.9 MB of runtime
+libraries compressing at 1.83x, not the 2.7x the estimate implies.
+
+Authoritative installed sizes, read from the snapshot indices rather than
+estimated: CUDA runtime **11 packages, 1 188 MB**; full `nvidia-cuda-toolkit`
+**75 packages, 3 958 MB** (a 3.3x difference, and it pulls a compiler). The
+brief's claim that 46% of the toolkit is headers is NOT verified here and
+should not be repeated without measuring it; what is verified is the package
+count and the installed-size ratio.
+
+## 2026-09-19 (task 4: tier 1, tier 2, a tier-3 boot, and what the 649 MB module did to the ratios)
+
+Evidence bundle: `/srv/modfs/results/gpu-2026-09-19/` (tier1, tier2, storage,
+`SHA256SUMS`), plus the boot bundle `results/boot/gpu-stack-20260918T231943Z/`.
+All seven `logs/*.csv` were copied to `logs-before/` before anything overwrote
+them.
+
+### TIER 1 -- 10 660 combinations, and every rejection predicted
+
+      n=2     780 combinations   ACCEPT   667   REJECT   113
+      n=3    9880 combinations   ACCEPT  7807   REJECT  2073
+
+The pair sweep is self-validating and the arithmetic closes exactly. An
+independent combinatorial model built from the four known causes predicts the
+rejection SET, not merely its size:
+
+      |A| control-oldsnap, a different snapshot, against all 39     39
+      |B| fake-cuda without fake-nvidia-driver                      38
+      |C| cuda-runtime without nvidia-driver-535                    38
+      |D| mta-msmtp + mta-nullmailer, a virtual-name conflict        1
+      |A u B u C u D| = 39+38+38+1 - 3 pairwise overlaps          = 113
+      observed REJECT                                             = 113
+      the two SETS are identical, not merely the same size
+
+The invariant that matters for the GPU work: **`cuda-runtime` is ACCEPTED
+without `nvidia-driver-535` in 0 of 9 880 triples.** Its module-level
+`requires` is doing real work, on a real dependency, where `fake-cuda` only
+ever demonstrated the mechanism.
+
+The sampler classified the new module correctly without being told to.
+`sample_sets.py` distinguishes EXCLUSION from IMPLICATION, and it explained 73
+of the rejections as unmet requirements while learning exactly **one**
+exclusion edge (the MTA pair). Had it treated `cuda-runtime`'s 38 rejections as
+exclusions, the module would have been banished from every high-N sample --
+the exact error that file exists to prevent, now exercised by a second, real
+case rather than only by `fake-cuda`.
+
+### A CONSTANT THAT DECAYED AGAIN, the same way, and it is worth naming
+
+`10_compose_sweep.sh`'s default plan ended `36:2`. When written, 36 was the
+largest admissible N of a 37-usable catalogue and `36:2` was a CENSUS of the
+two maximal sets. The GPU modules made the catalogue 39 usable and the maximum
+**38**, so `36:2` silently became a 2-draw sample of a much larger space while
+still looking like the top of the range. This is precisely the defect
+STATE_OF_PLAY section 5c records as "a census that rotted into a sample",
+recurring in the same file for the same reason. Plan top moved to `38:2`, with
+a comment saying how to re-derive it and admitting that deriving it
+automatically is the real fix and is not done.
+
+### TIER 2 -- 152 compositions, N=2 to 38, 152 PASS
+
+Every column clean on all 152 rows: `pkg_ok`, `ld_ok`, `audit_ok`, `acct_ok`,
+`dbc_ok`, `vis_ok` all 1; `alt_groups_bad` and `vis_missing` all 0. V1-V8 hold
+with the two largest artefacts the catalogue has ever contained in the stack.
+51 of the compositions contain `cuda-runtime`, 63 contain
+`nvidia-driver-535`, and none contains `cuda-runtime` without its driver.
+
+Composition cost on THIS generation:
+
+      total     = 175.2 ms + 30.55 ms x N     (R2 = 0.975)
+      mount     =  20.8 ms +  9.46 ms x N     (R2 = 0.985)
+      reconcile = 154.4 ms + 21.09 ms x N     (R2 = 0.958)
+
+`total_ms - mount_ms - reconcile_ms` is 0 on all 152 rows, so this is still
+composition and not verification.
+
+**This must NOT be differenced against the published `160.7 + 27.01 N`.** Two
+things moved between them, not one: the catalogue gained two modules and the
+top of the plan moved 36 to 38, AND the checker changed -- `verify_ms` and V7's
+node-type handling landed in commit aa9deec, after the last recorded sweep.
+Attributing the slope change to the GPU modules would repeat exactly the
+generation-mixing that section 6 withdraws two earlier comparisons for.
+
+### THE GPU MODULES COST NOTHING EXTRA TO COMPOSE, and that is a result
+
+To isolate the effect without crossing generations, compare WITHIN this run at
+matched N -- compositions containing the 649 MB module against those without:
+
+       N   mount with/without   total with/without   verify with/without
+      10       107 /  126           470 /  522           354 /  599
+      20       196 /  209           752 /  838           934 / 1100
+      25       255 /  247           976 /  916          1252 / 1211
+      30       293 /  310          1054 / 1102          1364 / 1404
+
+No systematic difference in either direction. **Composition cost scales with
+the NUMBER of layers, not with their SIZE**, and the mechanism is plain once
+measured: a squashfs loop mount is O(1) in payload, reconciliation reads
+registry files rather than content, and V7 walks paths. The two GPU modules
+contribute **522 and 55 paths** respectively despite being 232 MB and 680 MB --
+enormous in bytes, trivial in inodes. A 680 MB module composes as cheaply as a
+0.5 MB one.
+
+### VERIFICATION COST, now measured rather than excluded
+
+`verify_ms` was added in aa9deec and this is the first sweep to carry it:
+
+      verify = 161.3 ms + 41.80 ms x N        (R2 = 0.961)
+
+Verification is **more expensive per module than composition** (41.8 vs
+30.55 ms). That closes STATE_OF_PLAY section 7 item 8 -- "verification cost is
+outside the published model" -- with a number instead of an acknowledgement.
+
+### TIER 3 -- the GPU stack boots
+
+`base nvidia-driver-535 cuda-runtime`, bundle
+`results/boot/gpu-stack-20260918T231943Z`, 198 s, verdict **PASS**:
+
+      tier-1 admission : yes
+      systemd state    : running
+      failed units     : 0
+      check audit      PASS
+      probe nvidia-driver-535 PASS
+      probe cuda-runtime PASS
+
+and from the guest's own kernel log:
+
+      Linux version 5.15.0-185-generic ... (Ubuntu 5.15.0-185.195-generic ...)
+
+The running kernel's ABI package version is **5.15.0-185.195**, identical to
+the `vermagic` baked into the five `.ko` files and to
+`linux-objects-nvidia-535-5.15.0-185-generic` in the same `result.json`. The
+cross-layer match task 2 made recordable is now recorded, and it holds. (The
+guest kernel was itself built with `GNU ld 2.38` -- the same binutils that
+reproduced Canonical's `.ko` bytes exactly.)
+
+**This is not evidence that CUDA works.** It is evidence that a composed system
+carrying a real 680 MB CUDA runtime and a real NVIDIA driver module boots under
+UEFI and systemd, reaches a running state with no failed units, and satisfies
+both structural probes from inside the running guest. There is no GPU in the
+QEMU guest and none on this host.
+
+### TWO HARNESS DEFECTS, found because the first boot attempt failed
+
+1. **A udev race.** `11_boot_test.sh` tested that `${LOOPDEV}p1` EXISTS and
+   then ran `mkfs.vfat` on it. Partition nodes appear asynchronously, so the
+   existence test can pass a moment before the kernel will let anything open
+   the device. The first GPU boot died at `mkfs.vfat failed` on an image the
+   identical command formats without complaint by hand seconds later. Three
+   squashfs loop mounts are already held at that point and the host carries 36
+   snap loop devices, which is the load that opens the window. Now waits for
+   the partitions to be USABLE (`udevadm settle` plus a bounded `blockdev`
+   poll), not merely present.
+2. **A failure that reported only its own existence.** That `mkfs.vfat` call
+   was `>/dev/null 2>&1 || die2 "mkfs.vfat failed"`, so the one thing that
+   could have explained it was discarded. Same shape as the silent boot
+   harness of 2026-09-16. Both filesystem creations now log to the run bundle
+   and print the reason on failure.
+
+Also fixed while reading the first bundle: `dpkg-query -W` with a glob lists
+packages dpkg merely KNOWS about, with an empty version, so the first
+`kernel.json` recorded `linux-image`, `linux-headers-...` and
+`linux-image-unsigned-...` as though the image carried them. Empty versions are
+now dropped. The aborted run's bundle is kept as evidence of both.
+
+### STORAGE -- the ratios re-measured, and the "large realistic" cohort gets worse
+
+The cohort table was computed ad hoc on 2026-09-16 and that day's entry said it
+should become a script. It is now `scripts/13_storage_ratios.sh`, which also
+declares its unit -- **decimal MB (10^6)**, because that is what every
+published figure in section 7 uses while `mksquashfs` and `human()` print
+binary MiB under the same label, a 4.9 % difference.
+
+The script reproduces **every** previously published number exactly, which is
+what licenses comparing the new ones: base 41.7 MB; small cohort 272.8 /
+1 524.3 MB / 5.59x; and all six monolithic model checks to the decimal
+(curl 43.0/43.4, jq 41.9/42.3, nc-traditional 41.6/42.0, webserver 62.3/62.8,
+pytools 67.4/67.6, emacs 78.3/78.7).
+
+      cohort                N     stored      monolithic    ratio      was
+      small adversarial    31    272.8 MB     1 524.3 MB    5.59x    5.59x  (31)
+      large realistic       9  1 704.5 MB     2 038.3 MB    1.20x    1.32x  (7)
+      whole catalogue      40  1 935.6 MB     3 562.5 MB    1.84x    2.51x  (38)
+
+The small cohort is **unchanged and identical in membership**, which makes it a
+clean control: nothing about the re-measurement moved it.
+
+### WHY 2.51x -> 1.84x IS THE HONEST READING AND NOT A REGRESSION
+
+The ratio is
+
+      (N*B + sum d) / (B + sum d)      benefit = B*(N-1) / (B + sum d)
+
+so it tends to N as deltas shrink and to 1 as they grow. The two GPU modules
+add **911.8 MB** to `sum d` and only **2B = 83.4 MB** to the numerator. The
+arithmetic closes: 1 023.8 + 911.8 = 1 935.6 stored, and
+2 567.4 + 911.8 + 83.4 = 3 562.5 monolithic.
+
+Per module, the saving the delta model delivers:
+
+      nc-traditional   0.3 MB delta on a 41.7 MB base   over 99 %
+      curl             1.6 MB                                96 %
+      nvidia-driver-535  231.6 MB                            15.3 %
+      cuda-runtime       680.2 MB                             5.8 %
+
+Nothing has broken. The method's benefit is exactly `B*(N-1)/(B + sum d)`: it
+pays when many modules SHARE a large base and approaches nothing when modules
+are large and INDEPENDENT. A 680 MB CUDA runtime shares nothing with its
+siblings beyond base's 41.7 MB, so there is nothing to amortise. Reporting
+1.84x is reporting the operating envelope the method actually has, and it is
+the same conclusion the 2026-09-16 re-measurement reached (5.35x -> 2.51x) --
+now driven harder by two modules built precisely to drive it.
+
+The result Dipanker asked for still stands, and it is a different one from the
+ratio: **the method HANDLES a 680 MB module.** It builds, it is byte-exact, it
+composes at the same cost as a 0.5 MB module, it passes V1-V8 at every N up to
+38, and it boots. What it does not do is SAVE anything at that size, and the
+formula said so in advance.
+
+## 2026-09-19 (deferred decision assessed: do NOT pin a kernel into base)
+
+Full reasoning in `docs/DECISION_kernel_pinning_2026-09-19.md`. Summary and the
+measurements behind it:
+
+- WHAT PINNING WOULD BUY, and it is exactly one thing: the ABI becomes a
+  property of `base.json`, so `05_check.sh` could reject a driver/kernel
+  mismatch statically at tier 1 instead of it surfacing at boot or not at all.
+  That is a real benefit and it is the only one.
+- THE BRIEF'S "~45 MB" IS RIGHT FOR ONE OF TWO OPTIONS, and they differ by 12x.
+  Resolved against the pinned snapshot:
+
+      A  linux-image-generic + initramfs-tools   20 pkgs  1 582.5 MB installed
+      B  linux-image-<abi> + linux-modules-<abi> 13 pkgs    135.5 MB installed
+
+  Option A is what stage 11 installs today, and it is twelve times the estimate
+  because `linux-image-generic` hard-depends on `linux-firmware` (1 089.8 MB
+  alone), `linux-modules-extra` (336.4 MB) and both microcode packages -- the
+  16 September entry already recorded that `--no-install-recommends` cannot
+  avoid them. Option B matches the ~45 MB estimate (~47 MB stored at base's
+  2.9x) and drops device firmware, which is fine under QEMU and a real
+  narrowing on physical hardware.
+- THE REBUILD INVALIDATES EVIDENCE, NOT JUST ARTEFACTS. Base + 40 siblings +
+  the six monolithic `--compare` baselines (not optional -- the 18 September
+  entry records exactly the trap of measuring a fresh base against stale
+  monoliths). ~1-2 h, after which every hash, all three cohort ratios, the
+  10 660 tier-1 combinations, the tier-2 fit (a FOURTH generation) and every
+  boot bundle are superseded. Ten days before submission.
+- AND THE RATIO WOULD IMPROVE, WHICH IS THE REASON TO BE SUSPICIOUS OF IT. With
+  B = 41.7 -> ~88.7 MB the whole-catalogue ratio goes 1.84x -> ~2.74x, because
+  the monolithic column is N*B + sum d and all 40 hypothetical images now carry
+  a kernel. Today the kernel is fetched from the mirror at pack time and stored
+  ZERO times in either column, so the omission is neutral; pinning relocates it
+  to "stored once in base" and inflates the baseline 40-fold. It would make the
+  number look better by changing what is compared. Related open audit finding:
+  H9, the monolithic baseline is not a controlled equivalent.
+- WHY IT IS NOT NECESSARY. The ABI is a deterministic FUNCTION of the pinned
+  snapshot, now demonstrated at four independent points that all agree: the
+  snapshot index predicts 5.15.0-185-generic / 5.15.0-185.195; the pack step
+  resolved it; the booted guest reported `Ubuntu 5.15.0-185.195-generic`; and
+  the `.ko` files carry `vermagic=5.15.0-185-generic`. Pinning would buy
+  determinism the pin already provides.
+- RECOMMENDED INSTEAD, and both are NEW FEATURES that I have NOT built:
+  (1) record the resolved ABI in `base.json` as a derived field -- `06` can
+  compute it from the snapshot indices without installing anything, costing a
+  manifest refresh (~1 min) rather than a rebuild; sealing it means adding it to
+  `BIND_FIELDS`, which invalidates existing manifests until regenerated.
+  (2) have `05_check.sh` compare a module's declared ABI against it, turning a
+  driver/kernel mismatch into a tier-1 REJECT with a reason.
+- IF PINNED ANYWAY: choose option B, rebuild the monolithic baselines in the
+  same generation, and report the result as a NEW BASELINE DEFINITION rather
+  than as an improvement on 1.84x.

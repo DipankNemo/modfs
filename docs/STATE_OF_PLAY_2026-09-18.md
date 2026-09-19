@@ -180,7 +180,7 @@ build**; the thesis must state which it claims.
 6. **The sidecar seal is optional** — `binding.sidecar_sha256` lives *inside* `binding`, which cannot be inside its own digest, so deleting that one field disables the check while the manifest seal still verifies. A tampered sidecar can invent collisions or erase evidence. *(Codex H1; fix pending.)*
 7. **No Related Work section** exists.
 8. **Verification cost is outside the published model.** `total_ms` is exactly `mount_ms + reconcile_ms` — it measures composing, not verifying.
-9. **CUDA/TensorFlow**: costed, not built. The blocker is *not* the absence of a kernel — the kernel is pinned and deterministic. It is that the resolved ABI is **recorded nowhere**. TensorFlow is a separate problem: it exists only on PyPI, which has no snapshot service, so it cannot satisfy the pinning premise at all.
+9. ~~**CUDA/TensorFlow**: costed, not built. The blocker is *not* the absence of a kernel — the kernel is pinned and deterministic. It is that the resolved ABI is **recorded nowhere**.~~ — **CUDA done 2026-09-19.** The ABI is recorded in every tier-3 run bundle's `result.json`, and two real modules are built: `nvidia-driver-535` (231.6 MB stored) and `cuda-runtime` (680.2 MB stored). Both pass tier 1, tier 2 at every N up to 38, and a tier-3 UEFI boot. The diagnosis above was exactly right — the ABI being unrecorded was the whole blocker. **Nothing shows that CUDA computes: there is no GPU on this machine.** See ARCHITECTURE §5 and §9, and the 19 September JOURNAL entries. TensorFlow is unchanged and still excluded: it exists only on PyPI, which has no snapshot service, so it cannot satisfy the pinning premise at all.
 
 ---
 
