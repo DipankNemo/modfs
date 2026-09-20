@@ -1,0 +1,56 @@
+setup_merged_usr() {
+	if doing_variant buildd && [ -z "$MERGED_USR" ]; then
+		MERGED_USR="no"
+	fi
+
+	if [ "$MERGED_USR" = "no" ]; then return 0; fi
+
+	local link_dir=""
+	case $ARCH in
+	    hurd-*)	return 0 ;;
+	    amd64)	link_dir="lib32 lib64 libx32" ;;
+	    i386)	link_dir="lib64 libx32" ;;
+	    mips|mipsel)
+			link_dir="lib32 lib64" ;;
+	    mips64*|mipsn32*)
+			link_dir="lib32 lib64 libo32" ;;
+	    powerpc)	link_dir="lib64" ;;
+	    ppc64)	link_dir="lib32 lib64" ;;
+	    ppc64el)	link_dir="lib64" ;;
+	    s390x)	link_dir="lib32" ;;
+	    sparc)	link_dir="lib64" ;;
+	    sparc64)	link_dir="lib32 lib64" ;;
+	    x32)	link_dir="lib32 lib64 libx32" ;;
+	esac
+	link_dir="bin sbin lib $link_dir"
+
+	local dir
+	for dir in $link_dir; do
+		ln -s usr/"$dir" "$TARGET/$dir"
+		mkdir -p "$TARGET/usr/$dir"
+	done
+}
+
+################################################################ pkgdetails
+setup_available () {
+	local m1 c path pkgdest pkg
+	m1="${MIRRORS%% *}"
+
+	for s in $SUITE $EXTRA_SUITES; do
+		for c in ${COMPONENTS:-$(echo ${USE_COMPONENTS} | tr '|' ' ')}; do
+			path="dists/$s/$c/binary-$ARCH/Packages"
+			pkgdest="$TARGET/$($DLDEST pkg "$s" "$c" "$ARCH" "$m1" "$path")"
+			# XXX: What if a package is in more than one component?
+			# -- cjwatson 2009-07-29
+			# XXX: ...or suite?
+			# -- jrtc27 2019-06-11
+			"$PKGDETAILS" STANZAS "$pkgdest" "$@"
+		done
+	done >"$TARGET/var/lib/dpkg/available"
+
+	for pkg; do
+		echo "$pkg install"
+	done | in_target dpkg --set-selections
+}
+/usr/share/debootstrap/functions:1372:setup_merged_usr() {
+/usr/share/debootstrap/scripts/debian-common:66:	setup_merged_usr

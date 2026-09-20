@@ -5052,3 +5052,63 @@ and sizes match the earlier reference CSV. Four independently read base files
 match the helper's digests; Python syntax check passes. The gzip JSON-lines
 inventory and plain base/jq examples are committed with reproduction details.
 No local extraction, mount, repack or artifact modification was performed.
+
+### Remote base completed; a real byte-reproducibility counterexample
+
+The base build finished at **16:57:11 UTC**, exit 0, **846.31 s wall** under
+TCG. It contains the same **113 packages with identical package metadata** as
+the original reference. Nevertheless:
+
+| Base | Bytes | SHA256 |
+|---|---:|---|
+| original | 41,717,760 | `e4fbed70bb74f351b7ad27dd61289845dccabf54fc23d6504b2011dc8d8de6c6` |
+| remote | 42,541,056 | `59a850966e54b3f9b2194ceb2570efce34d77d73c1786f0ccfc18b7f571db3e8` |
+
+The inventories identify **four added paths, none removed, three changed
+existing files**, with every other common inode record/content hash equal:
+
+- `lib32`, `libx32`, `usr/lib32`, `usr/libx32` are added by the older
+  debootstrap's `setup_merged_usr`: its amd64 branch unconditionally creates
+  those multilib directories and links. The newer implementation merges
+  existing directories. Installed source excerpts are retained.
+- `/etc/shadow` and `/etc/shadow-` stay the same size but change content.
+  For all **21 accounts**, only field index 2 (password-change day) differs:
+  **20712 → 20716**, the September 16 and September 20 build dates. The
+  inode timestamps remain pinned to July. Content containing a wall-clock
+  date is not made reproducible by pinning filesystem timestamps. The retained
+  diagnosis reports only names/date fields, not password fields.
+- `/var/lib/dpkg/available` is **literally the old file concatenated twice**:
+  **107,982 → 215,964 bytes**, **103 → 206 stanzas**, identical distinct
+  stanza contents, every multiplicity doubled. This is bootstrap metadata,
+  not a different installed package population.
+
+Evidence: `remote-base-build.log`, `remote-base-manifest.json`, both base
+inventories, `base-differences.json`, `base-content-diagnosis.json`, and the
+debootstrap source excerpts. Reproduce inventories with the committed helper;
+compare `nodes` dictionaries, then independently compare `unsquashfs -cat`
+output for the three changed files. The available-file equality is a byte
+comparison, not an inference from lengths. Host libzstd also differs, but its
+contribution to compressed size has not yet been isolated; do not attribute
+the entire 823,296-byte size increase to any one cause.
+
+ARCHITECTURE's unconditional claim that bytes do not move with clock/host is
+corrected. These observations do not isolate hardware from build date or host
+tool versions. They establish that the documented pin/procedure does not pin
+all byte-affecting inputs. No measured archive has been rewritten or normalized.
+
+The user resumed after a usage-limit interruption. The original remote base
+job had completed; no rebuild was needed. At **17:03:02 UTC**, after preserving
+base output and clearing base.dir/build scratch, the catalogue began with
+**59,346,321,408 free bytes**. `run_catalogue.sh` invokes unchanged stage 08
+once per module, checks space before each invocation, preserves successful
+bundles/logs outside disposable scratch, and removes each successful upperdir
+before the next build. It requires the clean source commit and records each
+exit code; a shortage stops before the next builder starts.
+
+A harness transfer mistake is retained, not hidden: nested SSH quoting initially
+redirected a copy of `run_catalogue.sh` into **local**
+`/srv/modfs/build/run-catalogue.sh`. It was never executed. Its digest was
+recorded, its resolved path and absence of mounts checked, and that scratch
+copy removed within the permitted deletion root. Corrected quoting copied the
+same digest into the guest before execution. No local build or artifact write
+occurred. `helper-transfer-correction.json` records this correction.

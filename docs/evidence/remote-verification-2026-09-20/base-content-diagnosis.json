@@ -1,0 +1,181 @@
+{
+  "available": {
+    "local_bytes": 107982,
+    "remote_bytes": 215964,
+    "local_stanzas": 103,
+    "remote_stanzas": 206,
+    "same_distinct_stanzas": true,
+    "each_remote_count_twice_local": true,
+    "remote_is_literal_local_twice": true
+  },
+  "shadow_changes_without_password_fields": [
+    {
+      "account": "_apt",
+      "changed_field_indices": [
+        2
+      ],
+      "local_last_change_day": "20712",
+      "remote_last_change_day": "20716"
+    },
+    {
+      "account": "backup",
+      "changed_field_indices": [
+        2
+      ],
+      "local_last_change_day": "20712",
+      "remote_last_change_day": "20716"
+    },
+    {
+      "account": "bin",
+      "changed_field_indices": [
+        2
+      ],
+      "local_last_change_day": "20712",
+      "remote_last_change_day": "20716"
+    },
+    {
+      "account": "daemon",
+      "changed_field_indices": [
+        2
+      ],
+      "local_last_change_day": "20712",
+      "remote_last_change_day": "20716"
+    },
+    {
+      "account": "games",
+      "changed_field_indices": [
+        2
+      ],
+      "local_last_change_day": "20712",
+      "remote_last_change_day": "20716"
+    },
+    {
+      "account": "gnats",
+      "changed_field_indices": [
+        2
+      ],
+      "local_last_change_day": "20712",
+      "remote_last_change_day": "20716"
+    },
+    {
+      "account": "irc",
+      "changed_field_indices": [
+        2
+      ],
+      "local_last_change_day": "20712",
+      "remote_last_change_day": "20716"
+    },
+    {
+      "account": "list",
+      "changed_field_indices": [
+        2
+      ],
+      "local_last_change_day": "20712",
+      "remote_last_change_day": "20716"
+    },
+    {
+      "account": "lp",
+      "changed_field_indices": [
+        2
+      ],
+      "local_last_change_day": "20712",
+      "remote_last_change_day": "20716"
+    },
+    {
+      "account": "mail",
+      "changed_field_indices": [
+        2
+      ],
+      "local_last_change_day": "20712",
+      "remote_last_change_day": "20716"
+    },
+    {
+      "account": "man",
+      "changed_field_indices": [
+        2
+      ],
+      "local_last_change_day": "20712",
+      "remote_last_change_day": "20716"
+    },
+    {
+      "account": "news",
+      "changed_field_indices": [
+        2
+      ],
+      "local_last_change_day": "20712",
+      "remote_last_change_day": "20716"
+    },
+    {
+      "account": "nobody",
+      "changed_field_indices": [
+        2
+      ],
+      "local_last_change_day": "20712",
+      "remote_last_change_day": "20716"
+    },
+    {
+      "account": "proxy",
+      "changed_field_indices": [
+        2
+      ],
+      "local_last_change_day": "20712",
+      "remote_last_change_day": "20716"
+    },
+    {
+      "account": "root",
+      "changed_field_indices": [
+        2
+      ],
+      "local_last_change_day": "20712",
+      "remote_last_change_day": "20716"
+    },
+    {
+      "account": "sync",
+      "changed_field_indices": [
+        2
+      ],
+      "local_last_change_day": "20712",
+      "remote_last_change_day": "20716"
+    },
+    {
+      "account": "sys",
+      "changed_field_indices": [
+        2
+      ],
+      "local_last_change_day": "20712",
+      "remote_last_change_day": "20716"
+    },
+    {
+      "account": "systemd-network",
+      "changed_field_indices": [
+        2
+      ],
+      "local_last_change_day": "20712",
+      "remote_last_change_day": "20716"
+    },
+    {
+      "account": "systemd-resolve",
+      "changed_field_indices": [
+        2
+      ],
+      "local_last_change_day": "20712",
+      "remote_last_change_day": "20716"
+    },
+    {
+      "account": "uucp",
+      "changed_field_indices": [
+        2
+      ],
+      "local_last_change_day": "20712",
+      "remote_last_change_day": "20716"
+    },
+    {
+      "account": "www-data",
+      "changed_field_indices": [
+        2
+      ],
+      "local_last_change_day": "20712",
+      "remote_last_change_day": "20716"
+    }
+  ]
+}

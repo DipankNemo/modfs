@@ -1,0 +1,7 @@
+{
+  "path": "/srv/modfs/build/run-catalogue.sh",
+  "sha256": "d74fe90e5245990aeed1ecab6a6d8c90cf3234593f3769eefc12abcbce493bab",
+  "executed": false,
+  "reason": "Nested SSH quoting redirected the helper copy to local scratch; transfer corrected before execution.",
+  "removed": true
+}

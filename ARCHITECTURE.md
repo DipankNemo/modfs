@@ -654,8 +654,10 @@ of every subsequent catalogue generation:
 delta no longer depends on the lower filesystem's identity. Getting there took
 four distinct fixes, none of them about package content: pinned `mkfs`/file
 timestamps, excluded build logs and `aux-cache`, stripped overlayfs
-`uuid`/`origin` xattrs, and an emptied `/etc/machine-id`. Cross-host
-reproducibility is now plausible but **untested**.
+`uuid`/`origin` xattrs, and an emptied `/etc/machine-id`. These same-host
+samples did not establish cross-host reproducibility. An independent remote
+base build on 2026-09-20, at the same July pin and with the same 113 package
+versions, produced different bytes; see §8 and the remote-verification journal.
 
 ### Storage depends on the catalogue, not only on the method
 
@@ -945,7 +947,32 @@ complete; zstd not xz; `-mkfs-time`/`-all-time` pinned to `SOURCE_EPOCH`
 (derived in `config.sh` from `SNAPSHOT_ID`), the apt/dpkg logs and
 `aux-cache` excluded, overlayfs's own `trusted.overlay.uuid`/`origin` stripped
 via `-xattrs-exclude`, and `/etc/machine-id` emptied at the end of the base
-build, so artefact bytes do not move with the wall clock or the host.
+build. These measures remove specific sources of variation; they do **not**
+make artefact bytes independent of the wall clock or the host toolchain.
+
+**Independent counterexample, 2026-09-20.** The unchanged base script at
+`a69111b`, July snapshot, and a remote Ubuntu 22.04 build VM produced
+**42,541,056 bytes**, SHA256
+`59a850966e54b3f9b2194ceb2570efce34d77d73c1786f0ccfc18b7f571db3e8`,
+against the original **41,717,760 bytes**, SHA256
+`e4fbed70bb74f351b7ad27dd61289845dccabf54fc23d6504b2011dc8d8de6c6`.
+All 113 package-version records agree. Read-only inventories find changed
+password-change dates inside `/etc/shadow` and `/etc/shadow-`, an exactly
+doubled `/var/lib/dpkg/available`, and four extra multilib paths created by
+the older host debootstrap. Host debootstrap and libzstd versions differ;
+the archive pin does not pin those tools. The date fields are file **content**,
+so SquashFS's fixed inode timestamps do not remove them. No normalization was
+applied to improve the result. This comparison varies machine, build date and
+host tools together; it does not attribute the difference to hardware alone.
+Full catalogue results are recorded separately in JOURNAL.md.
+
+Bootstrap also requires more than the suggested apt line: Jammy's stock
+SquashFS tools 4.5 reject the required `-xattrs-exclude` option. A compatible
+4.6.1 toolchain allowed the remote verifier to reach its filesystem checks;
+its remaining opaque-marker expectation conflicts with the current exclusion
+policy. The original unprivileged GPU container could not mount filesystems;
+the successful mount checks and base build ran in a QEMU/TCG guest on that
+same remote instance, not directly in the container.
 
 Emptying `/etc/machine-id` is not only a reproducibility fix. `systemd-machine-id-setup`
 writes a random id at install time, and a baked-in id would give every node
