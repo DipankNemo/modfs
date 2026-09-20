@@ -5171,3 +5171,46 @@ were extracted from the freshly built remote cuda-runtime artifact for a
 supplemental real-GPU probe against the provider's existing 550 driver.
 `gpu-built-extraction.log` records their hashes. This will not test loading
 ModFS's 535 .ko: the provider host still runs **6.8.0-47-generic**.
+
+
+### Real GPU runtime PASS; small remote tier-3 TCG boot PASS
+
+The supplemental CUDA probe **ran and passed** on the provider's RTX 3060
+(compute 8.6). `cuda_runtime_probe.py` loaded the freshly rebuilt module's
+NVRTC 11.5, NVRTC builtins and libcudart 11.5.117; compiled a trivial kernel
+for compute_86 (PTX 7.5); allocated device memory; launched 32 threads; and
+copied back exactly integers **7 through 38**. `/proc/self/maps` plus SHA256
+checks prove all three runtime/compiler libraries came from the measured
+remote cuda-runtime.sqsh. `gpu-runtime-result.json` and
+`gpu-library-binding.json` preserve the result. The driver library was the
+provider's **libcuda.so.550.107.02**, API 12.4. This is NOT a successful
+load of ModFS's nvidia-driver-535 kernel module.
+
+The provider host remains **6.8.0-47-generic**; the build VM is
+5.15.0-191-generic. The 535 artifact's nvidia.ko targets **5.15.0-185-generic**
+(`driver-abi-inspection.log`). Installing the pinned kernel is feasible in an
+owned bootable VM: stage 11 successfully fetched the 185.195 image/modules
+from the July snapshot. It cannot replace this container's shared provider
+kernel; the container lacks SYS_MODULE/SYS_BOOT and the provider explicitly
+forbids host driver/kernel changes. A privileged container would not give it
+an independent kernel. No host installation, insmod, reboot, or passthrough
+was attempted. Full 535-on-real-GPU validation needs an appropriate host under
+Dipanker's control and approval before any kernel installation/reboot.
+
+**Tier 3 passed on the remote hardware via TCG.** `run_tcg_retry.sh` copies the
+existing packed base+webserver image and the build VM's OVMF firmware into
+outer-container scratch, then invokes QEMU with the same stage-11 options
+except explicit TCG. It runs stage 11's exact Python verdict parser, extracted
+from the measured script. No image repacking, harness change, or GPU exposure.
+The image input hash is recorded. The original stage-11 KVM attempt remains
+BROKEN; the separately labelled TCG retry ran **19:55:29–19:55:50 UTC**, QEMU
+exit 0, verdict exit 0: audit PASS, webserver PASS, nginx active/running,
+zero failed units, and clean poweroff. Systemd's remaining start job was the
+test harness itself, correctly classified by the existing parser.
+
+`first-boot-results.tar` preserves the failed original run plus successful
+stage-12 binding; `tcg-boot-results.tar` preserves the complete successful
+retry, including serial, QEMU log, units, listeners, verdict, parser and input
+hashes. `tcg-verdict.log` is the readable verdict. This proves the small
+base+webserver composition boots on the second machine; it does not establish
+all-catalogue tier-3 success or guest GPU access.

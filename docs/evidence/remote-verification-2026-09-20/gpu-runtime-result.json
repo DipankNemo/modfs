@@ -1,0 +1,59 @@
+{
+  "result": "PASS",
+  "scope": "Remotely built ModFS runtime with provider driver; no ModFS 535 kernel module load",
+  "device": "NVIDIA GeForce RTX 3060",
+  "compute_capability": [
+    8,
+    6
+  ],
+  "nvrtc_version": [
+    11,
+    5
+  ],
+  "runtime_version": 11050,
+  "driver_api_version": 12040,
+  "kernel_source": "extern \"C\" __global__ void modfs_add(int *out) { out[threadIdx.x] = (int)threadIdx.x + 7; }",
+  "ptx_version": "7.5",
+  "ptx_sha256": "8950fb1afacbc5da4679964f615ca914d7576ecd82caad31d0b405dfa3e8e5f9",
+  "compiler_log": "",
+  "output": [
+    7,
+    8,
+    9,
+    10,
+    11,
+    12,
+    13,
+    14,
+    15,
+    16,
+    17,
+    18,
+    19,
+    20,
+    21,
+    22,
+    23,
+    24,
+    25,
+    26,
+    27,
+    28,
+    29,
+    30,
+    31,
+    32,
+    33,
+    34,
+    35,
+    36,
+    37,
+    38
+  ],
+  "mapped_library_sha256": {
+    "/srv/modfs/build/gpu-built/usr/lib/x86_64-linux-gnu/libcudart.so.11.5.117": "4554289fcc1df521446129ea77cd67a74ed3a439b121126e2aefa3619ba58f52",
+    "/srv/modfs/build/gpu-built/usr/lib/x86_64-linux-gnu/libnvrtc-builtins.so.11.5.119": "ad9b94b7eb6cd377689176156ae5138af4d7a1baa8b3ee3935b4cc7f41031c02",
+    "/srv/modfs/build/gpu-built/usr/lib/x86_64-linux-gnu/libnvrtc.so.11.5.119": "65f2c18b70004319654cb2cf9aa7e699185d0466f1000d6714b19c854345b27e",
+    "/usr/lib/x86_64-linux-gnu/libcuda.so.550.107.02": "c1d3e7145a2e4647b4f3223e5803cd30ae3b6fbf8ab6e8da6b5a7310f1f26411"
+  }
+}

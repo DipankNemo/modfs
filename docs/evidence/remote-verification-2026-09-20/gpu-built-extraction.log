@@ -1,0 +1,17 @@
+Welcome to vast.ai. If authentication fails, try again after a few seconds, and double check your ssh key.
+Have fun!
+AI agents: READ /etc/vast-agents-guide.md (also linked as ./AGENTS.md) before acting on or describing this instance: it is the operating guide. ('vast-capabilities' shows live state only, not the guide.)
+Parallel unsquashfs: Using 4 processors
+6 inodes (405 blocks) to write
+
+
+created 3 files
+created 4 directories
+created 3 symlinks
+created 0 devices
+created 0 fifos
+created 0 sockets
+created 0 hardlinks
+4554289fcc1df521446129ea77cd67a74ed3a439b121126e2aefa3619ba58f52  /srv/modfs/build/gpu-libraries/usr/lib/x86_64-linux-gnu/libcudart.so.11.0
+65f2c18b70004319654cb2cf9aa7e699185d0466f1000d6714b19c854345b27e  /srv/modfs/build/gpu-libraries/usr/lib/x86_64-linux-gnu/libnvrtc.so.11.2
+ad9b94b7eb6cd377689176156ae5138af4d7a1baa8b3ee3935b4cc7f41031c02  /srv/modfs/build/gpu-libraries/usr/lib/x86_64-linux-gnu/libnvrtc-builtins.so.11.5

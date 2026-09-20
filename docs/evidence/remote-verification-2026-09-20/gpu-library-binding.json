@@ -1,0 +1,20 @@
+[
+  {
+    "path": "usr/lib/x86_64-linux-gnu/libcudart.so.11.5.117",
+    "mapped_sha256": "4554289fcc1df521446129ea77cd67a74ed3a439b121126e2aefa3619ba58f52",
+    "artifact_sha256": "4554289fcc1df521446129ea77cd67a74ed3a439b121126e2aefa3619ba58f52",
+    "matches": true
+  },
+  {
+    "path": "usr/lib/x86_64-linux-gnu/libnvrtc-builtins.so.11.5.119",
+    "mapped_sha256": "ad9b94b7eb6cd377689176156ae5138af4d7a1baa8b3ee3935b4cc7f41031c02",
+    "artifact_sha256": "ad9b94b7eb6cd377689176156ae5138af4d7a1baa8b3ee3935b4cc7f41031c02",
+    "matches": true
+  },
+  {
+    "path": "usr/lib/x86_64-linux-gnu/libnvrtc.so.11.5.119",
+    "mapped_sha256": "65f2c18b70004319654cb2cf9aa7e699185d0466f1000d6714b19c854345b27e",
+    "artifact_sha256": "65f2c18b70004319654cb2cf9aa7e699185d0466f1000d6714b19c854345b27e",
+    "matches": true
+  }
+]
