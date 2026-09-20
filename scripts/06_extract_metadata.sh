@@ -71,6 +71,8 @@ PARENT="base"
 MOD_VERSION=""
 REQUESTED=""
 CHECK_ONLY=0
+NEW_BUILD=0
+ADOPT_GENERATION=0
 
 while [ $# -gt 0 ]; do
     case "$1" in
@@ -83,6 +85,8 @@ while [ $# -gt 0 ]; do
         --requested)
             [ $# -ge 2 ] || die "--requested needs a value"
             REQUESTED="$2"; shift 2 ;;
+        --new-build) NEW_BUILD=1; shift ;;
+        --adopt-generation) ADOPT_GENERATION=1; shift ;;
         --check)
             # Re-derive from the artefact and COMPARE against the manifest on
             # disk instead of writing. Used by 12_verify_binding.sh. Reusing
@@ -184,6 +188,8 @@ export M_ARCH="$ARCH"
 export M_SQSH="$SQSH"
 export M_OUT="$OUT"
 export M_CHECK_ONLY="$CHECK_ONLY"
+export M_NEW_BUILD="$NEW_BUILD"
+export M_ADOPT_GENERATION="$ADOPT_GENERATION"
 export M_BUILT="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 # The assigned window, so the manifest records the policy the build ran under.
 # base has none: it is the baseline, not a partitioned sibling.
@@ -390,6 +396,27 @@ if os.path.exists(sqsh):
     }
 else:
     artifact = None
+
+sys.path.insert(0, os.path.join(E['MODFS_SRC'], 'scripts'))
+from generation import extraction_generation
+# Snapshot provenance lives in the shipped sources.list. Never label existing
+# bytes using only the caller's environment during a metadata refresh.
+import re
+source_path = os.path.join(tree, 'etc/apt/sources.list')
+if not os.path.exists(source_path) and parent_tree:
+    source_path = os.path.join(parent_tree, 'etc/apt/sources.list')
+sources = open(source_path, encoding='utf-8').read()
+pins = set(re.findall(r'snapshot\.ubuntu\.com/ubuntu/(\d{8}T\d{6}Z)', sources))
+if pins != {E['M_SNAPSHOT']}:
+    raise ValueError('artefact snapshot %r differs from requested pin %s' % (pins, E['M_SNAPSHOT']))
+
+
+# Check before writing any sidecar or manifest, so refusal is non-mutating.
+base_path = os.path.join(E['MOD_DIR'], (parent or E['M_NAME']) + '.sqsh')
+resolved_generation = extraction_generation(
+    dict(snapshot=E['M_SNAPSHOT'], suite=E['M_SUITE'], arch=E['M_ARCH'], parent=parent),
+    prev, sha256(base_path), new_build=E.get('M_NEW_BUILD') == '1',
+    adopt=E.get('M_ADOPT_GENERATION') == '1')
 
 # ------------------------------------------------- accounts and unit identity
 # Conflict class 7. /etc/passwd, /etc/group, /etc/shadow and /etc/gshadow are
@@ -684,6 +711,8 @@ doc = {
     'artifact':  artifact,
     'packages':  packages,
 }
+
+doc['generation'] = resolved_generation
 
 # Computed over the finished doc, then inserted, so the digest covers exactly
 # what a reader sees. `binding` itself is never one of BIND_FIELDS -- a digest

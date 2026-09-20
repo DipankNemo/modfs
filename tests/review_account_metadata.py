@@ -9,6 +9,7 @@ import shutil
 import subprocess
 import tempfile
 import unittest
+from legacy_generation import adopt_fixture
 
 REPO = Path(__file__).resolve().parents[1]
 
@@ -22,6 +23,7 @@ class AccountMetadataTests(unittest.TestCase):
                 (mods / ('base' + suffix)).symlink_to('/srv/modfs/modules/base' + suffix)
             else:
                 shutil.copy2('/srv/modfs/modules/base' + suffix, mods / ('base' + suffix))
+        adopt_fixture(root, ('base',))
         def run(args):
             p = subprocess.run(args, cwd=REPO, env=dict(os.environ, MODFS_ROOT=str(root)),
                                text=True, capture_output=True)
@@ -41,7 +43,7 @@ class AccountMetadataTests(unittest.TestCase):
             (root / 'delta' / rel).write_text('\n'.join(rows) + '\n')
         run(['mksquashfs', str(root / 'delta'), str(mods / 'curl.sqsh'), '-noappend',
              '-comp', 'zstd', '-no-progress', '-processors', '2'])
-        run(['scripts/06_extract_metadata.sh', 'curl', '--version', '1.0'])
+        run(['scripts/06_extract_metadata.sh', 'curl', '--version', '1.0', '--new-build'])
         run(['scripts/12_verify_binding.sh', 'curl'])
         p = subprocess.run(['scripts/05_check.sh', 'curl'], cwd=REPO,
                            env=dict(os.environ, MODFS_ROOT=str(root)), text=True, capture_output=True)

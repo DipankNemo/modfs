@@ -8,7 +8,7 @@ import json
 import re
 import subprocess
 
-BIND_FIELDS = ['module', 'version', 'parent', 'snapshot', 'suite', 'arch',
+BIND_FIELDS = ['module', 'version', 'parent', 'snapshot', 'suite', 'arch', 'generation',
                'requires', 'conflicts', 'provides', 'requested', 'removed',
                'uid_range', 'accounts', 'units', 'artifact', 'packages']
 
@@ -22,6 +22,8 @@ def bind_digest(doc, fields=BIND_FIELDS):
 
 def validate_manifest(doc):
     """Raise ValueError for missing, unsupported or inconsistent binding."""
+    from generation import validate_generation
+    validate_generation(doc)
     b = doc.get('binding')
     if not isinstance(b, dict):
         raise ValueError('manifest carries no binding')

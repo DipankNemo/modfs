@@ -7,6 +7,7 @@
 #   sudo ./scripts/08_build_catalogue.sh --only vim,emacs
 #   sudo ./scripts/08_build_catalogue.sh --dry-run
 #   sudo ./scripts/08_build_catalogue.sh --refresh-metadata
+#   sudo ./scripts/08_build_catalogue.sh --refresh-metadata --adopt-generation
 #
 # --refresh-metadata re-runs stage 06 over base and every built module without
 # rebuilding anything. Needed whenever the manifest schema grows -- the file
@@ -26,20 +27,24 @@ source "${HERE}/scripts/lib.sh"
 die2() { printf '\033[1;31m[FAIL]\033[0m %s\n' "$*" >&2; exit 2; }
 [ "$(id -u)" -eq 0 ] || die2 "must run as root (delta builds mount and chroot)"
 
-FORCE=0; DRY=0; ONLY=""; REFRESH=0
+FORCE=0; DRY=0; ONLY=""; REFRESH=0; ADOPT_ARGS=()
 while [ $# -gt 0 ]; do
     case "$1" in
         --force)   FORCE=1; shift ;;
         --dry-run) DRY=1; shift ;;
         --only)    [ $# -ge 2 ] || die2 "--only needs a value"; ONLY="$2"; shift 2 ;;
+        --adopt-generation) ADOPT_ARGS=(--adopt-generation); shift ;;
         --refresh-metadata) REFRESH=1; shift ;;
         *)         die2 "unknown option: $1" ;;
     esac
 done
 
+[ ${#ADOPT_ARGS[@]} -eq 0 ] || [ "$REFRESH" -eq 1 ] \
+    || die2 "--adopt-generation requires --refresh-metadata"
+
 SPEC="${SPEC_DIR}/modules.yaml"
 [ -f "$SPEC" ] || die2 "no catalogue at ${SPEC}"
-[ -d "${MOD_DIR}/base.dir" ] || die2 "base not built -- run 01_build_base.sh first"
+[ -f "${MOD_DIR}/base.sqsh" ] || die2 "base not built -- run 01_build_base.sh first"
 
 # ---- read the catalogue ---------------------------------------------------
 PLAN="${BUILD_DIR}/catalogue.tsv"
@@ -96,7 +101,7 @@ if [ "$REFRESH" -eq 1 ]; then
         # recorded, so the override has to be re-applied on refresh too --
         # otherwise the positive control would silently record the wrong one.
         if MODFS_SNAPSHOT_ID="${snapshot:-$SNAPSHOT_ID}" \
-           "${HERE}/scripts/06_extract_metadata.sh" "$name" --version "$version" \
+           "${HERE}/scripts/06_extract_metadata.sh" "$name" --version "$version" "${ADOPT_ARGS[@]}" \
                > "${LOG_DIR}/refresh-${name}.log" 2>&1 </dev/null; then
             printf '  %-18s refreshed%s\n' "$name" \
                 "$([ -n "$snapshot" ] && echo "  (snapshot ${snapshot})" || true)"
