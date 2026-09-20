@@ -296,6 +296,21 @@ mount_chroot_fs() {      # mount_chroot_fs <root>
     do_mount -t sysfs sys   "$r/sys"
     do_mount --bind /dev     "$r/dev"
     do_mount --bind /dev/pts "$r/dev/pts"
+    # MAKE EVERY MOUNT PRIVATE, or unmounting them takes the HOST's copies with
+    # them. systemd mounts / and /dev `shared`, so a --bind puts the chroot copy
+    # in the same PEER GROUP as the original: unmount one and the kernel
+    # propagates the unmount to the other. On 2026-09-20 a build tore down
+    # "$r/dev/pts" and unmounted the host's /dev/pts with it, after which no
+    # process could allocate a pty and plain `sudo` failed with
+    #     sudo: unable to allocate pty: No such device
+    # The damage outlives the script, survives its EXIT trap, and is invisible
+    # until something needs a terminal. Every mount this project makes is
+    # scratch that belongs to one build, so none of them should ever propagate.
+    local m
+    for m in "$r/proc" "$r/sys" "$r/dev" "$r/dev/pts"; do
+        mount --make-rprivate "$m" 2>/dev/null \
+            || warn "cannot make ${m} private; unmounting it may affect the host"
+    done
 }
 
 # Stop daemons from starting inside the chroot, and silence interactive

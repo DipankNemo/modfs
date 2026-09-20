@@ -5301,3 +5301,38 @@ TCG inputs. The measured script matches Git's a69111b version. This closes
 the image-transfer provenance check; `verify_evidence.py` now validates those
 three matches as well and passes. The retained image SHA256 is
 `21427b38ed4bf8c4c17f47c7884a3e6727b204d712b0e5b33ab3af72d2d2d77b`.
+
+## 2026-09-20 (a build unmounted the HOST's /dev/pts; cause UNPROVEN)
+- Dipanker's plain `sudo` began failing with
+        sudo: unable to allocate pty: No such device
+  Diagnosis: /dev/pts was NOT MOUNTED on the host -- zero entries in
+  /proc/mounts -- while kernel.pty.max was 4096 with only 6 open, so this was
+  not exhaustion. Restored with
+        mount -t devpts devpts /dev/pts -o rw,nosuid,noexec,relatime,gid=5,mode=620,ptmxmode=000
+  and sudo worked again.
+- THIS PROJECT DID IT. Nothing else on the machine mounts or unmounts /dev/pts.
+  mount_chroot_fs binds /dev and /dev/pts into every chroot, and several scripts
+  unmount them again -- lib.sh's unmount_all, and 15_measure_monolith.sh line 44,
+  `for mp in dev/pts dev sys proc; do umount "$M/$mp"`. The damage OUTLIVES the
+  script that caused it, survives its EXIT trap, and is invisible until
+  something needs a terminal. Every mount guard this project has is about not
+  deleting through a mount; none of them is about not damaging the host's own.
+- MY DIAGNOSIS WAS PROPAGATION, AND I COULD NOT PROVE IT. / and /dev are both
+  `shared` on this system, so a --bind puts the chroot copy in the same peer
+  group and an unmount should propagate back. I built the fixture twice -- first
+  a shared tmpfs bound elsewhere, then a shared parent with a child mount bound
+  through a peer, which is the faithful shape -- and in BOTH the original
+  survived. The mechanism is therefore UNPROVEN and is recorded as unproven.
+  Candidates not eliminated: `umount -l` in unmount_all detaching lazily; an
+  unguarded path expanding to the host's own /dev/pts; a teardown order that
+  unmounts $r/dev while $r/dev/pts is still under it.
+- WHAT I DID ANYWAY: mount_chroot_fs now runs `mount --make-rprivate` on all
+  four of its mounts. That is HARDENING, not a fix for a demonstrated cause, and
+  it is labelled as such here and in the code comment. It cannot make things
+  worse -- these mounts are scratch belonging to one build and should never
+  propagate anywhere -- but nobody should read it as "the bug is understood".
+- WHY IT MATTERS BEYOND THE INCONVENIENCE: this is the first defect in the
+  project that damaged the MACHINE rather than the evidence. A build that can
+  silently unmount part of the host's /dev is a reproducibility hazard for
+  anyone who runs this pipeline, and it belongs in the thesis limitations
+  whether or not the mechanism is ever pinned down.
