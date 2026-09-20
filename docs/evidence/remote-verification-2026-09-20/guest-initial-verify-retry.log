@@ -1,0 +1,83 @@
+Welcome to vast.ai. If authentication fails, try again after a few seconds, and double check your ssh key.
+Have fun!
+AI agents: READ /etc/vast-agents-guide.md (also linked as ./AGENTS.md) before acting on or describing this instance: it is the operating guide. ('vast-capabilities' shows live state only, not the guide.)
+Warning: Permanently added '[127.0.0.1]:2222' (ED25519) to the list of known hosts.
+5.15.0-191-generic
+PRETTY_NAME="Ubuntu 22.04.5 LTS"
+NAME="Ubuntu"
+VERSION_ID="22.04"
+VERSION="22.04.5 LTS (Jammy Jellyfish)"
+VERSION_CODENAME=jammy
+ID=ubuntu
+ID_LIKE=debian
+HOME_URL="https://www.ubuntu.com/"
+SUPPORT_URL="https://help.ubuntu.com/"
+BUG_REPORT_URL="https://bugs.launchpad.net/ubuntu/"
+PRIVACY_POLICY_URL="https://www.ubuntu.com/legal/terms-and-policies/privacy-policy"
+UBUNTU_CODENAME=jammy
+Filesystem       1B-blocks       Used   Available Use% Mounted on
+/dev/vda1      62241562624 1721040896 60503744512   3% /
+status: running
+Current: =ep
+Bounding set =cap_chown,cap_dac_override,cap_dac_read_search,cap_fowner,cap_fsetid,cap_kill,cap_setgid,cap_setuid,cap_setpcap,cap_linux_immutable,cap_net_bind_service,cap_net_broadcast,cap_net_admin,cap_net_raw,cap_ipc_lock,cap_ipc_owner,cap_sys_module,cap_sys_rawio,cap_sys_chroot,cap_sys_ptrace,cap_sys_pacct,cap_sys_admin,cap_sys_boot,cap_sys_nice,cap_sys_resource,cap_sys_time,cap_sys_tty_config,cap_mknod,cap_lease,cap_audit_write,cap_audit_control,cap_setfcap,cap_mac_override,cap_mac_admin,cap_syslog,cap_wake_alarm,cap_block_suspend,cap_audit_read,cap_perfmon,cap_bpf,cap_checkpoint_restore
+Ambient set =
+Current IAB: 
+Securebits: 00/0x0/1'b0
+ secure-noroot: no (unlocked)
+ secure-no-suid-fixup: no (unlocked)
+ secure-keep-caps: no (unlocked)
+ secure-no-ambient-raise: no (unlocked)
+uid=0(root) euid=0(root)
+gid=0(root)
+groups=0(root)
+Guessed mode: UNCERTAIN (0)
+Cloning into '/root/modfs'...
+HEAD is now at a69111b Merge experiment/update-strategy: intra-generation saves 79.8%, pin moves ship 100%
+
+=== 1. Host tools ===
+  [FAIL] debootstrap missing
+  [ ok ] mksquashfs
+  [ ok ] unsquashfs
+  [ ok ] curl
+  [ ok ] mount
+  [ ok ] umount
+  [ ok ] chroot
+  [ ok ] losetup
+  [ ok ] rsync
+  [ ok ] sgdisk
+  [ ok ] mkfs.ext4
+  [FAIL] getfattr missing
+  [FAIL] qemu-img missing
+  [ ok ] zstd
+  [ ok ] python3 yaml
+  ...... install missing: apt install debootstrap squashfs-tools rsync gdisk
+  ......                  attr qemu-utils util-linux curl python3-yaml zstd
+
+=== 2. Kernel support ===
+  [ ok ] overlayfs (loaded via modprobe)
+  [ ok ] squashfs available
+
+=== 3. Assumption A: snapshot 20260701T000000Z is reachable ===
+  [ ok ] jammy Release (HTTP 200)
+  [ ok ] jammy-updates Release (HTTP 200)
+  [ ok ] jammy-security Release (HTTP 200)
+  ...... archive Date: Thu, 21 Apr 2022 17:16:08 UTC
+
+=== 4. Assumption B: overlay upperdir survives SquashFS ===
+  [ ok ] overlay mounted
+  [ ok ] whiteout created as char device 0:0
+  ...... no opaque xattr (kernel may use a different marker; functional test decides)
+  [FAIL] mksquashfs failed
+mount: /srv/modfs/build/verify_wo/mnt_delta: failed to setup loop device for /srv/modfs/build/verify_wo/delta.sqsh.
+  [FAIL] cannot mount delta.sqsh
+  [FAIL] whiteout LOST in squashfs
+  [ ok ] recomposed base + delta
+  [ ok ] kept file visible
+  [FAIL] added file missing
+  [FAIL] deleted file still visible -- whiteout not honoured
+  [FAIL] new file in replaced dir missing
+  [FAIL] old dir content leaks through -- opaque marker not honoured
+
+=== RESULT: 21 passed, 10 failed ===
+Fix failures before writing the builder.
+initial_guest_verify_exit=1

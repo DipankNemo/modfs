@@ -4982,3 +4982,46 @@ preserves independent-machine execution but adds emulation overhead and must
 be reported as such. Installed `qemu-system-x86 cloud-image-utils` on the
 remote for this attempt; download/launch results will be recorded separately.
 No GPU passthrough is proposed or enabled.
+
+### The software VM boots; Jammy exposes a second bootstrap defect
+
+The same remote instance successfully boots Canonical's dated
+`jammy/20260918/jammy-server-cloudimg-amd64.img` under QEMU **8.2.2 TCG**,
+four virtual CPUs, 8 GiB RAM, a sparse 60 GiB disk. Cloud-init completed at
+about 80 seconds guest uptime. Image SHA256 matches the published checksum:
+`48c7e1ab2005bff1c5450bd6c74d0f38482f0d750e14f320367e3e1c795035f9`.
+The first checksum filter missed Canonical's `*filename` format and failed
+without verifying anything; the corrected filter passed (`vm-launch.log`).
+Commands and cloud-init configuration are retained in the evidence README.
+
+This guest is Ubuntu **22.04.5**, kernel **5.15.0-191-generic**, with full
+guest capabilities and 60,503,744,512 bytes available before tool installation.
+It cloned the project independently from GitHub and checked out `a69111b`.
+Its **pre-install** `00_verify.sh` reports three missing tools:
+`debootstrap`, `getfattr`, `qemu-img`. This is a second bootstrap population,
+not a replacement for the original container's six-tool list. Unlike the
+container, the guest successfully mounts OverlayFS and creates a whiteout.
+The initial run totals **21 passed / 10 failed**; failures beyond the three
+missing tools cascade from the unsuccessful squash operation.
+
+Installing the suggested apt line succeeds in the guest too, but **stock
+Jammy SquashFS tools 4.5 do not support `-xattrs-exclude`**. The verifier
+checks only whether `mksquashfs` exists, then suppresses its error output.
+An isolated invocation against an empty scratch directory reproduces the
+unsupported-option failure, exit 1, without requiring any mount. The exact
+command and full usage output are in `guest-suggested-install.log`.
+Therefore the suggested apt line is insufficient even on the project's
+documented Ubuntu 22.04 host environment with working mount privileges.
+
+Installing a compatible upstream SquashFS **4.6.1** toolchain in the guest,
+along with stage-11's missing tools, to run the existing commands unchanged.
+This is a required host dependency, not a change to artifact normalization.
+The tool version, source revision and compression-library version will be
+retained with build evidence. The original local machine actually runs
+Ubuntu **24.04.5**, with SquashFS tools **4.6.1** and debootstrap
+**1.0.134ubuntu2** (read-only version checks); its successful prior builds
+did not establish that Jammy's stock build tools were sufficient.
+
+This VM is a route to remote build/boot verification only. It has no GPU;
+neither its successful boot nor the container's working `nvidia-smi` tests
+loading the ModFS NVIDIA driver against physical hardware.

@@ -1,0 +1,7 @@
+Welcome to vast.ai. If authentication fails, try again after a few seconds, and double check your ssh key.
+Have fun!
+AI agents: READ /etc/vast-agents-guide.md (also linked as ./AGENTS.md) before acting on or describing this instance: it is the operating guide. ('vast-capabilities' shows live state only, not the guide.)
+jammy-server-cloudimg-amd64.img: OK
+Formatting 'guest.qcow2', fmt=qcow2 cluster_size=65536 extended_l2=off compression_type=zlib size=64424509440 backing_file=/srv/modfs/build/verification-vm/jammy-server-cloudimg-amd64.img backing_fmt=qcow2 lazy_refcounts=off refcount_bits=16
+2710
+2026-09-20T16:33:15+00:00
