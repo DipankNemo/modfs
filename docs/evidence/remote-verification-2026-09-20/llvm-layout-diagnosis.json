@@ -1,0 +1,97 @@
+[
+  {
+    "original_path": "lib32/ld-linux.so.2",
+    "remote_path": "usr/lib32/ld-linux.so.2",
+    "identical_inode_record": true
+  },
+  {
+    "original_path": "lib32/libBrokenLocale.so.1",
+    "remote_path": "usr/lib32/libBrokenLocale.so.1",
+    "identical_inode_record": true
+  },
+  {
+    "original_path": "lib32/libanl.so.1",
+    "remote_path": "usr/lib32/libanl.so.1",
+    "identical_inode_record": true
+  },
+  {
+    "original_path": "lib32/libc.so.6",
+    "remote_path": "usr/lib32/libc.so.6",
+    "identical_inode_record": true
+  },
+  {
+    "original_path": "lib32/libc_malloc_debug.so.0",
+    "remote_path": "usr/lib32/libc_malloc_debug.so.0",
+    "identical_inode_record": true
+  },
+  {
+    "original_path": "lib32/libdl.so.2",
+    "remote_path": "usr/lib32/libdl.so.2",
+    "identical_inode_record": true
+  },
+  {
+    "original_path": "lib32/libm.so.6",
+    "remote_path": "usr/lib32/libm.so.6",
+    "identical_inode_record": true
+  },
+  {
+    "original_path": "lib32/libmemusage.so",
+    "remote_path": "usr/lib32/libmemusage.so",
+    "identical_inode_record": true
+  },
+  {
+    "original_path": "lib32/libnsl.so.1",
+    "remote_path": "usr/lib32/libnsl.so.1",
+    "identical_inode_record": true
+  },
+  {
+    "original_path": "lib32/libnss_compat.so.2",
+    "remote_path": "usr/lib32/libnss_compat.so.2",
+    "identical_inode_record": true
+  },
+  {
+    "original_path": "lib32/libnss_dns.so.2",
+    "remote_path": "usr/lib32/libnss_dns.so.2",
+    "identical_inode_record": true
+  },
+  {
+    "original_path": "lib32/libnss_files.so.2",
+    "remote_path": "usr/lib32/libnss_files.so.2",
+    "identical_inode_record": true
+  },
+  {
+    "original_path": "lib32/libnss_hesiod.so.2",
+    "remote_path": "usr/lib32/libnss_hesiod.so.2",
+    "identical_inode_record": true
+  },
+  {
+    "original_path": "lib32/libpcprofile.so",
+    "remote_path": "usr/lib32/libpcprofile.so",
+    "identical_inode_record": true
+  },
+  {
+    "original_path": "lib32/libpthread.so.0",
+    "remote_path": "usr/lib32/libpthread.so.0",
+    "identical_inode_record": true
+  },
+  {
+    "original_path": "lib32/libresolv.so.2",
+    "remote_path": "usr/lib32/libresolv.so.2",
+    "identical_inode_record": true
+  },
+  {
+    "original_path": "lib32/librt.so.1",
+    "remote_path": "usr/lib32/librt.so.1",
+    "identical_inode_record": true
+  },
+  {
+    "original_path": "lib32/libthread_db.so.1",
+    "remote_path": "usr/lib32/libthread_db.so.1",
+    "identical_inode_record": true
+  },
+  {
+    "original_path": "lib32/libutil.so.1",
+    "remote_path": "usr/lib32/libutil.so.1",
+    "identical_inode_record": true
+  }
+]

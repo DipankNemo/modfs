@@ -1,7 +1,7 @@
 # Independent remote verification evidence
 
-See the dated JOURNAL.md entries for conclusions. Logs are observations, not
-claims that all requested phases completed. The project revision used for the
+See [REPORT.md](REPORT.md) for final results and limits, and the dated JOURNAL.md
+entries for the record as work progressed. The project revision used for the
 initial checks is `a69111baedb576ea9d093626e883b6f7cd5bd3ce`.
 
 ## Container bootstrap
@@ -190,3 +190,146 @@ df -B1 /srv/modfs/build  # require >40 billion free bytes before starting
 
 `remote-base-build.log` records the actual result and elapsed time. Logs are
 also preserved in the guest under `/srv/modfs/results/remote-verification-2026-09-20/`.
+
+## Catalogue and independent comparison
+
+After base, copy the committed measurement helper `run_catalogue.sh` into
+guest `/srv/modfs/build/run_catalogue.sh` (not into the clean source clone),
+then run inside that guest:
+
+```sh
+nohup bash /srv/modfs/build/run_catalogue.sh /root/modfs \
+  > /srv/modfs/results/remote-verification-2026-09-20/catalogue.log 2>&1 < /dev/null &
+```
+
+The helper records space before each build, stops on shortage, saves bundles
+and logs, and removes successful upperdirs/build scratch before proceeding.
+It refuses to overwrite a prior catalogue status CSV. Its final status is
+40 builds with exit 0. `catalogue-results-bundle.tar` contains the status/logs,
+manifests, and sidecars, but no large SquashFS payloads. The latter remain
+in the guest's results/payloads directory.
+
+Run `squash_inventory.py` against each of the 41 new archives as for the
+originals, retaining one JSON document per line in `remote-inventories.jsonl.gz`.
+To recompute the comparison from the committed records:
+
+```sh
+python3 verify_evidence.py
+```
+
+This checks both sets of manifest hashes against independent archive
+inventories, package maps, snapshot identity, every CSV field, actual GPU
+library bindings, and the unchanged boot verdict parser. Its saved output is
+`evidence-validation.json`. It audits recorded measurements; it does not claim
+to rehash a remote file while offline.
+
+For the supplemental jq-only build, a separate root
+`/srv/modfs/build/matched-jq` received copies of the new base bundle. Then:
+
+```sh
+cd /root/modfs
+MODFS_ROOT=/srv/modfs/build/matched-jq MODFS_SNAPSHOT_ID=20260701T000000Z \
+  PYTHONDONTWRITEBYTECODE=1 /usr/bin/time -p \
+  unshare --mount --propagation private ./scripts/02_build_delta.sh --version 1.0 jq jq
+```
+
+Its inventory is `matched-jq-inventory.json`; the original jq reference is
+`local-jq-inventory.json`. This separate result does not change the main count.
+
+## Content diagnoses
+
+`content_probe.py` reads selected files through unsquashfs. It reports shadow
+date fields and digests of the other fields, public JKS certificate entries,
+Python bytecode headers/payload hashes, the PostgreSQL public certificate and
+cluster identifier, and package scripts. It never emits password values or
+private keys. Execute on each machine with its own artifact directory:
+
+```sh
+python3 content_probe.py /srv/modfs/modules cross-machine-differences.json.gz
+# In the remote guest:
+python3 /srv/modfs/build/content_probe.py /srv/modfs/build/verification/modules \
+  /srv/modfs/build/cross-machine-differences.json.gz
+```
+
+Outputs are `content-{local,remote}.json`; their comparison is in
+`content-diagnosis.json`. Compare equal accounts' `other_fields_sha256`, match
+JKS entries by alias and certificate SHA256, compare pyc payload hashes, and
+diff the text records. `llvm-layout-diagnosis.json` compares the 19 added LLVM
+paths to the old records after removing the leading `usr/` in the lookup key.
+Neither operation changes any artifact.
+
+Run the isolated fixtures **only in the remote guest**, using the scripts here
+as stdin or copying them under `/srv/modfs/build` first:
+
+```sh
+unshare --mount --propagation private bash /srv/modfs/build/impure_fixture.sh
+bash /srv/modfs/build/info_order_fixture.sh
+unshare --mount --propagation private bash /srv/modfs/build/cds_fixture.sh
+```
+
+They respectively demonstrate lower-entry copy-up attributes, order-dependent
+Info-index generation (including exact old/new dir.old hashes), and differing
+successive JVM CDS dumps on one VM. All fixture output stays below
+`/srv/modfs/build`; measured archives remain read only.
+
+For the MySQL samples, read `var/lib/mysql/sys/version.frm` and
+`var/lib/mysql/aria_log_control` with `unsquashfs -cat MODULE FILE` on each
+machine. The retained `mysql-state-*.json` stores the view as text and the
+52-byte control file as hex. `uuid.UUID(bytes=control_bytes[4:20])` reproduces
+the UUID version, timestamp and node in `mysql-uuid-diagnosis.json`.
+
+## Binding and boot
+
+The actual original invocation, inside the guest, was:
+
+```sh
+cd /root/modfs
+export MODFS_ROOT=/srv/modfs/build/verification MODFS_SNAPSHOT_ID=20260701T000000Z
+export PYTHONDONTWRITEBYTECODE=1
+unshare --mount --propagation private ./scripts/12_verify_binding.sh
+# Clear BUILD_DIR using lib.sh reset_workdir after confirming no mounts.
+df -B1 /srv/modfs/build  # required >15 GB before packing
+unshare --mount --propagation private ./scripts/11_boot_test.sh \
+  --name remote-webserver --timeout 3600 base webserver
+```
+
+Binding passed, the initial boot failed. The original packed image is at
+`/srv/modfs/build/verification/build/boot-remote-webserver-20260920T190147Z/disk.img`.
+Copy `run_tcg_retry.sh` to the **outer remote container** below its build root
+and execute there. It copies that image using a sparse tar stream, copies the
+guest's OVMF firmware, runs QEMU explicitly with TCG, and extracts and runs the
+original script's exact Python verdict parser. It does not repack the image.
+The script records input hashes, QEMU and verdict exit codes, serial output and
+timestamps. Its result is retained in `tcg-boot-results.tar`; the original run
+and binding logs are in `first-boot-results.tar`.
+
+## Real GPU runtime probe
+
+In the build guest, extract only the required libraries from the new artifact:
+
+```sh
+unsquashfs -no-progress -d /srv/modfs/build/gpu-libraries \
+  /srv/modfs/build/verification/modules/cuda-runtime.sqsh \
+  'usr/lib/x86_64-linux-gnu/libcudart*' 'usr/lib/x86_64-linux-gnu/libnvrtc*'
+```
+
+Copy that relative `usr` subtree by tar over the **inner SSH connection** to
+outer `/srv/modfs/build/gpu-built`. This is transfer of built libraries, not
+source. Create `gpu-built/cache` and `gpu-built/tmp`. On the outer container:
+
+```sh
+uname -r
+nvidia-smi
+LD_LIBRARY_PATH=/srv/modfs/build/gpu-built/usr/lib/x86_64-linux-gnu \
+  CUDA_CACHE_PATH=/srv/modfs/build/gpu-built/cache \
+  TMPDIR=/srv/modfs/build/gpu-built/tmp PYTHONDONTWRITEBYTECODE=1 \
+  python3 /srv/modfs/build/cuda_runtime_probe.py \
+  /srv/modfs/build/gpu-built/usr/lib/x86_64-linux-gnu
+```
+
+The helper can equivalently be supplied over stdin as `python3 - LIBDIR`, as
+in the measured run. It uses the existing provider driver and never insmods
+or modifies a kernel module. The implementation follows NVIDIA's
+[NVRTC 11.5 API](https://docs.nvidia.com/cuda/archive/11.5.0/nvrtc/index.html).
+The two interrupted attempts to transfer the original full CUDA artifact
+were never used; their logs are retained separately.

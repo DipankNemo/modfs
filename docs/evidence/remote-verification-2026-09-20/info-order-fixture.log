@@ -1,0 +1,67 @@
+fixture=/srv/modfs/build/info-order.mU9yKW
+Filesystem       1B-blocks        Used   Available Use% Mounted on
+/dev/vda1      62241562624 10783924224 51440861184  18% /
+Parallel unsquashfs: Using 4 processors
+10 inodes (11 blocks) to write
+
+
+created 10 files
+created 4 directories
+created 0 symlinks
+created 0 devices
+created 0 fifos
+created 0 sockets
+created 0 hardlinks
+Parallel unsquashfs: Using 4 processors
+4 inodes (4 blocks) to write
+
+
+created 4 files
+created 6 directories
+created 0 symlinks
+created 0 devices
+created 0 fifos
+created 0 sockets
+created 0 hardlinks
+[
+  {
+    "locale": "C",
+    "reverse_input_order": false,
+    "sha256": "920d564e4d66b773482ec310c5d16cfc73bea9b4852b29e5e0bbd88777f8ab68",
+    "dir_entries": [
+      "* dircolors: (coreutils)dircolors invocation.   Color setup for ls.",
+      "* dirname: (coreutils)dirname invocation.       Strip last file name component.",
+      "* dir: (coreutils)dir invocation.               List directories briefly."
+    ]
+  },
+  {
+    "locale": "C",
+    "reverse_input_order": true,
+    "sha256": "777b731cc5ddeb123541e65f40a9a993013fd85537c52163f635a8f57b64fa65",
+    "dir_entries": [
+      "* dir: (coreutils)dir invocation.               List directories briefly.",
+      "* dircolors: (coreutils)dircolors invocation.   Color setup for ls.",
+      "* dirname: (coreutils)dirname invocation.       Strip last file name component."
+    ]
+  },
+  {
+    "locale": "C.UTF-8",
+    "reverse_input_order": false,
+    "sha256": "920d564e4d66b773482ec310c5d16cfc73bea9b4852b29e5e0bbd88777f8ab68",
+    "dir_entries": [
+      "* dircolors: (coreutils)dircolors invocation.   Color setup for ls.",
+      "* dirname: (coreutils)dirname invocation.       Strip last file name component.",
+      "* dir: (coreutils)dir invocation.               List directories briefly."
+    ]
+  },
+  {
+    "locale": "C.UTF-8",
+    "reverse_input_order": true,
+    "sha256": "777b731cc5ddeb123541e65f40a9a993013fd85537c52163f635a8f57b64fa65",
+    "dir_entries": [
+      "* dir: (coreutils)dir invocation.               List directories briefly.",
+      "* dircolors: (coreutils)dircolors invocation.   Color setup for ls.",
+      "* dirname: (coreutils)dirname invocation.       Strip last file name component."
+    ]
+  }
+]

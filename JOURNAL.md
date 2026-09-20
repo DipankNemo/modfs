@@ -5214,3 +5214,90 @@ retry, including serial, QEMU log, units, listeners, verdict, parser and input
 hashes. `tcg-verdict.log` is the readable verdict. This proves the small
 base+webserver composition boots on the second machine; it does not establish
 all-catalogue tier-3 success or guest GPU access.
+
+
+### Cross-machine mechanisms reproduced; no normalization
+
+The common three-xattr difference is now reproduced independently of machine:
+`impure_fixture.sh` runs on the same 5.15.0-191 guest with two minimal lower
+trees. Modifying entries present in the raw lower tree yields
+`trusted.overlay.impure=y` at all three apt parents; creating entries absent
+from the filtered lower tree yields none. This matches the 5bd645c change
+from raw base.dir to filtered base.sqsh. The value is constant but its
+**presence is not**. None of the 41 measured archives was altered.
+
+`content_probe.py` performed read-only comparisons of the additional changes:
+
+- The six service modules with shadow changes (memcached, mta-msmtp, redis,
+  tcpdump, mysql, postgres) differ only in password-change days in those files.
+  All other fields match; only digests of non-date fields are published.
+- Nullmailer's package config runs `hostname --fqdn`. It embeds **ketchup →
+  modfs-verification** in mailname and debconf. No UTS namespace was isolated
+  by the builder, so writing a chroot hostname file does not prevent this.
+- LLVM has exactly **19 identical inode records at relocated lib32 paths**,
+  caused by the old debootstrap's multilib symlink layout. The loader cache
+  changes alongside the layout.
+- Both Emacs Info indexes contain exactly the same line multisets; only
+  ordering differs. `info_order_fixture.sh`, using the module's own install-info,
+  reproduces the remote dir.old SHA **920d564e...** with forward input order
+  and the original **777b731c...** with reverse order. C and C.UTF-8 give the
+  same results. The package's `update-info-dir` iterates unsorted `find` output.
+  This is a demonstrated ordering mechanism, not a locale diagnosis.
+- Java's JKS has **120 matching certificate aliases and certificate hashes**,
+  with **120 differing creation timestamps**. Its postinst also generates
+  classes.jsa with `java -Xshare:dump`. The original/remote dumps differ at
+  294,944 bytes of 11,907,072. A separate same-guest fixture runs the shipped
+  OpenJDK 11.0.31 twice: each diagnostic dump is 11,911,168 bytes, but their
+  hashes differ and 3,340,448 byte positions differ. These dumps are diagnostic
+  files, not artifact replacements. The serialized header contains runtime
+  memory/heap fields; exact attribution of every byte to addresses, padding,
+  or other JVM state is not established.
+- MySQL has 166 differing initialized MariaDB files beyond shadow. The
+  postinst invokes mysql_install_db. A sampled sys/version.frm differs only
+  in its creation timestamp. The Aria control file stores its UUID at offset
+  4 (confirmed against MariaDB source): original
+  **2d65b1e7-b1ed-11f1-9f51-5254006d4170**, remote
+  **21e4310b-b51b-11f1-8028-525400123456**. These decode to the respective
+  build dates; the remote node matches the guest NIC 52:54:00:12:34:56.
+- PostgreSQL's package scripts call initdb and generate a snakeoil certificate.
+  The public certificate subject, serial and validity dates differ, along with
+  its key/hash link; cluster identifiers in pg_control are
+  **7686173460724561641 → 7687674230391027728**. WAL also differs. Private
+  certificate keys were not emitted by the content probe.
+- Pipdemo resolves unpinned **idna 3.19 → 3.20**. Of 82 differing pyc files,
+  **77 have identical marshalled bodies** and differing timestamp headers.
+  Five changed idna pyc bodies correspond to five changed Python sources.
+
+All 40 modules thus have an observed mismatch mechanism, with the additional
+mechanisms catalogued in REPORT.md and the full per-path difference archive.
+Host libzstd also differs (1.5.5 original, 1.4.8 remote), but its separate
+contribution to compressed sizes was not measured. This does not isolate
+hardware from procedure/toolchain/date, and does not explain every individual
+byte in generated database/CDS state. The honest comparison remains **0/40**.
+
+The canonical ARCHITECTURE now records the complete remote result and its
+limits. `verify_evidence.py` independently recomputes every comparison CSV field,
+checks all 82 manifest-versus-inventory hashes, validates three mapped CUDA
+library hashes, and checks the successful boot used the exact original verdict
+parser. It passed. No production builder or exclusion policy was changed.
+
+
+Final housekeeping checks at 20:08 UTC: both remote clones remain clean at
+`a69111b`; the build guest has **51,416,104,960 free bytes**, no mounts left
+under `/srv/modfs/build`, and all **41 payloads preserved** in its results
+area. The outer container had 74,895,679,488 bytes free before removing the
+unused 364,736,512-byte interrupted CUDA-reference transfer. That partial
+file's SHA256 was recorded before deletion; it was never used by the GPU
+probe. This deletion was strictly under `/srv/modfs/build`. The build VM,
+packed image and results remain available for follow-up. Local artifact
+storage was never changed. Python/shell syntax checks and evidence validation
+passed; the branch contains documentation, diagnostic helpers and evidence,
+not a production behavior change.
+
+
+A final read-only hash check also confirms the source packed guest image,
+OVMF firmware and measured stage-11 script exactly match the three recorded
+TCG inputs. The measured script matches Git's a69111b version. This closes
+the image-transfer provenance check; `verify_evidence.py` now validates those
+three matches as well and passes. The retained image SHA256 is
+`21427b38ed4bf8c4c17f47c7884a3e6727b204d712b0e5b33ab3af72d2d2d77b`.

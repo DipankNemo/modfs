@@ -964,7 +964,19 @@ the archive pin does not pin those tools. The date fields are file **content**,
 so SquashFS's fixed inode timestamps do not remove them. No normalization was
 applied to improve the result. This comparison varies machine, build date and
 host tools together; it does not attribute the difference to hardware alone.
-Full catalogue results are recorded separately in JOURNAL.md.
+The full remote catalogue subsequently built **40/40 modules**, with **0/40
+archive hashes equal to the existing references**; stage 12 nevertheless
+verified all 41 manifests against their own archives. The reference builder
+predates the switch from raw base.dir to base.sqsh, and jq's requested package
+set also changed. All 40 differ at three retained `trusted.overlay.impure`
+xattrs, reproduced by a controlled copy-up fixture; 28 have no other inode or
+content differences. Additional mechanisms include password-change days,
+hostname-derived configuration, multilib layout, unsorted Info-index input,
+Java certificate timestamps/CDS dumps, initialized database state, and
+unpinned PyPI/pyc timestamps. This is a documented negative comparison with
+confounds, not a hardware-only experiment. See the complete
+[remote verification report](docs/evidence/remote-verification-2026-09-20/REPORT.md)
+and its per-artifact CSV, raw logs, inventories, and reproductions.
 
 Bootstrap also requires more than the suggested apt line: Jammy's stock
 SquashFS tools 4.5 reject the required `-xattrs-exclude` option. A compatible
@@ -973,6 +985,15 @@ its remaining opaque-marker expectation conflicts with the current exclusion
 policy. The original unprivileged GPU container could not mount filesystems;
 the successful mount checks and base build ran in a QEMU/TCG guest on that
 same remote instance, not directly in the container.
+
+On that instance, base+webserver subsequently passed the existing tier-3
+harness under explicit TCG (nginx active, audit and HTTP probe passing). The
+original stage-11 KVM-selected run failed before serial output; the successful
+retry reused its packed image and unchanged verdict parser in the outer
+container. Separately, the rebuilt CUDA runtime/NVRTC compiled and executed a
+32-thread kernel on the real RTX 3060 using the provider's NVIDIA 550 driver.
+The ModFS 535 kernel module was not loaded: its 5.15.0-185 ABI does not match
+the provider's 6.8.0-47 host. There was no GPU passthrough or host kernel change.
 
 Emptying `/etc/machine-id` is not only a reproducibility fix. `systemd-machine-id-setup`
 writes a random id at install time, and a baked-in id would give every node

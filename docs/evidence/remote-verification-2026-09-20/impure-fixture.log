@@ -1,0 +1,13 @@
+fixture=/srv/modfs/build/impure-fixture.rDYmgm
+5.15.0-191-generic
+mode=raw
+# file: srv/modfs/build/impure-fixture.rDYmgm/raw/upper/var/cache/apt
+trusted.overlay.impure="y"
+
+# file: srv/modfs/build/impure-fixture.rDYmgm/raw/upper/var/lib/apt
+trusted.overlay.impure="y"
+
+# file: srv/modfs/build/impure-fixture.rDYmgm/raw/upper/var/log/apt
+trusted.overlay.impure="y"
+
+mode=filtered

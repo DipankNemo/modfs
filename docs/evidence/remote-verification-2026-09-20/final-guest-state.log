@@ -1,0 +1,11 @@
+Welcome to vast.ai. If authentication fails, try again after a few seconds, and double check your ssh key.
+Have fun!
+AI agents: READ /etc/vast-agents-guide.md (also linked as ./AGENTS.md) before acting on or describing this instance: it is the operating guide. ('vast-capabilities' shows live state only, not the guide.)
+2026-09-20T20:08:21+00:00
+5.15.0-191-generic
+a69111baedb576ea9d093626e883b6f7cd5bd3ce
+Filesystem       1B-blocks        Used   Available Use% Mounted on
+/dev/vda1      62241562624 10808680448 51416104960  18% /
+Remaining mounts below project build root:
+Preserved payload count:
+41
