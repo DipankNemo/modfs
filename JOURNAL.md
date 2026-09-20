@@ -5112,3 +5112,62 @@ recorded, its resolved path and absence of mounts checked, and that scratch
 copy removed within the permitted deletion root. Corrected quoting copied the
 same digest into the guest before execution. No local build or artifact write
 occurred. `helper-transfer-correction.json` records this correction.
+
+
+### Remote catalogue complete: 0/40 archive hashes equal (2026-09-20)
+
+The preserved job finished at **18:26:59 UTC**: **40/40 module builds exited
+0**, following the remote base at the July snapshot pin. Stage 12 subsequently
+reported **41 manifests matched their artefacts; all 41 recorded byte digests
+matched**, exit 0 (192.13 s). This is internal binding, not cross-machine
+reproducibility. The independent comparison against the untouched original
+machine is **0/40 module archives byte-identical**, and the base also differs.
+`cross-machine-comparison.csv` contains every pair of archive hashes/sizes;
+`remote-inventories.jsonl.gz` independently verifies the remote manifest hashes.
+The raw status, logs, manifests and sidecars are in `catalogue-results-bundle.tar`.
+No artifact was normalized or repacked for the comparison.
+
+All 40 remote modules lack the original three `trusted.overlay.impure=y`
+xattrs at `var/cache/apt`, `var/lib/apt`, and `var/log/apt`. For **28 modules**,
+these are the only differences in the complete decompressed inventories.
+The remaining modules have additional content/layout changes under diagnosis.
+This run does not isolate hardware: host tools, build date, and the recorded
+builder change from raw base.dir to mounted base.sqsh are confounds.
+
+A second specification confound is now explicit: current `jq` requests
+`[jq, moreutils]`, whereas the saved reference requested `[jq]`. The other 39
+module package maps agree. A separately labelled direct build of original
+`jq` alone succeeded in **68.65 s**, at the same remote base/pin: 577,536 bytes,
+SHA256 `b1b5fab8690f96397fcd1ae4198971942838fcd3f1083ee996bfa9b231e7d16b`.
+Its complete inventory differs from the original jq only at the same three
+xattrs. This supplemental build does NOT replace the catalogue row or improve
+the reported 0/40. Logs and inventory are retained as `matched-jq-*`.
+
+The base's doubled dpkg available metadata now has a direct function-level
+reproduction. With config.sh's exported COMPONENTS, the installed older
+`extract_release_components` appends all four Release components again;
+the newer host function does not. Executing each real function on the same
+synthetic Release gives eight versus four component tokens. The old
+`setup_available` loops over those duplicated tokens. Evidence:
+`component-duplication-{local,remote}.log` and previously saved source excerpts.
+
+### First remote tier-3 attempt failed before serial output
+
+After stage 12 and cleanup between phases, stage 11 packed `base webserver`
+with pinned guest kernel **5.15.0-185-generic**. The run
+`remote-webserver-20260920T190147Z` was admitted by tier 1 but ended **BROKEN**,
+exit 2, in 591.68 s including packing. It selected **KVM** because `/dev/kvm`
+is writable inside the software VM, despite the outer container lacking KVM.
+QEMU exited 0 after about two seconds; both serial and qemu.log were empty.
+That establishes a failed run, not a successful guest boot or a proved root
+cause. A TCG retry reusing the packed image is now being launched in the outer
+remote container, with the measured stage 11 verdict parser unchanged. It
+will be reported separately from the original stage 11 invocation. No GPU
+passthrough or provider host kernel change is involved.
+
+The original CUDA-reference transfer attempts were interrupted and left a
+partial file, which was never used. Instead, only libcudart and NVRTC libraries
+were extracted from the freshly built remote cuda-runtime artifact for a
+supplemental real-GPU probe against the provider's existing 550 driver.
+`gpu-built-extraction.log` records their hashes. This will not test loading
+ModFS's 535 .ko: the provider host still runs **6.8.0-47-generic**.

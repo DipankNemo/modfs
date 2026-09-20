@@ -1,0 +1,125 @@
+Filesystem       1B-blocks       Used   Available Use% Mounted on
+/dev/vda1      62241562624 2962833408 59261952000   5% /
+[1;34m[17:03:02][0m START vim at 2026-09-20T17:03:02Z; free=59346321408 bytes
+19c32222145912af1dc207a532f7c62a519aba9453e8384ec75b0d8531a6c6d4  /srv/modfs/build/verification/modules/vim.sqsh
+[1;34m[17:05:29][0m DONE vim; scratch cleared
+[1;34m[17:05:29][0m START emacs at 2026-09-20T17:05:29Z; free=59309285376 bytes
+47d3e05edc1e453f1d2c90a9002bbb944f1ab39325ddfbad03606d9218c614c2  /srv/modfs/build/verification/modules/emacs.sqsh
+[1;34m[17:07:47][0m DONE emacs; scratch cleared
+[1;34m[17:07:47][0m START gawk at 2026-09-20T17:07:47Z; free=59233902592 bytes
+48e3a92cc763585b98a46d35e6457c883e47775d4443542062abde295c353370  /srv/modfs/build/verification/modules/gawk.sqsh
+[1;34m[17:08:52][0m DONE gawk; scratch cleared
+[1;34m[17:08:53][0m START original-awk at 2026-09-20T17:08:53Z; free=59227574272 bytes
+0ffbfab3b956d436e85a822063e2a8c24f467a510fac79a6ab8f5474fa6e7734  /srv/modfs/build/verification/modules/original-awk.sqsh
+[1;34m[17:09:53][0m DONE original-awk; scratch cleared
+[1;34m[17:09:53][0m START nc-openbsd at 2026-09-20T17:09:53Z; free=59226976256 bytes
+776098b8238895ed4b6c3af69f57b653799ee715d76f6729524cc724bac85512  /srv/modfs/build/verification/modules/nc-openbsd.sqsh
+[1;34m[17:11:01][0m DONE nc-openbsd; scratch cleared
+[1;34m[17:11:01][0m START nc-traditional at 2026-09-20T17:11:01Z; free=59226329088 bytes
+1faf812f92ab9b734c7021662dcb3271f119b595419a5921b242fb97f2b6b6cb  /srv/modfs/build/verification/modules/nc-traditional.sqsh
+[1;34m[17:12:16][0m DONE nc-traditional; scratch cleared
+[1;34m[17:12:16][0m START webserver at 2026-09-20T17:12:16Z; free=59225759744 bytes
+1f5845ab6a7e3f1cd6832d1b95d282339af59cda8049248769c240b67320a6e3  /srv/modfs/build/verification/modules/webserver.sqsh
+[1;34m[17:14:11][0m DONE webserver; scratch cleared
+[1;34m[17:14:11][0m START apache at 2026-09-20T17:14:11Z; free=59182514176 bytes
+fbc790528a88936a5ddbbd4e5aa8356da1e19a6edb8a57131532ddd363b66f77  /srv/modfs/build/verification/modules/apache.sqsh
+[1;34m[17:16:54][0m DONE apache; scratch cleared
+[1;34m[17:16:54][0m START mta-msmtp at 2026-09-20T17:16:54Z; free=59124756480 bytes
+322ec82e9d71eb3cbb14e71c6bf83db64300235811f3550e82919aa8bdef57d1  /srv/modfs/build/verification/modules/mta-msmtp.sqsh
+[1;34m[17:18:09][0m DONE mta-msmtp; scratch cleared
+[1;34m[17:18:10][0m START mta-nullmailer at 2026-09-20T17:18:10Z; free=59119521792 bytes
+0bc3b57928fb2dc14c675aa2bc24724137d5298828c137b06dc7dc7ec8c5e000  /srv/modfs/build/verification/modules/mta-nullmailer.sqsh
+[1;34m[17:19:20][0m DONE mta-nullmailer; scratch cleared
+[1;34m[17:19:20][0m START pytools at 2026-09-20T17:19:20Z; free=59118522368 bytes
+f106b7705fb9aec01c8f952631bbdd123da7a49bba885da27fe78f6e6b3980b5  /srv/modfs/build/verification/modules/pytools.sqsh
+[1;34m[17:21:56][0m DONE pytools; scratch cleared
+[1;34m[17:21:57][0m START pyyaml at 2026-09-20T17:21:57Z; free=59066118144 bytes
+aa6a7c408329f25d6fe261f3c3c4a8b238f776a5ae33d7857522c794074accf7  /srv/modfs/build/verification/modules/pyyaml.sqsh
+[1;34m[17:23:39][0m DONE pyyaml; scratch cleared
+[1;34m[17:23:39][0m START gcc at 2026-09-20T17:23:39Z; free=59045482496 bytes
+cdebc7d120096dcdeb79d2b658e648121db14f177bcd91daf0da1733f09c713e  /srv/modfs/build/verification/modules/gcc.sqsh
+[1;34m[17:27:27][0m DONE gcc; scratch cleared
+[1;34m[17:27:27][0m START java at 2026-09-20T17:27:27Z; free=58875326464 bytes
+d34420e6ef9640cb9127a3bf4b21d61b452080fae2a3ce0e581568383ca707c6  /srv/modfs/build/verification/modules/java.sqsh
+[1;34m[17:30:53][0m DONE java; scratch cleared
+[1;34m[17:30:53][0m START rust at 2026-09-20T17:30:53Z; free=58589990912 bytes
+5e9ee5c96d22caf03649bbd00aeb21bf697d1fbfa13033fe39426c8e68ac7ab0  /srv/modfs/build/verification/modules/rust.sqsh
+[1;34m[17:34:37][0m DONE rust; scratch cleared
+[1;34m[17:34:38][0m START llvm at 2026-09-20T17:34:38Z; free=58233978880 bytes
+784c36b6f15a325524b245e0d840dfe218a1f3ae7b7e1879ed3c80e50ba85700  /srv/modfs/build/verification/modules/llvm.sqsh
+[1;34m[17:39:19][0m DONE llvm; scratch cleared
+[1;34m[17:39:19][0m START postgres at 2026-09-20T17:39:19Z; free=57973477376 bytes
+753fd20298877c2fdc1f73ac6dfe3a7f3a364cc30dfd0978bf9fce416c40c115  /srv/modfs/build/verification/modules/postgres.sqsh
+[1;34m[17:44:09][0m DONE postgres; scratch cleared
+[1;34m[17:44:09][0m START mysql at 2026-09-20T17:44:09Z; free=57806348288 bytes
+2df9e229c8172333db4cc0c2f7dbf5a2050d6b9beb59bc31e807fee264a32f5e  /srv/modfs/build/verification/modules/mysql.sqsh
+[1;34m[17:46:45][0m DONE mysql; scratch cleared
+[1;34m[17:46:46][0m START docker at 2026-09-20T17:46:45Z; free=57690062848 bytes
+55562455f32afba84f47c4f2d48586aaa5b58ba48dbdaa763785c4262d0d39f1  /srv/modfs/build/verification/modules/docker.sqsh
+[1;34m[17:49:11][0m DONE docker; scratch cleared
+[1;34m[17:49:12][0m START fake-nvidia-driver at 2026-09-20T17:49:12Z; free=57522806784 bytes
+8148f7cf55ff7bbc4d1f59b867099e9cf4ca24e46fe4b1c2800cb1605d09a0dc  /srv/modfs/build/verification/modules/fake-nvidia-driver.sqsh
+[1;34m[17:50:50][0m DONE fake-nvidia-driver; scratch cleared
+[1;34m[17:50:50][0m START fake-cuda at 2026-09-20T17:50:50Z; free=57522315264 bytes
+96ddf16e2ef1863d3b02961de9cf90af40a8ee03833f1734f19595c99feddff3  /srv/modfs/build/verification/modules/fake-cuda.sqsh
+[1;34m[17:52:26][0m DONE fake-cuda; scratch cleared
+[1;34m[17:52:26][0m START pipdemo at 2026-09-20T17:52:26Z; free=57521848320 bytes
+0f7238fc5008510425f0cca94780024f6690e11cc2ed7fdf329b4e7f42114301  /srv/modfs/build/verification/modules/pipdemo.sqsh
+[1;34m[17:54:57][0m DONE pipdemo; scratch cleared
+[1;34m[17:54:57][0m START control-oldsnap at 2026-09-20T17:54:57Z; free=57490300928 bytes
+ce02a643916ddfcbe13c77bd5343cd2fc417fdea923f1a9048ffa7ceb6dfefeb  /srv/modfs/build/verification/modules/control-oldsnap.sqsh
+[1;34m[17:55:56][0m DONE control-oldsnap; scratch cleared
+[1;34m[17:55:56][0m START curl at 2026-09-20T17:55:56Z; free=57486913536 bytes
+4b43c2266da5575f31d1d9aef22f229603a7982e365230ea2843cf7d7e663928  /srv/modfs/build/verification/modules/curl.sqsh
+[1;34m[17:57:07][0m DONE curl; scratch cleared
+[1;34m[17:57:07][0m START wget at 2026-09-20T17:57:07Z; free=57483530240 bytes
+36c9bb37f994b5a54c00695f4d254d19ca8d5a0f5fb62d98c7c98fa8f6cba56a  /srv/modfs/build/verification/modules/wget.sqsh
+[1;34m[17:58:17][0m DONE wget; scratch cleared
+[1;34m[17:58:17][0m START git at 2026-09-20T17:58:17Z; free=57482276864 bytes
+e12d48d911079328ea2bc78aaf3c7da2d43856c321d79802e0b26a71fc384200  /srv/modfs/build/verification/modules/git.sqsh
+[1;34m[18:00:20][0m DONE git; scratch cleared
+[1;34m[18:00:20][0m START jq at 2026-09-20T18:00:20Z; free=57447333888 bytes
+271e278552b7498831d7baf078536236ba7a196feeb99a2ffe1def9cdc31a40b  /srv/modfs/build/verification/modules/jq.sqsh
+[1;34m[18:02:33][0m DONE jq; scratch cleared
+[1;34m[18:02:33][0m START rsync at 2026-09-20T18:02:33Z; free=57425936384 bytes
+61bf0ffe7d648b7dbfc52fbdd569dcf8f8b6eceecd4b372415e62f2350195d26  /srv/modfs/build/verification/modules/rsync.sqsh
+[1;34m[18:03:35][0m DONE rsync; scratch cleared
+[1;34m[18:03:35][0m START tmux at 2026-09-20T18:03:35Z; free=57424527360 bytes
+6306480694e1f2dfed8c48c48468605703155c16a726c8a3d321838591152e48  /srv/modfs/build/verification/modules/tmux.sqsh
+[1;34m[18:04:38][0m DONE tmux; scratch cleared
+[1;34m[18:04:38][0m START htop at 2026-09-20T18:04:38Z; free=57422979072 bytes
+9b90ea77f68b5a17ddfbd2430664b287dcf5edc10b2a7c0bd49e932503a51a6c  /srv/modfs/build/verification/modules/htop.sqsh
+[1;34m[18:05:41][0m DONE htop; scratch cleared
+[1;34m[18:05:42][0m START socat at 2026-09-20T18:05:41Z; free=57422135296 bytes
+467fc88274a74b5f09b8cd18ed57e5e0d1efec596f8a6d3e8b9a6b04ed88fd06  /srv/modfs/build/verification/modules/socat.sqsh
+[1;34m[18:06:48][0m DONE socat; scratch cleared
+[1;34m[18:06:48][0m START zstd at 2026-09-20T18:06:48Z; free=57420832768 bytes
+59a394316d702f2c3acfc61f83edac8331b0e239a97298cde3b6d15072786230  /srv/modfs/build/verification/modules/zstd.sqsh
+[1;34m[18:07:57][0m DONE zstd; scratch cleared
+[1;34m[18:07:57][0m START sqlite at 2026-09-20T18:07:57Z; free=57419055104 bytes
+2be90a5ccf42d4f29f954bfc6406130ca65fa37237014086c8d09b32e4ca6b4d  /srv/modfs/build/verification/modules/sqlite.sqsh
+[1;34m[18:09:10][0m DONE sqlite; scratch cleared
+[1;34m[18:09:10][0m START tcpdump at 2026-09-20T18:09:10Z; free=57415188480 bytes
+3553b010c7147deb2db3c4a1246b6f7929e0f228f1f24d827f107eac79b67ef2  /srv/modfs/build/verification/modules/tcpdump.sqsh
+[1;34m[18:10:38][0m DONE tcpdump; scratch cleared
+[1;34m[18:10:38][0m START dnsutils at 2026-09-20T18:10:38Z; free=57413005312 bytes
+3f6ad8ea24401187b0277f3a4c542fbe7869b577a3049f9d2b041b0e3b8b33c4  /srv/modfs/build/verification/modules/dnsutils.sqsh
+[1;34m[18:12:27][0m DONE dnsutils; scratch cleared
+[1;34m[18:12:27][0m START pgclient at 2026-09-20T18:12:27Z; free=57380098048 bytes
+f4d0dd8abad9391292beb86e5cf6f89e5d0a0314c931bff70095729b8f5e5dbe  /srv/modfs/build/verification/modules/pgclient.sqsh
+[1;34m[18:15:50][0m DONE pgclient; scratch cleared
+[1;34m[18:15:50][0m START redis at 2026-09-20T18:15:50Z; free=57355350016 bytes
+d4ef764488e599a829d40cd2acda097f492f86da42591cc81be74500dd41e6cf  /srv/modfs/build/verification/modules/redis.sqsh
+[1;34m[18:17:05][0m DONE redis; scratch cleared
+[1;34m[18:17:05][0m START memcached at 2026-09-20T18:17:05Z; free=57351917568 bytes
+021f9a1666d3d78ba78edc7135c9f5cb3e6349818b0c52def6f381604ac36b34  /srv/modfs/build/verification/modules/memcached.sqsh
+[1;34m[18:18:56][0m DONE memcached; scratch cleared
+[1;34m[18:18:57][0m START nvidia-driver-535 at 2026-09-20T18:18:56Z; free=57330880512 bytes
+a644ead50d3dda8637bd379b0a4ff7460b80f57fe50fcd817cad9779b61537fd  /srv/modfs/build/verification/modules/nvidia-driver-535.sqsh
+[1;34m[18:22:06][0m DONE nvidia-driver-535; scratch cleared
+[1;34m[18:22:06][0m START cuda-runtime at 2026-09-20T18:22:06Z; free=56862879744 bytes
+c276d133cff1f1d30322b4dfecd4c41181aea65ee58810fee3459862b0bb62c3  /srv/modfs/build/verification/modules/cuda-runtime.sqsh
+[1;34m[18:26:59][0m DONE cuda-runtime; scratch cleared
+catalogue_failed=0
+Filesystem       1B-blocks       Used   Available Use% Mounted on
+/dev/vda1      62241562624 6729650176 55495135232  11% /
