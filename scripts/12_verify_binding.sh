@@ -120,7 +120,7 @@ while IFS=$'\t' read -r name version snapshot; do
     if [ ! -f "${MOD_DIR}/${name}.json" ]; then
         printf '  %-20s no manifest\n' "$name"; ABSENT=$((ABSENT+1)); continue
     fi
-    MODFS_SNAPSHOT_ID="$snapshot" check_one "$name" --version "$version"
+    MODFS_SNAPSHOT_ID="${snapshot:-$SNAPSHOT_ID}" check_one "$name" --version "$version"
 done < "$PLAN"
 
 # Bytes, not only content: verify_bundle also re-hashes each .sqsh against the

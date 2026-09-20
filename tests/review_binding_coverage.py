@@ -6,6 +6,7 @@ import shutil
 import subprocess
 import tempfile
 import unittest
+from legacy_generation import adopt_fixture
 REPO = Path(__file__).resolve().parents[1]
 
 class CoverageTests(unittest.TestCase):
@@ -18,6 +19,7 @@ class CoverageTests(unittest.TestCase):
                 for suffix in ('.json', '.files.json.zst'):
                     shutil.copy2('/srv/modfs/modules/'+name+suffix, self.root/'modules'/(name+suffix))
                 (self.root/'modules'/(name+'.sqsh')).symlink_to('/srv/modfs/modules/'+name+'.sqsh')
+            adopt_fixture(self.root, ('base', 'curl'))
         env = dict(os.environ, MODFS_ROOT=str(self.root))
         if malformed:
             spec = self.root/'specs'; spec.mkdir()

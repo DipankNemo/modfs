@@ -52,8 +52,9 @@ PKGS=("${ARGS[@]:1}")
 require_ident "$NAME" "module name"
 require_ident "$PARENT" "parent module name"
 
-PARENT_DIR="${MOD_DIR}/${PARENT}.dir"
-[ -d "$PARENT_DIR" ] || die "parent rootfs missing: ${PARENT_DIR} (build base first)"
+PARENT_SQ="${MOD_DIR}/${PARENT}.sqsh"
+[ -f "$PARENT_SQ" ] || die "parent artefact missing: ${PARENT_SQ} (build base first)"
+PARENT_DIR="${BUILD_DIR}/${NAME}.parent"
 
 UPPER="${MOD_DIR}/${NAME}.upper"
 WORK="${BUILD_DIR}/${NAME}.work"
@@ -66,7 +67,9 @@ log "  packages: ${PKGS[*]}"
 rm -rf "$UPPER" "$WORK" "$MERGED"
 mkdir -p "$UPPER" "$WORK" "$MERGED" "$LOG_DIR"
 
-# ---- overlay the parent ---------------------------------------------------
+# ---- overlay the exact parent artefact whose hash identifies the generation
+mkdir -p "$PARENT_DIR"
+do_mount -o loop,ro "$PARENT_SQ" "$PARENT_DIR"
 do_mount -t overlay overlay \
     -o "lowerdir=${PARENT_DIR},upperdir=${UPPER},workdir=${WORK}" \
     "$MERGED"
@@ -75,6 +78,18 @@ log "overlay mounted: ${PARENT} (ro) + empty upper"
 write_sources_list "$MERGED"
 write_chroot_policy "$MERGED"
 mount_chroot_fs "$MERGED"
+# The artefact excludes runtime directories that base.dir used to provide.
+# Stage DNS beneath excluded /run, preserving the shipped resolv.conf symlink.
+mkdir -p "$MERGED/tmp" "$MERGED/var/tmp" "$MERGED/var/lib/apt/lists/partial" \
+    "$MERGED/var/cache/apt/archives/partial"
+chmod 1777 "$MERGED/tmp" "$MERGED/var/tmp"
+if [ "$(readlink "$MERGED/etc/resolv.conf")" = ../run/systemd/resolve/stub-resolv.conf ]; then
+    mkdir -p "$MERGED/run/systemd/resolve"
+    cp -L /etc/resolv.conf "$MERGED/run/systemd/resolve/stub-resolv.conf" \
+        || die "cannot stage build DNS"
+elif [ ! -f "$MERGED/etc/resolv.conf" ]; then
+    die "unsupported dangling resolver link in base"
+fi
 
 # ---- identity policy: class 7 prevention ---------------------------------
 # Point adduser AND useradd at this module's disjoint window BEFORE anything
@@ -182,7 +197,7 @@ log "  parent .sqsh : $(human "$P_SZ")"
 # Any hand-written module-level requires/conflicts/provides already in the
 # manifest are carried over, not overwritten.
 log "extracting metadata -> ${MOD_DIR}/${NAME}.json"
-META_ARGS=("$NAME" --parent "$PARENT" --requested "${PKGS[*]}")
+META_ARGS=("$NAME" --parent "$PARENT" --requested "${PKGS[*]}" --new-build)
 [ -n "$MOD_VERSION" ] && META_ARGS+=(--version "$MOD_VERSION")
 "${HERE}/scripts/06_extract_metadata.sh" "${META_ARGS[@]}" \
     || die "metadata extraction failed"

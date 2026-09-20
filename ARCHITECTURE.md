@@ -40,7 +40,8 @@ to a small, declarative *package-level* one.
 - Modules always sit directly on base. No delta-on-delta.
 - Composable only with siblings sharing the same base **and** snapshot.
 - Snapshot bump ⇒ rebuild base **and all siblings**, atomically per generation.
-- No rollback required (old artefacts may simply remain on disk).
+- Rollback is redeployment of a retained flattened image; there is no on-node
+  module rollback. Retention requirements are explicit in §13.
 - Nodes are fully re-flashed; the pipeline must also work standalone.
 - Base may be fat; larger base ⇒ smaller deltas.
 
@@ -104,7 +105,7 @@ remounted as a lowerdir. **31 checks, 31 passed** — 30 until a `python3-yaml` 
 | # | Class | Cause | Detection | Policy |
 |---|---|---|---|---|
 | 1 | Benign overlap | Same package, same version, two siblings | Version match in union | Accept; measure duplication |
-| 2 | Version skew | Different snapshots, parents, or explicit pins | Version mismatch | Reject |
+| 2 | Version skew | Different snapshots, parents, or explicit pins | Generation/snapshot mismatch or package-version mismatch | Reject |
 | 3 | Declared conflict | `Conflicts:` / `Breaks:` | Match declarations vs union, **resolving virtual names** | Reject |
 | 4 | File collision | Different packages own the same path | Intersect per-module `<name>.files.json.zst` sidecars; honour `Replaces:` and diversions | Reject — **implemented** |
 | 5 | State divergence | Registry files rewritten by every module | Structural, always occurs | Reconcile or regenerate |
@@ -1066,7 +1067,7 @@ what is verified and what is merely intended stays explicit.
 
 | | |
 |---|---|
-| H1 | ~~Artifact, manifest, sidecar and parent generation are not cryptographically bound at consumption time~~ — **narrowed 2026-09-18**: the manifest is derived from the mounted artefact, the fields the checks read are covered by `binding.fields_sha256` and the sidecar by `binding.sidecar_sha256`, both verified at tier 1 and by `verify_bundle`, and `12_verify_binding.sh` re-derives from the artefact. What remains is AUTHENTICITY — the digests sit inside the document they protect, so a signing key outside the artefact set is still required, and is still out of scope |
+| H1 | ~~Artifact, manifest, sidecar and parent generation are not cryptographically bound at consumption time~~ — **narrowed 2026-09-18**: the manifest is derived from the mounted artefact, the fields the checks read are covered by `binding.fields_sha256` and the sidecar by `binding.sidecar_sha256`, both verified at tier 1 and by `verify_bundle`, and `12_verify_binding.sh` re-derives from the artefact. Exact parent-generation binding was still missing despite that earlier wording; §13 adds it on 19 September. AUTHENTICITY remains out of scope: the digests live inside the document they protect and require an external signing key to resist deliberate resealing |
 | H2 | Publication is only partly atomic and can mix generations |
 | H3 | Class-4 `Replaces` suppression does not implement Debian's file-overwrite semantics |
 | H4 | Class-4 inventory covers only part of filesystem semantics |
@@ -1119,3 +1120,157 @@ real hardware · multi-distro · any dependency solver of our own.
 - dpkg trigger registrations: reconcile or retain the stated limitation?
 - Runtime conflicts: implement the systemd/port heuristic, or document only?
 - How many generations of artefacts to retain, given no rollback requirement?
+
+
+## 13. Update strategy: one pin, one generation
+
+**The archive pin moves atomically across the catalogue.** A generation names
+one snapshot and one exact base artefact. All usable modules are direct siblings
+of that base. Within the generation their package lists may change, and modules
+may be added or removed. Moving the pin rebuilds base and every sibling into a
+separate `MODFS_ROOT`; mixing modules from the old and new generations is never
+a valid update strategy. `control-oldsnap` is deliberately invalid test data,
+not an exception permitting mixed pins in a deployed catalogue.
+
+### Two different update costs
+
+1. **Intra-generation: change a module spec.** Rebuild that module with
+   `08_build_catalogue.sh --force --only NAME`. Re-extract its manifest and
+   ownership sidecar, validate its binding, then check it against unchanged
+   siblings. Republish the changed bundle. Same pin plus same specification
+   under the same build procedure is reproducible; apt cannot obtain a newer
+   archive version by repeatedly rebuilding against that pin.
+2. **Inter-generation: move the pin.** Build a new base and rebuild the entire
+   catalogue in an isolated root. Verify the completed set before making it
+   available as one generation. Rebuilding is server work; shipping is a
+   separate measurement. Compare each old/new `.sqsh` SHA256. A changed
+   artefact ships its **entire new size**, even if its size did not grow; an
+   identical artefact can be reused from an existing content-addressed cache.
+   Fresh manifests and sidecars must also be published. This describes the
+   transfer opportunity; ModFS has no remote transfer client or transactional
+   catalogue publisher. Atomic publication remains H2, not a claimed feature.
+
+`14_report_update.sh --old-root OLD --new-root NEW --out NEW.csv` reproduces
+the per-module hash and byte comparison, including additions and removals. Its
+whole-catalogue monolithic comparison is explicitly the `N*B + sum(d)` model.
+`15_measure_monolith.sh NAME` supplies a measured comparator for one use case:
+it reconciles exactly base plus that module, verifies the result, and squashes
+the whole view with the same compression, timestamps and exclusions. This
+avoids the uncontrolled second installation in the older `02 --compare` path.
+Neither comparator includes a kernel or whole-disk envelope.
+
+The 19 September intra-generation experiment changes jq's spec from `[jq]` to
+`[jq, moreutils]`: **29.67 s**, new delta **10,432,512 bytes** versus the measured
+whole rootfs **51,650,560 bytes**, **79.80% fewer transfer bytes**. The other
+39 module artefacts and base remain byte-identical. All 41 bindings verify;
+tier 1 preserves the exact 667 ACCEPT / 113 REJECT pair result, and tier 2
+passes 152 sampled sets, including 59 containing the updated jq. The snapshot
+experiment and its full per-module table are recorded in JOURNAL.md and
+`/srv/modfs/results/update-2026-09-19/`; its package lists are held at the
+original version to isolate the pin's effect.
+
+The inter-generation experiment moves July 1 to the verified September 1
+snapshot while holding the original module specs fixed. **40 rebuilt modules,
+40 changed hashes, zero byte-identical modules:** it ships **1,957.27 MB of
+1,957.27 MB (100%)**, plus **41.73 MB** of base. Seventeen contribution package
+maps and 25 module sizes are unchanged; neither makes an artefact reusable.
+Pinned SquashFS timestamps and shipped snapshot URLs move, and inherited base
+versions in rewritten dpkg status change too. The 680.22 MB CUDA runtime alone
+has unchanged package versions and size but must ship again.
+
+The total **1,999.00 MB** is smaller than the **3,626.48 MB** model for forty
+single-module monolithic rootfs images by **44.88%**. That benefit is base
+sharing, not incremental reuse across generations. The new jq monolith was
+actually built: **42,086,400 bytes**, with the B+d model 0.50% higher. The full
+per-module hashes, sizes and transfer bytes are in `inter-transfer.csv`; the
+journal includes the complete size table. Restricting the population to the
+38 archive-only ordinary modules still gives 38 changed / zero identical.
+
+Observed build wall times are **163.14 s** for base and **1,296.50 s** for the
+catalogue pass; a successful **52.12 s** MySQL retry overlaps the main pass
+(the first attempt failed because the experiment guard leaked into a chroot).
+These runs shared the host with verification, so they are measured build
+costs rather than an isolated benchmark. Every final bundle was re-derived
+and verified; neither a failed attempt nor a missing module counts as rebuilt.
+With explicit generation metadata, both catalogues pass all 41 bindings. The
+September tier-1 pair sweep is 667 ACCEPT / 113 REJECT, and its 152 sampled
+tier-2 compositions all pass through N=38. These checks do not establish the
+GPU ABI/hardware compatibility discussed below.
+The measurements use the archived pre-feature builder; the generation feature
+below was tested separately before integration.
+A package security version absent from the fixed snapshot requires a pin move.
+The experiment therefore does not support sparse security-update shipping;
+the measured module-granularity benefit is the intra-generation spec change.
+
+### Generation identity — a NEW FEATURE
+
+Previously manifests already recorded snapshot, suite, architecture and the
+parent name `base`; tier 1 explicitly compared these, independently of package
+versions. Tests confirmed a snapshot-only change was rejected. But `base` was
+only a name: changing its digest at the same pin with no package-version
+change was accepted. The earlier claim that the exact parent generation was
+already bound was too strong.
+
+Every newly generated manifest now carries a required, sealed `generation`:
+
+```json
+{
+  "id": "sha256 of the canonical four fields below",
+  "snapshot": "20260701T000000Z",
+  "suite": "jammy",
+  "arch": "amd64",
+  "base_sha256": "sha256 of base.sqsh"
+}
+```
+
+Module specs and module versions are deliberately absent from this identity:
+a spec update is allowed within the generation. A different base at the same
+pin is a different generation too. Tier 1 requires exact equality with base's
+generation in addition to the existing composability checks. The binding
+policy requires the field and checks the identifier's derivation, so deleting
+it or accidentally editing it cannot silently disable the check.
+
+New delta builds mount the exact parent `.sqsh` whose hash they record,
+avoiding a possibly stale `base.dir`. Build-only runtime directories and DNS
+are supplied under excluded paths. Metadata extraction checks the snapshot
+against the artefact's shipped sources.list. A metadata refresh preserves the
+recorded generation and refuses a changed parent; it cannot relabel an old
+delta as a child of the base currently beside it.
+
+Legacy manifests require rebuilding or **explicit**
+`08_build_catalogue.sh --refresh-metadata --adopt-generation` after their
+origin has been verified. Adoption is a provenance assertion about old bytes,
+not a recovery of previously unrecorded build history. It cannot overwrite an
+existing different generation. Original thesis artefacts were preserved; the
+experiment migrates isolated copies. The extended required binding fields
+mean older manifests fail closed under the new checker until migrated.
+This is integrity, not authenticity: someone who can deliberately reseal all
+metadata can still forge provenance. A signing service is outside scope.
+
+Generation agreement is necessary, not a complete compatibility proof. The
+September snapshot resolves pack-time kernel ABI `5.15.0-190-generic`, while
+the unchanged NVIDIA spec targets `5.15.0-185-generic`. Moreover, the new
+535-named userspace/common packages depend on 580-series replacements. This fixed-spec update
+measurement does not prove a bootable GPU configuration: that spec must be
+updated and tested with its new kernel before publication. `pipdemo` also
+remains the deliberate unpinned-PyPI counterexample, and is counted separately
+from ordinary archive-only modules when interpreting reproducibility.
+
+### Where the saving applies, and rollback
+
+The node receives a flattened filesystem in an ordinary bootable image.
+`11_boot_test.sh` creates ext4 and copies the reconciled merged tree with
+`rsync -aHAX --numeric-ids`. There is no on-node module switching. The module
+transfer savings above apply to server-side repositories/caches and image
+assembly; they do **not** reduce the whole image sent to an individual node.
+
+Rollback therefore means redeploying the previous generation's **complete
+bootable image**. Retain that image, its digest and configuration identity,
+including the selected module set, versions and packing/kernel provenance.
+Rebuilding it later instead requires the old base, modules, manifests and
+sidecars, the old specs/build/packing code, and all boot inputs (kernel,
+initramfs, firmware/bootloader as applicable) or continued access to their
+pinned archive. Retaining only old module deltas is insufficient. Redeploying
+an old OS image does not roll back application data or reverse schema changes.
+No deployment/rollback was executed in this experiment; this is confirmed
+from the existing flattening path, not a claim of a rollback service.

@@ -11,6 +11,7 @@ import shutil
 import subprocess
 import tempfile
 import unittest
+from legacy_generation import adopt_fixture
 
 REPO = Path(__file__).resolve().parents[1]
 
@@ -25,6 +26,7 @@ class BindingTests(unittest.TestCase):
                              self.root / 'modules' / (name + suffix))
             (self.root / 'modules' / (name + '.sqsh')).symlink_to(
                 '/srv/modfs/modules/' + name + '.sqsh')
+        adopt_fixture(self.root, ('base', 'curl'))
         self.path = self.root / 'modules/curl.json'
         self.doc = json.loads(self.path.read_text())
 

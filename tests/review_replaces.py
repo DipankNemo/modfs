@@ -5,6 +5,7 @@ from pathlib import Path
 import subprocess
 import tempfile
 import unittest
+from legacy_generation import adopt_fixture
 from review_probes import REPO, command, composition
 
 class ReplacesTests(unittest.TestCase):
@@ -15,6 +16,7 @@ class ReplacesTests(unittest.TestCase):
             import shutil
             shutil.copy2('/srv/modfs/modules/base'+suffix, mods/('base'+suffix))
         (mods/'base.sqsh').symlink_to('/srv/modfs/modules/base.sqsh')
+        adopt_fixture(root, ('base',))
         debs = []
         for name in ('a', 'b'):
             package = root/('package-'+name)
@@ -34,7 +36,7 @@ class ReplacesTests(unittest.TestCase):
                 upper = merged.parent/'upper'
             command(['mksquashfs',upper,mods/('review-'+name+'.sqsh'),'-noappend',
                      '-comp','zstd','-no-progress','-processors','2'])
-            p = subprocess.run(['scripts/06_extract_metadata.sh','review-'+name,'--version','1'],
+            p = subprocess.run(['scripts/06_extract_metadata.sh','review-'+name,'--version','1','--new-build'],
                                cwd=REPO, env=dict(os.environ, MODFS_ROOT=str(root)), capture_output=True)
             self.assertEqual(p.returncode,0,p.stdout+p.stderr)
         with composition('curl') as merged:

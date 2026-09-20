@@ -248,7 +248,7 @@ print("    (sidecar seals are checked before class 4; artefact bytes are checked
 # the same base AND the same snapshot. That constraint was documented but
 # never enforced -- the manifest is what finally makes it checkable.
 print("\n" + "=" * 72)
-print(" PRE. COMPOSABILITY PRECONDITIONS  (same parent, snapshot, suite, arch)")
+print(" PRE. COMPOSABILITY PRECONDITIONS  (same generation, parent, snapshot, suite, arch)")
 print("=" * 72 + "\n")
 
 for m in modules:
@@ -260,7 +260,8 @@ for m in modules:
     for key, want in (('parent',   'base'),
                       ('snapshot', base_doc.get('snapshot')),
                       ('suite',    base_doc.get('suite')),
-                      ('arch',     base_doc.get('arch'))):
+                      ('arch',     base_doc.get('arch')),
+                      ('generation', base_doc.get('generation'))):
         got = d.get(key)
         if got != want:
             ERRORS += 1

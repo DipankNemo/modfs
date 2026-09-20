@@ -4435,3 +4435,422 @@ measurements behind it:
 - IF PINNED ANYWAY: choose option B, rebuild the monolithic baselines in the
   same generation, and report the result as a NEW BASELINE DEFINITION rather
   than as an improvement on 1.84x.
+
+## 2026-09-19 (update strategy: protected baseline and first findings)
+
+Worktree `~/modfs-update`, branch `experiment/update-strategy`, starts at
+`7376af9`. User authorizes root builds and lifts the older CLAUDE privilege
+boundary for this experiment. Pin changes are atomic across a catalogue;
+per-module snapshot updates are explicitly excluded.
+
+Evidence: `/srv/modfs/results/update-2026-09-19/`. Baseline artefacts, manifests,
+sidecars and all nine original log CSVs are copied before building. Experiments
+live under `/srv/modfs/build/update-strategy/{intra,next}` using MODFS_ROOT;
+current `/srv/modfs/modules` is never written. Guarded shell deletions print
+resolved paths and inspect `/proc/self/mountinfo`, refusing targets outside
+children of `/srv/modfs/build` and live mounts at/below deletion targets.
+Initial read-only disk check: 52 GiB available. After preserving the baseline,
+the pre-build free-space measurement is saved in disk-before.txt.
+
+Snapshot `20260901T000000Z` verified available by downloading InRelease from
+all three pockets and checking each with gpgv against the Ubuntu archive
+keyring. Signed jammy-updates date is 31 August 2026. Full responses and HTTP
+headers retained in availability/. Reproduce with curl on
+`https://snapshot.ubuntu.com/ubuntu/20260901T000000Z/dists/{jammy,jammy-updates,jammy-security}/InRelease`
+and `gpgv --keyring /usr/share/keyrings/ubuntu-archive-keyring.gpg FILE`.
+
+BUG FOUND BEFORE THE PIN MOVE: stages 08 and 12 reset MODFS_SNAPSHOT_ID to
+an empty string for ordinary modules, discarding the caller's newer pin and
+silently falling back to July. Both now inherit SNAPSHOT_ID unless the spec
+explicitly declares the negative control's snapshot. This is a fix, not the
+generation feature.
+
+Intra-generation treatment: jq's packages change from `[jq]` to
+`[jq, moreutils]`; all siblings and base start as preserved copies. Inter-
+generation uses the ORIGINAL spec so pin and package-list effects are isolated.
+SquashFS mkfs and every inode timestamp use SOURCE_EPOCH derived from the pin;
+therefore package-version equality alone cannot establish free transfers.
+Actual SHA256 and full new artefact size determine shipping, not size growth.
+
+## 2026-09-19 (intra-generation update measured: jq gains moreutils)
+
+Treatment: `specs/modules.yaml` changes jq from `[jq]` to `[jq, moreutils]`.
+Commands, from this worktree, with root and the preserved deletion guard:
+
+```sh
+sudo env MODFS_ROOT=/srv/modfs/build/update-strategy/intra \
+  /srv/modfs/build/update-strategy/run_guarded.sh \
+  ./scripts/08_build_catalogue.sh --force --only jq
+sudo env MODFS_ROOT=/srv/modfs/build/update-strategy/intra \
+  ./scripts/12_verify_binding.sh
+sudo env MODFS_ROOT=/srv/modfs/build/update-strategy/intra \
+  /srv/modfs/build/update-strategy/run_guarded.sh \
+  ./scripts/10_compose_sweep.sh --out /srv/modfs/results/update-2026-09-19/intra-tier2.csv
+```
+
+The actual first command was wrapped in `/usr/bin/time -p`: **29.67 s wall**
+(16.00 user, 1.96 system). This includes stage 08 and metadata extraction.
+Old jq **565,248 bytes**, new jq **10,432,512 bytes**; growth **9,867,264**.
+This is a package-list update at the SAME pin, not an apt upgrade to a package
+version unavailable under that pin. moreutils brings Perl and dependencies;
+its size is measured, not the expected size of one small executable.
+
+- Re-derived binding: **41 matched, zero mismatches**, including base.
+- Tier 1: **780 pairs; 667 ACCEPT, 113 REJECT**, same rejection set as the
+  preserved baseline. Of jq's 39 pairs, 36 ACCEPT; the old-snapshot control
+  and the two CUDA modules without their required drivers are rejected.
+- Tier 2: **152/152 PASS**, N=2 through 38; **59 contain updated jq**.
+  These timings overlap the new base/catalogue build and are correctness
+  evidence, not an isolated performance comparison or a replacement cost fit.
+- Actual artifact hashes: **one module changed, 39 byte-identical**, base
+  identical. The control is counted among those 39 retained sibling artefacts,
+  but remains inadmissible. Transfer only the new jq: **10.432512 MB**.
+
+### A controlled monolithic comparator, not the old H9 baseline
+
+NEW MEASUREMENT TOOL: `15_measure_monolith.sh jq` takes the exact same
+`base.sqsh + jq.sqsh`, applies the standard reconciliation/regeneration,
+requires tier-1 admission and tier-2 PASS, then squashes the entire merged
+root using the same zstd level, exclusions and timestamps as a delta.
+It measures the whole rootfs that a monolithic distribution would reship;
+there is no second apt resolution or different package list. No kernel or
+ext4/ESP envelope in EITHER compressed-rootfs comparison.
+
+Measured old whole rootfs **42,074,112 bytes**; updated whole rootfs
+**51,650,560 bytes**. The changed module ships **10,432,512 / 51,650,560 =
+20.20%**, saving **79.80% (4.9509x)**. Size growth is NOT transfer cost:
+neither the 9.867 MB delta growth nor the monolith's 9.576 MB growth is what
+this whole-artefact shipping model transmits. No binary patching is assumed.
+
+Reproduce comparator in a private mount namespace (parallel chroot bind mounts
+otherwise interfered with one unmount; the failed log and retry are retained):
+
+```sh
+sudo unshare --mount --propagation private \
+  env MODFS_ROOT=/srv/modfs/build/update-strategy/intra \
+  /srv/modfs/build/update-strategy/run_guarded.sh ./scripts/15_measure_monolith.sh jq
+```
+
+The tool refuses to overwrite its output; use a fresh copied root or preserve
+and move the previous output first. Use the original jq and original spec for
+`before`, the changed jq for `intra`. Both verification rows are retained.
+
+NEW REPORT TOOL: `14_report_update.sh --old-root OLD --new-root NEW --out NEW.csv`
+hashes every actual artefact, checks its manifest size/digest, and writes each
+old/new hash, old/new size, signed size difference, full shipping bytes and
+package-contribution equality. It handles additions/removals; the catalogue
+monolithic sum is explicitly labelled a `B+d` MODEL. Regression test exercises
+same-sized/different-hash artefacts (must ship), identical bytes (free), and
+added/removed modules. Intra report: `intra-transfer.csv` plus `.json`.
+
+The first baseline copy attempted Python copytree over base.dir's device
+nodes, reading /dev/random as bytes. It was terminated, only that partial
+scratch tree was removed through the guard, and `cp -a` correctly preserved
+device nodes. This run-harness mistake did not touch the source base or enter
+any measured build. `baseline-copy-correction.txt` records it. The verified
+pin fix has an executable dispatcher test, `sudo python3 tests/update_pin.py`,
+covering ordinary and control pins during both builds and metadata refresh.
+
+## 2026-09-19 (generation identity assessed and built separately)
+
+Before the feature, `base.json` and module manifests ALREADY record snapshot.
+A copied real `jq` manifest with only snapshot changed and its integrity seal
+recomputed is REJECTed by PRE, without any package-version change. A copied
+base manifest with only artifact SHA256 changed (also consistently resealed)
+is ACCEPTed against unchanged jq/curl. Reproduction logs are
+`pre-feature-{baseline,snapshot-only,base-bytes-only}.log`. The existing guard
+checks the parent NAME, not the exact base: this is the gap, not an absence of
+snapshot metadata. No per-module snapshot update is proposed.
+
+NEW FEATURE: a deterministic generation ID from snapshot, suite, arch and the
+exact base SHA256, required in every manifest and sealed in BIND_FIELDS.
+Tier 1 compares it to base even when every package version matches. Metadata
+refresh rejects a changed recorded generation; a legacy catalogue can only be
+adopted explicitly after its origin is established. Adoption cannot replace
+an already recorded different generation. Snapshot is cross-checked against
+the shipped sources.list (inherited from the parent if absent in the delta).
+These provenance checks run BEFORE writing a sidecar, so refusal is harmless.
+
+Delta builds now use a read-only mount of the base artefact itself, not a
+potentially stale base.dir. That makes the recorded parent hash describe the
+actual lower layer. /run and other runtime directories were excluded from
+that artefact, so build scaffolding has to recreate them: the first test
+failed on DNS, retained in `feature-first-build-failed.log`; staging DNS under
+excluded /run fixes it without shipping host resolver data.
+
+The feature was developed and tested in
+`/srv/modfs/build/update-strategy/feature-src`, while the September experiment
+continued using the PRE-FEATURE build path. This deliberately avoids changing
+the measured build algorithm partway through the pin experiment.
+
+Evidence so far:
+
+- `tests/update_generation.py`: **8/8**, against the actual tier-1 consumer.
+  Same generation accepted; different base at same pin rejected; different
+  snapshot with same versions rejected; deleted/forged identity rejected;
+  refresh refuses reassignment; explicit legacy adoption required; package-
+  list changes retain generation identity.
+- A REAL changed-base test: copy base.sqsh, increment only its SquashFS
+  creation timestamp (little-endian uint32 at offset 8), re-extract base
+  metadata, then run tier 1 against unchanged jq/curl. The complete base
+  package maps remain equal, but both modules are now NOT COMPOSABLE. A
+  metadata refresh with `--adopt-generation` also fails. Repeating the refusal
+  leaves BOTH manifest and sidecar byte-identical: hashes retained in
+  `refresh-refusal-integrity.json`. `wrong-base-*.log` retain the commands'
+  output. This tests exact base identity independently of package skew.
+- Real jq+moreutils rebuilt on the mounted-base path: **35.10 s**, binding
+  **3/3** (base, jq, curl). A second full rebuild gives identical bytes (`cmp`
+  exit 0). The new builder's jq `.sqsh` is the SAME SIZE but a DIFFERENT HASH
+  from the original builder's: implementation changes are outside the fixed-
+  procedure reproducibility claim. Extracted path sets, regular-file SHA256,
+  modes, UID/GID and symlink targets are identical (comparison JSON retained).
+  Its reconciled whole-rootfs comparator is byte-identical to the original
+  builder's comparator, **51,650,560 bytes**, and tier 2 PASS. Thus no change
+  to task 1's measured transfer sizes, but its raw delta hash is not relabelled.
+- Existing consumer regressions migrated their COPIED fixture manifests:
+  binding **8/8**, binding coverage **7/7**, account metadata **7/7**, Replaces
+  **1/1**. The initial Replaces fixture had no sources.list in its delta;
+  reading the inherited parent file fixed that legitimate case. Original
+  `/srv/modfs/modules` manifests remain untouched and fail closed under the
+  new required-field contract until explicitly migrated or rebuilt.
+
+This is NOT an atomic publisher, transfer client, signing service or node
+update agent. It gives the existing admission gate a first-class generation
+identity. Publication H2 and authenticity remain separate open work.
+
+### Two cautions the running pin experiment exposed
+
+The first mysql install failed because the HOST deletion guard's exported Bash
+`rm` function leaked into a package-maintainer Bash script in the CHROOT.
+It tried to invoke host-side Python there and exited 90. `mysql-diagnosis.log`
+records the actual reason, which the build's `tail -5` had discarded. The
+wrapper now removes its exported host functions at the chroot boundary;
+rebuilding mysql from scratch succeeded in **52.12 s** (`mysql-retry.log`).
+The failed attempt and its upperdir are retained, not counted as a module.
+
+The newer snapshot's signed Packages index resolves `linux-image-generic` to
+**5.15.0.190.169**, depending on **linux-image-5.15.0-190-generic**. Its compressed
+index checksum was checked against the signed InRelease; the package record
+and full index are retained under availability/. The original NVIDIA spec
+explicitly targets **5.15.0-185-generic**. Therefore a fixed-spec pin rebuild
+cannot establish GPU pack-time ABI compatibility, even if tiers 1 and 2 pass.
+No boot or GPU functionality is claimed for the new generation.
+
+Also retain the catalogue's deliberate exceptions in the accounting:
+`control-oldsnap` is invalid mixed-pin test data, and `pipdemo` deliberately
+fetches unpinned PyPI content. The latter is not evidence for snapshot-only
+reproducibility. Whole-catalogue totals include both; archive-only ordinary
+module counts must be distinguished from that 40-module test population.
+
+## 2026-09-20 (resumed update experiment: the complete pin-move result)
+
+The session hit a usage limit while the last module was building. On resumption
+the process had finished and no experiment mounts remained. The main catalogue
+log says 39 built / 1 failed because of the already diagnosed guard failure;
+the separately successful mysql retry supplies the fortieth bundle. Complete
+coverage was explicitly checked, and stage 12 re-derived **41/41 bindings**,
+including base and mysql, with all artefact hashes matching their manifests.
+The entire new set is preserved in `next-before-feature/modules/`, not merely
+left in disposable scratch. The original 129 catalogue files remain intact.
+
+### The headline, including the bad news
+
+Pin **20260701T000000Z → 20260901T000000Z**, same original catalogue specs:
+**40 modules rebuilt, 40 changed, zero byte-identical**. Shipping at whole-
+artefact granularity costs **1,957,273,600 of 1,957,273,600 module bytes**
+(**1,957.27 MB / 100%**), plus the new base **41,730,048 bytes**.
+Total **1,999,003,648 bytes (1,999.00 MB)**. There are **no free modules**.
+This directly weakens the hoped-for inter-generation incremental-transfer
+claim; it must not be described as shipping only a small changed subset.
+
+The monolithic catalogue model, one whole rootfs per single-module use case,
+is **40*41,730,048 + 1,957,273,600 = 3,626,475,520 bytes**. The modular total
+is **44.88% smaller**, but that is entirely base sharing across the catalogue,
+not unchanged-module reuse across generations. This is a MODEL, not forty
+measured monoliths and not one impossible composition of all forty modules.
+As a same-generation calibration, the new jq whole-rootfs comparator was
+actually built and passed tier 2: **42,086,400 bytes**, versus B+d =
+**42,295,296** (model 0.50% high). The July comparator was 42,074,112 bytes.
+No claim of reduced node image traffic follows: nodes still get whole images.
+
+Seventeen contribution package-version maps are unchanged (including the
+old-snapshot control); **25 modules have exactly unchanged sizes**, yet all
+hashes change. The unchanged CUDA runtime alone reships **680,222,720 bytes**.
+Three mechanisms explain why package equality is insufficient: the pin changes
+SquashFS superblock/inode timestamps; every normal delta ships the new snapshot
+URL in sources.list; each delta also carries the rewritten dpkg status with
+inherited base versions. Base changes 36 of 113 package versions, despite
+growing by only 12,288 compressed bytes. `pin-byte-causes.json` reproduces the
+timestamps and shipped sources.list for three examples; nc-traditional keeps
+its package map and its 262,144-byte size but changes SHA256. No timestamp
+normalization, binary patching or chunk deduplication was introduced to make
+this result look better.
+
+The 40-module total includes two deliberate special cases: control-oldsnap
+remains at its invalid old pin, and pipdemo includes unpinned PyPI downloads.
+Restricting to the **38 archive-only ordinary modules still yields 38 changed
+and zero identical**, so neither exception causes the negative conclusion.
+
+### Build costs and a second real compatibility limitation
+
+Base: **163.14 s**. Main catalogue pass: **1,296.50 s (21.61 min)**, including
+one failed mysql attempt. Its successful isolated retry took **52.12 s** and
+overlapped the main pass. Sum of invoked build wall durations: **1,511.76 s**;
+do not call that end-to-end elapsed time or subtract it from a sequential
+baseline. Correctness tests and evidence copying also shared this host, so
+these are observed run costs, not controlled performance benchmarks.
+
+NVIDIA grows from **231,550,976 to 294,776,832 bytes**. The reason is recorded
+in its manifest: the September `nvidia-utils-535`, `libnvidia-compute-535` and
+`nvidia-kernel-common-535` packages at `535.309.01-0ubuntu0.22.04.2` depend on
+the corresponding **580** packages. Stable package names do not promise stable
+driver semantics. The module still links objects for ABI 185, while pack-time
+kernel resolution moves to ABI 190. This fixed-spec experiment is NOT a
+publishable GPU generation or evidence of hardware compatibility. Updating
+that spec and performing a boot/hardware validation are prerequisites to
+deploying it, not results of the byte-transfer measurement.
+
+### Reproduction and the complete per-module table
+
+The fixed-code build is preserved at `measurement-code/`; original specs at
+`original-specs/`. Availability responses, signatures and verified package
+index are under `availability/`. The resolved-path/mount guard and its log are
+under `guards/`. Use a fresh root under /srv/modfs/build, preserve any existing
+CSVs, and run the archived pre-feature build code for exact build-path matching:
+
+```sh
+E=/srv/modfs/results/update-2026-09-19
+R=/srv/modfs/build/update-repro-$(date -u +%Y%m%dT%H%M%SZ)
+test ! -e "$R" || exit 1
+sudo unshare --mount --propagation private env MODFS_ROOT="$R" \
+  MODFS_SNAPSHOT_ID=20260901T000000Z MODFS_SPEC_DIR="$E/original-specs" \
+  /srv/modfs/build/update-strategy/run_guarded.sh \
+  "$E/measurement-code/scripts/01_build_base.sh" --version 1.0
+sudo unshare --mount --propagation private env MODFS_ROOT="$R" \
+  MODFS_SNAPSHOT_ID=20260901T000000Z MODFS_SPEC_DIR="$E/original-specs" \
+  /srv/modfs/build/update-strategy/run_guarded.sh \
+  "$E/measurement-code/scripts/08_build_catalogue.sh" --force
+./scripts/14_report_update.sh \
+  --old-root /srv/modfs/build/update-strategy/baseline-root \
+  --new-root /srv/modfs/build/update-strategy/next \
+  --out /srv/modfs/build/update-strategy/reproduced-transfer.csv
+```
+
+The saved `inter-transfer.csv` contains both full SHA256 values for every row.
+The table below reports bytes, not rounded MB. **Every listed hash changed.**
+Signed size difference is growth/shrinkage; shipping is the whole new size.
+
+| Module | Old bytes | New / ship bytes | Size difference | Same contribution versions |
+|---|---:|---:|---:|:---:|
+| apache | 28,106,752 | 28,114,944 | +8,192 | no |
+| base | 41,717,760 | 41,730,048 | +12,288 | no |
+| control-oldsnap | 1,638,400 | 1,638,400 | +0 | yes |
+| cuda-runtime | 680,222,720 | 680,222,720 | +0 | yes |
+| curl | 1,638,400 | 1,642,496 | +4,096 | no |
+| dnsutils | 15,966,208 | 15,970,304 | +4,096 | no |
+| docker | 83,091,456 | 83,091,456 | +0 | yes |
+| emacs | 37,015,552 | 37,015,552 | +0 | no |
+| fake-cuda | 212,992 | 212,992 | +0 | yes |
+| fake-nvidia-driver | 229,376 | 229,376 | +0 | yes |
+| gawk | 3,108,864 | 3,108,864 | +0 | no |
+| gcc | 83,996,672 | 84,029,440 | +32,768 | no |
+| git | 17,137,664 | 17,141,760 | +4,096 | no |
+| htop | 397,312 | 397,312 | +0 | yes |
+| java | 141,619,200 | 141,647,872 | +28,672 | no |
+| jq | 565,248 | 565,248 | +0 | yes |
+| llvm | 128,155,648 | 128,184,320 | +28,672 | no |
+| memcached | 10,264,576 | 10,264,576 | +0 | no |
+| mta-msmtp | 2,551,808 | 2,551,808 | +0 | no |
+| mta-nullmailer | 479,232 | 479,232 | +0 | yes |
+| mysql | 56,569,856 | 56,569,856 | +0 | no |
+| nc-openbsd | 307,200 | 307,200 | +0 | yes |
+| nc-traditional | 262,144 | 262,144 | +0 | yes |
+| nvidia-driver-535 | 231,550,976 | 294,776,832 | +63,225,856 | no |
+| original-awk | 278,528 | 278,528 | +0 | yes |
+| pgclient | 12,075,008 | 12,083,200 | +8,192 | no |
+| pipdemo | 15,507,456 | 15,519,744 | +12,288 | no |
+| postgres | 82,132,992 | 82,157,568 | +24,576 | no |
+| pytools | 25,845,760 | 25,853,952 | +8,192 | no |
+| pyyaml | 10,149,888 | 10,158,080 | +8,192 | no |
+| redis | 1,658,880 | 1,658,880 | +0 | yes |
+| rsync | 684,032 | 684,032 | +0 | yes |
+| rust | 175,460,352 | 175,493,120 | +32,768 | no |
+| socat | 622,592 | 622,592 | +0 | yes |
+| sqlite | 1,900,544 | 1,900,544 | +0 | no |
+| tcpdump | 1,060,864 | 1,060,864 | +0 | yes |
+| tmux | 749,568 | 749,568 | +0 | yes |
+| vim | 18,112,512 | 18,116,608 | +4,096 | no |
+| webserver | 21,045,248 | 21,045,248 | +0 | no |
+| wget | 602,112 | 602,112 | +0 | no |
+| zstd | 864,256 | 864,256 | +0 | yes |
+
+### Final validation after integrating the generation feature
+
+Feature commit: `5bd645c`. Both isolated catalogues were explicitly adopted
+with `08_build_catalogue.sh --refresh-metadata --adopt-generation`, then
+re-derived with stage 12: **41/41 bindings and byte digests pass in each**.
+This migrates copies with known origin; the original manifests are untouched.
+The new September metadata and sidecars total **641,808 bytes**, additional to
+the `.sqsh` payload totals above. Their publication is not free even if a
+payload were reusable. Retained in `next-generation-manifests/` and
+`intra-generation-manifests/`.
+
+Final September tier 1: **780 pairs, 667 ACCEPT / 113 REJECT**, with the exact
+rejection set equal to the intra-generation experiment, not merely its count.
+Final tier 2: **152/152 PASS**, N=2 through 38, all admitted; every package,
+linker, audit, account, debconf and visibility flag passes, with zero bad
+alternatives groups or missing paths. These are structural checks, not GPU
+ABI or hardware tests. `next-tier1.csv` and `next-tier2.csv` retain every row.
+The original-spec catalogue with the new pin was tested; the jq+moreutils
+intra-generation treatment is not silently folded into that population.
+
+A mixed REAL set (July base/curl, September jq, each carrying its freshly
+verified manifest) is REJECTed for snapshot/generation mismatch:
+`mixed-real-generations-tier1.log`. The metadata-only same-pin/different-base
+attack and the real SquashFS timestamp mutation separately prove the stricter
+base-identity guard. No per-module snapshot update was made valid.
+
+Reproduce final generation-aware validation:
+
+```sh
+sudo unshare --mount --propagation private \
+  env MODFS_ROOT=/srv/modfs/build/update-strategy/next \
+      MODFS_SNAPSHOT_ID=20260901T000000Z \
+      MODFS_SPEC_DIR=/srv/modfs/results/update-2026-09-19/original-specs \
+  /srv/modfs/build/update-strategy/run_guarded.sh \
+  ./scripts/12_verify_binding.sh
+# Use the same env/guard for 10_compose_sweep.sh --out A_NEW_CSV_PATH.
+# Preserve existing CSVs and scratch pair logs before repeating a sweep.
+```
+
+Regression suite: **33 tests pass** across `update_pin.py` (1),
+`update_generation.py` (8), `update_report.py` (1), `review_binding.py` (8),
+`review_binding_coverage.py` (7), `review_account_metadata.py` (7), and
+`review_replaces.py` (1). Execute each with `sudo unshare --mount --propagation
+private /srv/modfs/build/update-strategy/run_guarded.sh python3 tests/NAME.py`.
+Their exact final outputs are the seven `final-*.log` files. Changed Bash
+scripts pass `bash -n`; Python modules pass `python3 -m py_compile` using a
+cache directory under build. Build-path feature tests were run on actual
+artefacts, not only the unit fixtures.
+
+Final audit re-hashed all **129 original catalogue/comparison/metadata files**
+and compared all **nine original CSVs** to their preserved copies: unchanged.
+The earlier description inherited "seven" from older journal entries; the
+actual saved file inventory contains nine and all nine were preserved.
+**Zero experiment mounts remain.** Disk retains approximately 37 GiB free.
+`final-audit.json`, mountinfo/disk snapshots and the evidence SHA256 inventory
+make these assertions reproducible. No original artefact, old result bundle
+or original CSV was overwritten, and no deployment or rollback was run.
+
+Rollback follows the existing stage-11 flattening path: redeploy a retained
+previous bootable image, retaining its digest, selected module/configuration
+identity and kernel/packing provenance. Keeping deltas alone cannot recreate
+the boot scaffolding. ARCHITECTURE §13 states both the practical retention
+requirement and the absence of an automatic publisher/rollback service.
+
+The evaluation claim is now bounded by measurement: **module-granularity
+shipping pays for a local spec change (79.80% here); this pin move re-ships
+100% of modules.** The remaining inter-generation catalogue saving is sharing
+one base instead of shipping forty copies, and the node still receives a whole
+flattened image. Package security versions unavailable under the existing pin
+belong to the latter update kind, not the cheap former one.
