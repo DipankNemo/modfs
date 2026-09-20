@@ -4854,3 +4854,82 @@ shipping pays for a local spec change (79.80% here); this pin move re-ships
 one base instead of shipping forty copies, and the node still receives a whole
 flattened image. Package security versions unavailable under the existing pin
 belong to the latter update kind, not the cheap former one.
+
+## 2026-09-20 (remote verification: initial bootstrap and environment blocker)
+
+Branch `experiment/remote-verification`, worktree `~/modfs-remote`, starts at
+`a69111baedb576ea9d093626e883b6f7cd5bd3ce`. The user authorizes autonomous
+remote builds and dependency installation, superseding CLAUDE.md's older
+privilege boundary for this task. Local artefacts remain read-only. Evidence
+is committed under `docs/evidence/remote-verification-2026-09-20/`.
+
+The supplied endpoint, `ssh -p 17288 root@91.150.160.38`, is **not the machine
+described in the brief**. Observed: Ubuntu **24.04.4** userspace in an
+unprivileged Docker container; shared host kernel **6.8.0-47-generic**; RTX
+**3060, 12288 MiB**, compute capability **8.6**, injected driver **550.107.02**.
+The requested machine was Ubuntu 22.04 with a 3060 Ti / 8 GB. Available disk
+was 87,991,222,272 bytes (about 81.95 GiB), so capacity is not the blocker.
+The instance operating guide explicitly describes its unprivileged-container
+boundary; direct capability and syscall checks confirm it.
+
+Cloned from the same GitHub origin using HTTPS (no dirty-tree transfer), into
+`/root/modfs`, and checked out the exact starting commit detached. Before
+installing anything, ran the unchanged `./scripts/00_verify.sh`. Its complete
+missing-tool list is:
+
+- `debootstrap`
+- `mksquashfs`
+- `unsquashfs`
+- `sgdisk`
+- `getfattr`
+- `qemu-img`
+
+`curl`, `mount`, `umount`, `chroot`, `losetup`, `rsync`, `mkfs.ext4`, `zstd`
+and Python's `yaml` import passed. All three July snapshot Release requests
+returned HTTP 200. The run ended **PASS=14 FAIL=7, exit 1**: six missing
+tools plus `mount -t overlay` returning permission denied. No build started.
+The raw output, including the suggested apt line, is `initial-verify.log`.
+
+`remote-environment.log` records the independent diagnosis: UID 0 but no
+`CAP_SYS_ADMIN`, `CAP_SYS_MODULE` or `CAP_SYS_BOOT` in the bounding set;
+`unshare --mount --propagation private true` and
+`unshare --user --map-root-user true` both fail with Operation not permitted;
+`losetup -f` fails, and `/dev/loop-control`, `/dev/loop0`, `/dev/kvm` and
+`/dev/fuse` are absent. `/proc/filesystems` advertising overlay/squashfs does
+not grant this process permission to mount them. Installing packages cannot
+add capabilities removed from the container's bounding set.
+
+The verifier reports kernel filesystem support as available but does not
+diagnose the capability boundary. Its opaque-directory round-trip expectation
+also conflicts with the current `SQUASH_XATTR_EXCLUDE`, which deliberately
+strips opaque markers; this is a **source inspection finding**, not a reached
+runtime failure on this endpoint (the first mount already failed).
+
+The kernel differs from the required `5.15.0-185-generic`. Installing that
+kernel inside this container would not replace its shared host kernel, and
+there is no host bootloader/reboot authority here. No kernel installation,
+reboot, driver insertion/removal or passthrough change was attempted. The
+successful initial `nvidia-smi` describes the provider's existing 550 driver;
+it is **not** evidence that the ModFS 535 artefact loads or CUDA works with it.
+
+Requested a full VM/bare-metal SSH endpoint while continuing bootstrap
+documentation. Cross-machine hashes and tier 3 remain **unmeasured**, not
+zero matches or a failed guest test. TCG only replaces KVM acceleration; it
+does not remove stage 11's prerequisite mounts and loop devices.
+
+Reproduce the initial verifier on a fresh equivalent container, before any
+tool installation (the existing clone can simply rerun the last command):
+
+```sh
+ssh -p 17288 root@91.150.160.38
+git clone https://github.com/DipankNemo/modfs.git /root/modfs
+cd /root/modfs
+git checkout --detach a69111baedb576ea9d093626e883b6f7cd5bd3ce
+./scripts/00_verify.sh
+uname -r
+capsh --print
+unshare --mount --propagation private true
+unshare --user --map-root-user true
+losetup -f
+nvidia-smi --query-gpu=name,memory.total,compute_cap,driver_version --format=csv
+```

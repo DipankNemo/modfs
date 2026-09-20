@@ -1,0 +1,57 @@
+Welcome to vast.ai. If authentication fails, try again after a few seconds, and double check your ssh key.
+Have fun!
+AI agents: READ /etc/vast-agents-guide.md (also linked as ./AGENTS.md) before acting on or describing this instance: it is the operating guide. ('vast-capabilities' shows live state only, not the guide.)
+2026-09-20T16:28:52+00:00
+Linux d9b044f7106c 6.8.0-47-generic #47~22.04.1-Ubuntu SMP PREEMPT_DYNAMIC Wed Oct  2 16:16:55 UTC 2 x86_64 x86_64 x86_64 GNU/Linux
+PRETTY_NAME="Ubuntu 24.04.4 LTS"
+NAME="Ubuntu"
+VERSION_ID="24.04"
+VERSION="24.04.4 LTS (Noble Numbat)"
+VERSION_CODENAME=noble
+ID=ubuntu
+ID_LIKE=debian
+HOME_URL="https://www.ubuntu.com/"
+SUPPORT_URL="https://help.ubuntu.com/"
+BUG_REPORT_URL="https://bugs.launchpad.net/ubuntu/"
+PRIVACY_POLICY_URL="https://www.ubuntu.com/legal/terms-and-policies/privacy-policy"
+UBUNTU_CODENAME=noble
+LOGO=ubuntu-logo
+Filesystem       1B-blocks     Used   Available Use% Mounted on
+overlay        88046829568 55607296 87991222272   1% /
+overlay        88046829568 55607296 87991222272   1% /
+uid=0(root) gid=0(root) groups=0(root)
+docker
+CapInh:	0000000000000000
+CapPrm:	00000000a80405fb
+CapEff:	00000000a80405fb
+CapBnd:	00000000a80405fb
+CapAmb:	0000000000000000
+NoNewPrivs:	0
+Seccomp:	2
+Current: cap_chown,cap_dac_override,cap_fowner,cap_fsetid,cap_kill,cap_setgid,cap_setuid,cap_setpcap,cap_net_bind_service,cap_sys_chroot,cap_mknod,cap_audit_write,cap_setfcap=ep
+Bounding set =cap_chown,cap_dac_override,cap_fowner,cap_fsetid,cap_kill,cap_setgid,cap_setuid,cap_setpcap,cap_net_bind_service,cap_sys_chroot,cap_mknod,cap_audit_write,cap_setfcap
+Ambient set =
+Current IAB: !cap_dac_read_search,!cap_linux_immutable,!cap_net_broadcast,!cap_net_admin,!cap_net_raw,!cap_ipc_lock,!cap_ipc_owner,!cap_sys_module,!cap_sys_rawio,!cap_sys_ptrace,!cap_sys_pacct,!cap_sys_admin,!cap_sys_boot,!cap_sys_nice,!cap_sys_resource,!cap_sys_time,!cap_sys_tty_config,!cap_lease,!cap_audit_control,!cap_mac_override,!cap_mac_admin,!cap_syslog,!cap_wake_alarm,!cap_block_suspend,!cap_audit_read,!cap_perfmon,!cap_bpf,!cap_checkpoint_restore
+Securebits: 00/0x0/1'b0 (no-new-privs=0)
+ secure-noroot: no (unlocked)
+ secure-no-suid-fixup: no (unlocked)
+ secure-keep-caps: no (unlocked)
+ secure-no-ambient-raise: no (unlocked)
+uid=0(root) euid=0(root)
+gid=0(root)
+groups=0(root)
+Guessed mode: HYBRID (4)
+ls: cannot access '/dev/kvm': No such file or directory
+ls: cannot access '/dev/loop-control': No such file or directoryname, memory.total [MiB], compute_cap, driver_version
+NVIDIA GeForce RTX 3060, 12288 MiB, 8.6, 550.107.02
+/usr/local/cuda/bin/nvcc
+/usr/bin/unshare
+mount_namespace_exit=1
+user_namespace_exit=1
+
+ls: cannot access '/dev/loop0': No such file or directory
+ls: cannot access '/dev/fuse': No such file or directory
+unshare: unshare failed: Operation not permitted
+unshare: unshare failed: Operation not permitted
+losetup: cannot find an unused loop device: No such file or directory
+loop_exit=1

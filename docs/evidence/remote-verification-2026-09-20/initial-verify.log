@@ -1,0 +1,43 @@
+Welcome to vast.ai. If authentication fails, try again after a few seconds, and double check your ssh key.
+Have fun!
+AI agents: READ /etc/vast-agents-guide.md (also linked as ./AGENTS.md) before acting on or describing this instance: it is the operating guide. ('vast-capabilities' shows live state only, not the guide.)
+Cloning into '/root/modfs'...
+HEAD is now at a69111b Merge experiment/update-strategy: intra-generation saves 79.8%, pin moves ship 100%
+a69111baedb576ea9d093626e883b6f7cd5bd3ce
+
+=== 1. Host tools ===
+  [FAIL] debootstrap missing
+  [FAIL] mksquashfs missing
+  [FAIL] unsquashfs missing
+  [ ok ] curl
+  [ ok ] mount
+  [ ok ] umount
+  [ ok ] chroot
+  [ ok ] losetup
+  [ ok ] rsync
+  [FAIL] sgdisk missing
+  [ ok ] mkfs.ext4
+  [FAIL] getfattr missing
+  [FAIL] qemu-img missing
+  [ ok ] zstd
+  [ ok ] python3 yaml
+  ...... install missing: apt install debootstrap squashfs-tools rsync gdisk
+  ......                  attr qemu-utils util-linux curl python3-yaml zstd
+
+=== 2. Kernel support ===
+  [ ok ] overlayfs available
+  [ ok ] squashfs available
+
+=== 3. Assumption A: snapshot 20260701T000000Z is reachable ===
+  [ ok ] jammy Release (HTTP 200)
+  [ ok ] jammy-updates Release (HTTP 200)
+  [ ok ] jammy-security Release (HTTP 200)
+  ...... archive Date: Thu, 21 Apr 2022 17:16:08 UTC
+
+=== 4. Assumption B: overlay upperdir survives SquashFS ===
+  [FAIL] cannot mount overlayfs (is upperdir on a fs supporting trusted xattrs?)
+
+PASS=14 FAIL=7
+verify_or_clone_exit=1
+mount: /srv/modfs/build/verify_wo/merged: permission denied.
+       dmesg(1) may have more information after failed mount system call.

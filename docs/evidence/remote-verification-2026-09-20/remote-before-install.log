@@ -1,0 +1,793 @@
+Welcome to vast.ai. If authentication fails, try again after a few seconds, and double check your ssh key.
+Have fun!
+AI agents: READ /etc/vast-agents-guide.md (also linked as ./AGENTS.md) before acting on or describing this instance: it is the operating guide. ('vast-capabilities' shows live state only, not the guide.)
+2to3	3.12.3-0ubuntu2.1
+acl	2.3.2-1build1.1
+adduser	3.137ubuntu1
+apt	2.8.3
+autoconf	2.71-3
+automake	1:1.16.5-1.3ubuntu1
+autotools-dev	20220109.1
+base-files	13ubuntu10.4
+base-passwd	3.6.3build1
+bash	5.2.21-2ubuntu4
+bc	1.07.1-3ubuntu4
+bind9-dnsutils	1:9.18.39-0ubuntu0.24.04.7
+bind9-host	1:9.18.39-0ubuntu0.24.04.7
+bind9-libs:amd64	1:9.18.39-0ubuntu0.24.04.7
+binutils	2.42-4ubuntu2.10
+binutils-common:amd64	2.42-4ubuntu2.10
+binutils-x86-64-linux-gnu	2.42-4ubuntu2.10
+blt	2.5.3+dfsg-7build1
+bsdextrautils	2.39.3-9ubuntu6.6
+bsdutils	1:2.39.3-9ubuntu6.6
+build-essential	12.10ubuntu1
+bzip2	1.0.8-5.1ubuntu0.1
+ca-certificates	20260601~24.04.1
+clang-16	1:16.0.6-23ubuntu4
+clinfo	3.0.23.01.25-1build1
+cmake	3.28.3-1build7
+cmake-data	3.28.3-1build7
+coreutils	9.4-3ubuntu6.3
+cpp	4:13.2.0-7ubuntu1
+cpp-13	13.3.0-6ubuntu2~24.04.1
+cpp-13-x86-64-linux-gnu	13.3.0-6ubuntu2~24.04.1
+cpp-x86-64-linux-gnu	4:13.2.0-7ubuntu1
+cron	3.0pl1-184ubuntu2
+cron-daemon-common	3.0pl1-184ubuntu2
+cuda-cccl-12-8	12.8.90-1
+cuda-command-line-tools-12-8	12.8.2-1
+cuda-compat-12-8	570.211.01-0ubuntu1
+cuda-compiler-12-8	12.8.2-1
+cuda-crt-12-8	12.8.93-1
+cuda-cudart-12-8	12.8.90-1
+cuda-cudart-dev-12-8	12.8.90-1
+cuda-cuobjdump-12-8	12.8.90-1
+cuda-cupti-12-8	12.8.90-1
+cuda-cupti-dev-12-8	12.8.90-1
+cuda-cuxxfilt-12-8	12.8.90-1
+cuda-driver-dev-12-8	12.8.90-1
+cuda-gdb-12-8	12.8.90-1
+cuda-libraries-12-8	12.8.1-1
+cuda-libraries-dev-12-8	12.8.1-1
+cuda-minimal-build-12-8	12.8.2-1
+cuda-nsight-compute-12-8	12.8.2-1
+cuda-nvcc-12-8	12.8.93-1
+cuda-nvdisasm-12-8	12.8.90-1
+cuda-nvml-dev-12-8	12.8.90-1
+cuda-nvprof-12-8	12.8.90-1
+cuda-nvprune-12-8	12.8.90-1
+cuda-nvrtc-12-8	12.8.93-1
+cuda-nvrtc-dev-12-8	12.8.93-1
+cuda-nvtx-12-8	12.8.90-1
+cuda-nvvm-12-8	12.8.93-1
+cuda-opencl-12-8	12.8.90-1
+cuda-opencl-dev-12-8	12.8.90-1
+cuda-profiler-api-12-8	12.8.90-1
+cuda-sanitizer-12-8	12.8.93-1
+cuda-toolkit-12-8-config-common	12.8.90-1
+cuda-toolkit-12-config-common	12.9.79-1
+cuda-toolkit-config-common	13.3.29-1
+curl	8.5.0-2ubuntu10.13
+dash	0.5.12-6ubuntu5
+dbus	1.14.10-4ubuntu4.1
+dbus-bin	1.14.10-4ubuntu4.1
+dbus-daemon	1.14.10-4ubuntu4.1
+dbus-session-bus-common	1.14.10-4ubuntu4.1
+dbus-system-bus-common	1.14.10-4ubuntu4.1
+debconf	1.5.86ubuntu1
+debianutils	5.17build1
+diffutils	1:3.10-1ubuntu0.1
+dirmngr	2.4.4-2ubuntu17.6
+distro-info-data	0.72-0ubuntu0.24.04.1
+dnsutils	1:9.18.39-0ubuntu0.24.04.7
+dos2unix	7.5.1-1
+dpkg	1.22.6ubuntu6.6
+dpkg-dev	1.22.6ubuntu6.6
+e2fsprogs	1.47.0-2.4~exp1ubuntu4.1
+expect	5.45.4-3
+ffmpeg	7:6.1.1-3ubuntu5
+file	1:5.45-3build1
+findutils	4.9.0-5build1
+fontconfig	2.15.0-1.1ubuntu2
+fontconfig-config	2.15.0-1.1ubuntu2
+fonts-dejavu	2.37-8
+fonts-dejavu-core	2.37-8
+fonts-dejavu-extra	2.37-8
+fonts-dejavu-mono	2.37-8
+fonts-freefont-ttf	20211204+svn4273-2
+fonts-mathjax	2.7.9+dfsg-1
+fonts-ubuntu	0.869+git20240321-0ubuntu1
+g++	4:13.2.0-7ubuntu1
+g++-13	13.3.0-6ubuntu2~24.04.1
+g++-13-x86-64-linux-gnu	13.3.0-6ubuntu2~24.04.1
+g++-x86-64-linux-gnu	4:13.2.0-7ubuntu1
+gcc	4:13.2.0-7ubuntu1
+gcc-13	13.3.0-6ubuntu2~24.04.1
+gcc-13-base:amd64	13.3.0-6ubuntu2~24.04.1
+gcc-13-x86-64-linux-gnu	13.3.0-6ubuntu2~24.04.1
+gcc-14-base:amd64	14.2.0-4ubuntu2~24.04.1
+gcc-x86-64-linux-gnu	4:13.2.0-7ubuntu1
+gdb	15.1-1ubuntu1~24.04.1
+gir1.2-girepository-2.0:amd64	1.80.1-1
+gir1.2-glib-2.0:amd64	2.80.0-6ubuntu3.8
+gir1.2-packagekitglib-1.0	1.2.8-2ubuntu1.5
+git	1:2.43.0-1ubuntu7.3
+git-lfs	3.4.1-1ubuntu0.4
+git-man	1:2.43.0-1ubuntu7.3
+gnupg	2.4.4-2ubuntu17.6
+gnupg-utils	2.4.4-2ubuntu17.6
+gnupg2	2.4.4-2ubuntu17.6
+gpg	2.4.4-2ubuntu17.6
+gpg-agent	2.4.4-2ubuntu17.6
+gpgconf	2.4.4-2ubuntu17.6
+gpgsm	2.4.4-2ubuntu17.6
+gpgv	2.4.4-2ubuntu17.6
+grep	3.11-4build1
+groff-base	1.23.0-3build2
+gzip	1.12-1ubuntu3.2
+hostname	3.23+nmu2ubuntu2
+htop	3.3.0-4build1
+hwdata	0.379-1
+ibverbs-providers:amd64	50.0-2ubuntu0.2
+icu-devtools	74.2-1ubuntu3.1
+idle	3.12.3-0ubuntu2.1
+idle-python3.12	3.12.3-1ubuntu0.16
+infiniband-diags	50.0-2ubuntu0.2
+init-system-helpers	1.66ubuntu1
+iotop	0.6-42-ga14256a-0.2build1
+iproute2	6.1.0-1ubuntu6.4
+iputils-ping	3:20240117-1ubuntu0.1
+iso-codes	4.16.0-1
+jq	1.7.1-3ubuntu0.24.04.2
+keyboxd	2.4.4-2ubuntu17.6
+less	590-2ubuntu2.1
+libacl1:amd64	2.3.2-1build1.1
+libaom3:amd64	3.8.2-2ubuntu0.1
+libapparmor1:amd64	4.0.1really4.0.1-0ubuntu0.24.04.7
+libappstream5:amd64	1.0.2-1build6
+libapt-pkg6.0t64:amd64	2.8.3
+libarchive13t64:amd64	3.7.2-2ubuntu0.8
+libargon2-1:amd64	0~20190702+dfsg-4build1
+libasan8:amd64	14.2.0-4ubuntu2~24.04.1
+libasound2-data	1.2.11-1ubuntu0.3
+libasound2t64:amd64	1.2.11-1ubuntu0.3
+libass9:amd64	1:0.17.1-2build1
+libassuan0:amd64	2.5.6-1build1
+libasyncns0:amd64	0.8-6build4
+libatomic1:amd64	14.2.0-4ubuntu2~24.04.1
+libattr1:amd64	1:2.5.2-1ubuntu0.1
+libaudit-common	1:3.1.2-2.1build1.1
+libaudit1:amd64	1:3.1.2-2.1build1.1
+libavc1394-0:amd64	0.5.4-5build3
+libavcodec60:amd64	7:6.1.1-3ubuntu5
+libavdevice60:amd64	7:6.1.1-3ubuntu5
+libavfilter9:amd64	7:6.1.1-3ubuntu5
+libavformat60:amd64	7:6.1.1-3ubuntu5
+libavutil58:amd64	7:6.1.1-3ubuntu5
+libbabeltrace1:amd64	1.5.11-3build3
+libbinutils:amd64	2.42-4ubuntu2.10
+libblas3:amd64	3.12.0-3build1.1
+libblkid1:amd64	2.39.3-9ubuntu6.6
+libbluray2:amd64	1:1.3.4-1build1
+libbpf1:amd64	1:1.3.0-2build2
+libbrotli1:amd64	1.1.0-2build2
+libbs2b0:amd64	3.1.0+dfsg-7build1
+libbsd0:amd64	0.12.1-1build1.1
+libbz2-1.0:amd64	1.0.8-5.1ubuntu0.1
+libc-bin	2.39-0ubuntu8.9
+libc-dev-bin	2.39-0ubuntu8.9
+libc6:amd64	2.39-0ubuntu8.9
+libc6-dev:amd64	2.39-0ubuntu8.9
+libcaca0:amd64	0.99.beta20-4ubuntu0.2
+libcairo-gobject2:amd64	1.18.0-3build1
+libcairo2:amd64	1.18.0-3build1
+libcap-ng0:amd64	0.8.4-2build2
+libcap2:amd64	1:2.66-5ubuntu2.4
+libcap2-bin	1:2.66-5ubuntu2.4
+libcbor0.10:amd64	0.10.2-1.2ubuntu2
+libcc1-0:amd64	14.2.0-4ubuntu2~24.04.1
+libcdio-cdda2t64:amd64	10.2+2.0.1-1.1build2
+libcdio-paranoia2t64:amd64	10.2+2.0.1-1.1build2
+libcdio19t64:amd64	2.1.0-4.1ubuntu1.2
+libchromaprint1:amd64	1.5.1-5
+libcjson1:amd64	1.7.17-1
+libclang-common-16-dev	1:16.0.6-23ubuntu4
+libclang-cpp16t64	1:16.0.6-23ubuntu4
+libclang1-16t64	1:16.0.6-23ubuntu4
+libcodec2-1.2:amd64	1.2.0-2build1
+libcom-err2:amd64	1.47.0-2.4~exp1ubuntu4.1
+libcrypt-dev:amd64	1:4.4.36-4build1
+libcrypt1:amd64	1:4.4.36-4build1
+libcryptsetup12:amd64	2:2.7.0-1ubuntu4.2
+libctf-nobfd0:amd64	2.42-4ubuntu2.10
+libctf0:amd64	2.42-4ubuntu2.10
+libcublas-12-8	12.8.4.1-1
+libcublas-dev-12-8	12.8.4.1-1
+libcudnn9-cuda-12	9.8.0.87-1
+libcudnn9-dev-cuda-12	9.8.0.87-1
+libcufft-12-8	11.3.3.83-1
+libcufft-dev-12-8	11.3.3.83-1
+libcufile-12-8	1.13.1.3-1
+libcufile-dev-12-8	1.13.1.3-1
+libcurand-12-8	10.3.9.90-1
+libcurand-dev-12-8	10.3.9.90-1
+libcurl3t64-gnutls:amd64	8.5.0-2ubuntu10.13
+libcurl4-openssl-dev:amd64	8.5.0-2ubuntu10.13
+libcurl4t64:amd64	8.5.0-2ubuntu10.13
+libcusolver-12-8	11.7.3.90-1
+libcusolver-dev-12-8	11.7.3.90-1
+libcusparse-12-8	12.5.8.93-1
+libcusparse-dev-12-8	12.5.8.93-1
+libdatrie1:amd64	0.2.13-3build1
+libdav1d7:amd64	1.4.1-1build1
+libdb5.3t64:amd64	5.3.28+dfsg2-7
+libdbus-1-3:amd64	1.14.10-4ubuntu4.1
+libdc1394-25:amd64	2.2.6-4build1
+libdebconfclient0:amd64	0.271ubuntu3
+libdebuginfod-common	0.190-1.1ubuntu0.1
+libdebuginfod1t64:amd64	0.190-1.1ubuntu0.1
+libdecor-0-0:amd64	0.2.2-1build2
+libdeflate0:amd64	1.19-1build1.1
+libdevmapper1.02.1:amd64	2:1.02.185-3ubuntu3.2
+libdpkg-perl	1.22.6ubuntu6.6
+libdrm-amdgpu1:amd64	2.4.125-1ubuntu0.1~24.04.2
+libdrm-common	2.4.125-1ubuntu0.1~24.04.2
+libdrm-intel1:amd64	2.4.125-1ubuntu0.1~24.04.2
+libdrm2:amd64	2.4.125-1ubuntu0.1~24.04.2
+libduktape207:amd64	2.7.0+tests-0ubuntu3
+libdw1t64:amd64	0.190-1.1ubuntu0.1
+libedit2:amd64	3.1-20230828-1build1
+libegl-mesa0:amd64	25.2.8-0ubuntu0.24.04.2
+libegl1:amd64	1.7.0-1build1
+libelf1t64:amd64	0.190-1.1ubuntu0.1
+liberror-perl	0.17029-2
+libestr0:amd64	0.1.11-1build1
+libevent-core-2.1-7t64:amd64	2.1.12-stable-9ubuntu2.1
+libexpat1:amd64	2.6.1-2ubuntu0.4
+libexpat1-dev:amd64	2.6.1-2ubuntu0.4
+libext2fs2t64:amd64	1.47.0-2.4~exp1ubuntu4.1
+libfastjson4:amd64	1.2304.0-1build1
+libfdisk1:amd64	2.39.3-9ubuntu6.6
+libffi-dev:amd64	3.4.6-1build1
+libffi8:amd64	3.4.6-1build1
+libfftw3-double3:amd64	3.3.10-1ubuntu3
+libfido2-1:amd64	1.14.0-1build3
+libflac12t64:amd64	1.4.3+ds-2.1ubuntu2
+libflite1:amd64	2.2-6build3
+libfontconfig1:amd64	2.15.0-1.1ubuntu2
+libfreetype6:amd64	2.13.2+dfsg-1ubuntu0.1
+libfribidi0:amd64	1.0.13-3build1
+libgbm1:amd64	25.2.8-0ubuntu0.24.04.2
+libgc1:amd64	1:8.2.6-1build1
+libgcc-13-dev:amd64	13.3.0-6ubuntu2~24.04.1
+libgcc-s1:amd64	14.2.0-4ubuntu2~24.04.1
+libgcrypt20:amd64	1.10.3-2ubuntu0.2
+libgdbm-compat4t64:amd64	1.23-5.1build1
+libgdbm6t64:amd64	1.23-5.1build1
+libgdk-pixbuf-2.0-0:amd64	2.42.10+dfsg-3ubuntu3.3
+libgdk-pixbuf2.0-common	2.42.10+dfsg-3ubuntu3.3
+libgfortran5:amd64	14.2.0-4ubuntu2~24.04.1
+libgirepository-1.0-1:amd64	1.80.1-1
+libgl1:amd64	1.7.0-1build1
+libgl1-mesa-dri:amd64	25.2.8-0ubuntu0.24.04.2
+libgles2:amd64	1.7.0-1build1
+libglib2.0-0t64:amd64	2.80.0-6ubuntu3.8
+libglib2.0-bin	2.80.0-6ubuntu3.8
+libglib2.0-data	2.80.0-6ubuntu3.8
+libglvnd0:amd64	1.7.0-1build1
+libglx-mesa0:amd64	25.2.8-0ubuntu0.24.04.2
+libglx0:amd64	1.7.0-1build1
+libgme0:amd64	0.6.3-7build1
+libgmp10:amd64	2:6.3.0+dfsg-2ubuntu6.1
+libgnutls30t64:amd64	3.8.3-1.1ubuntu3.6
+libgomp1:amd64	14.2.0-4ubuntu2~24.04.1
+libgpg-error0:amd64	1.47-3build2.1
+libgpm2:amd64	1.20.7-11
+libgprofng0:amd64	2.42-4ubuntu2.10
+libgraphite2-3:amd64	1.3.14-2ubuntu0.24.04.1
+libgsm1:amd64	1.0.22-1build1
+libgssapi-krb5-2:amd64	1.20.1-6ubuntu2.8
+libgstreamer1.0-0:amd64	1.24.2-1ubuntu0.1
+libharfbuzz0b:amd64	8.3.0-2build2
+libhogweed6t64:amd64	3.9.1-2.2build1.1
+libhwasan0:amd64	14.2.0-4ubuntu2~24.04.1
+libhwloc15:amd64	2.10.0-1build1
+libhwy1t64:amd64	1.0.7-8.1build1
+libibmad5:amd64	50.0-2ubuntu0.2
+libibnetdisc5t64:amd64	50.0-2ubuntu0.2
+libibumad3:amd64	50.0-2ubuntu0.2
+libibverbs1:amd64	50.0-2ubuntu0.2
+libicu-dev:amd64	74.2-1ubuntu3.1
+libicu74:amd64	74.2-1ubuntu3.1
+libidn2-0:amd64	2.3.7-2build1.1
+libiec61883-0:amd64	1.2.0-6build1
+libio-pty-perl	1:1.20-1build2
+libipc-run-perl	20231003.0-1
+libipt2	2.0.6-1build1
+libisl23:amd64	0.26-3build1.1
+libitm1:amd64	14.2.0-4ubuntu2~24.04.1
+libjack-jackd2-0:amd64	1.9.21~dfsg-3ubuntu3
+libjansson4:amd64	2.14-2build2
+libjbig0:amd64	2.1-6.1ubuntu2
+libjpeg-dev:amd64	8c-2ubuntu11
+libjpeg-turbo8:amd64	2.1.5-2ubuntu2
+libjpeg-turbo8-dev:amd64	2.1.5-2ubuntu2
+libjpeg8:amd64	8c-2ubuntu11
+libjpeg8-dev:amd64	8c-2ubuntu11
+libjq1:amd64	1.7.1-3ubuntu0.24.04.2
+libjs-jquery	3.6.1+dfsg+~3.5.14-1
+libjs-mathjax	2.7.9+dfsg-1
+libjs-sphinxdoc	7.2.6-6
+libjs-underscore	1.13.4~dfsg+~1.11.4-3
+libjson-c5:amd64	0.17-1build1
+libjsoncpp25:amd64	1.9.5-6build1
+libjxl0.7:amd64	0.7.0-10.2ubuntu6.1
+libk5crypto3:amd64	1.20.1-6ubuntu2.8
+libkeyutils1:amd64	1.6.3-3build1
+libkmod2:amd64	31+20240202-2ubuntu7.2
+libkrb5-3:amd64	1.20.1-6ubuntu2.8
+libkrb5support0:amd64	1.20.1-6ubuntu2.8
+libksba8:amd64	1.6.6-1build1
+liblapack3:amd64	3.12.0-3build1.1
+liblcms2-2:amd64	2.14-2ubuntu0.1
+libldap2:amd64	2.6.10+dfsg-0ubuntu0.24.04.1
+liblerc4:amd64	4.0.0+ds-4ubuntu2
+liblilv-0-0:amd64	0.24.22-1build1
+libllvm16t64:amd64	1:16.0.6-23ubuntu4
+libllvm20:amd64	1:20.1.2-0ubuntu1~24.04.3
+liblmdb0:amd64	0.9.31-1build1
+liblsan0:amd64	14.2.0-4ubuntu2~24.04.1
+libltdl7:amd64	2.4.7-7build1
+liblz4-1:amd64	1.9.4-1build1.1
+liblzma5:amd64	5.6.1+really5.4.5-1ubuntu0.3
+libmagic-mgc	1:5.45-3build1
+libmagic1t64:amd64	1:5.45-3build1
+libmaxminddb0:amd64	1.9.1-1build1
+libmbedcrypto7t64:amd64	2.28.8-1
+libmd0:amd64	1.1.0-2build1.1
+libmnl0:amd64	1.0.5-2build1
+libmount1:amd64	2.39.3-9ubuntu6.6
+libmp3lame0:amd64	3.100-6build1
+libmpc3:amd64	1.3.1-1build1.1
+libmpfr6:amd64	4.2.1-1build1.1
+libmpg123-0t64:amd64	1.32.5-1ubuntu1.1
+libmysofa1:amd64	1.3.2+dfsg-2ubuntu2
+libnccl-dev	2.31.2-1+cuda13.3
+libnccl2	2.31.2-1+cuda13.3
+libncursesw6:amd64	6.4+20240113-1ubuntu2.2
+libnettle8t64:amd64	3.9.1-2.2build1.1
+libnghttp2-14:amd64	1.59.0-1ubuntu0.4
+libnl-3-200:amd64	3.7.0-0.3build1.1
+libnl-genl-3-200:amd64	3.7.0-0.3build1.1
+libnl-route-3-200:amd64	3.7.0-0.3build1.1
+libnorm1t64:amd64	1.5.9+dfsg-3.1build1
+libnpp-12-8	12.3.3.100-1
+libnpp-dev-12-8	12.3.3.100-1
+libnpth0t64:amd64	1.6-3.1build1
+libnuma1:amd64	2.0.18-1ubuntu0.24.04.1
+libnvfatbin-12-8	12.8.90-1
+libnvfatbin-dev-12-8	12.8.90-1
+libnvjitlink-12-8	12.8.93-1
+libnvjitlink-dev-12-8	12.8.93-1
+libnvjpeg-12-8	12.3.5.92-1
+libnvjpeg-dev-12-8	12.3.5.92-1
+libobjc-13-dev:amd64	13.3.0-6ubuntu2~24.04.1
+libobjc4:amd64	14.2.0-4ubuntu2~24.04.1
+libogg0:amd64	1.3.5-3build1
+libonig5:amd64	6.9.9-1build1
+libopenal-data	1:1.23.1-4build1
+libopenal1:amd64	1:1.23.1-4build1
+libopencore-amrnb0:amd64	0.1.6-1build1
+libopencore-amrwb0:amd64	0.1.6-1build1
+libopenjp2-7:amd64	2.5.0-2ubuntu0.5
+libopenmpt0t64:amd64	0.7.3-1.1build3
+libopus0:amd64	1.4-1build1
+libp11-kit0:amd64	0.25.3-4ubuntu2.2
+libpackagekit-glib2-18:amd64	1.2.8-2ubuntu1.5
+libpam-modules:amd64	1.5.3-5ubuntu5.7
+libpam-modules-bin	1.5.3-5ubuntu5.7
+libpam-runtime	1.5.3-5ubuntu5.7
+libpam-systemd:amd64	255.4-1ubuntu8.17
+libpam0g:amd64	1.5.3-5ubuntu5.7
+libpango-1.0-0:amd64	1.52.1+ds-1build1
+libpangocairo-1.0-0:amd64	1.52.1+ds-1build1
+libpangoft2-1.0-0:amd64	1.52.1+ds-1build1
+libpciaccess0:amd64	0.17-3ubuntu0.24.04.2
+libpcre2-8-0:amd64	10.42-4ubuntu2.1
+libperl5.38t64:amd64	5.38.2-3.2ubuntu0.4
+libpgm-5.3-0t64:amd64	5.3.128~dfsg-2.1build1
+libpipeline1:amd64	1.5.7-2
+libpixman-1-0:amd64	0.42.2-1build1
+libpkgconf3:amd64	1.8.1-2build1
+libplacebo338:amd64	6.338.2-2build1
+libpng-dev:amd64	1.6.43-5ubuntu0.6
+libpng16-16t64:amd64	1.6.43-5ubuntu0.6
+libpocketsphinx3:amd64	0.8.0+real5prealpha+1-15ubuntu5
+libpocl2-common	5.0-2.1build3
+libpocl2t64:amd64	5.0-2.1build3
+libpolkit-agent-1-0:amd64	124-2ubuntu1.24.04.3
+libpolkit-gobject-1-0:amd64	124-2ubuntu1.24.04.3
+libpopt0:amd64	1.19+dfsg-1build1
+libpostproc57:amd64	7:6.1.1-3ubuntu5
+libproc2-0:amd64	2:4.0.4-4ubuntu3.3
+libpsl5t64:amd64	0.21.2-1.1build1
+libpulse0:amd64	1:16.1+dfsg1-2ubuntu10.1
+libpython3-dev:amd64	3.12.3-0ubuntu2.1
+libpython3-stdlib:amd64	3.12.3-0ubuntu2.1
+libpython3.12-dev:amd64	3.12.3-1ubuntu0.16
+libpython3.12-minimal:amd64	3.12.3-1ubuntu0.16
+libpython3.12-stdlib:amd64	3.12.3-1ubuntu0.16
+libpython3.12-testsuite	3.12.3-1ubuntu0.16
+libpython3.12t64:amd64	3.12.3-1ubuntu0.16
+libquadmath0:amd64	14.2.0-4ubuntu2~24.04.1
+librabbitmq4:amd64	0.11.0-1ubuntu0.2
+librav1e0:amd64	0.7.1-2
+libraw1394-11:amd64	2.1.2-2build3
+librdmacm1t64:amd64	50.0-2ubuntu0.2
+libreadline8t64:amd64	8.2-4build1
+librhash0:amd64	1.4.3-3build1
+librist4:amd64	0.2.10+dfsg-2
+librsvg2-2:amd64	2.58.0+dfsg-1build1
+librtmp1:amd64	2.4+20151223.gitfa8646d.1-2build7
+librubberband2:amd64	3.3.0+dfsg-2build1
+libsamplerate0:amd64	0.2.2-4build1
+libsasl2-2:amd64	2.1.28+dfsg1-5ubuntu3.1
+libsasl2-modules-db:amd64	2.1.28+dfsg1-5ubuntu3.1
+libsdl2-2.0-0:amd64	2.30.0+dfsg-1ubuntu3.1
+libseccomp2:amd64	2.5.5-1ubuntu3.1
+libselinux1:amd64	3.5-2ubuntu2.1
+libsemanage-common	3.5-1build5
+libsemanage2:amd64	3.5-1build5
+libsensors-config	1:3.6.0-9build1
+libsensors5:amd64	1:3.6.0-9build1
+libsepol2:amd64	3.5-2build1
+libserd-0-0:amd64	0.32.2-1
+libsframe1:amd64	2.42-4ubuntu2.10
+libsharpyuv-dev:amd64	1.3.2-0.4build3
+libsharpyuv0:amd64	1.3.2-0.4build3
+libshine3:amd64	3.1.1-2build1
+libslang2:amd64	2.3.3-3build2
+libsmartcols1:amd64	2.39.3-9ubuntu6.6
+libsnappy1v5:amd64	1.1.10-1build1
+libsndfile1:amd64	1.2.2-1ubuntu5.24.04.1
+libsndio7.0:amd64	1.9.0-0.3build3
+libsodium23:amd64	1.0.18-1ubuntu0.24.04.1
+libsord-0-0:amd64	0.16.16-2build1
+libsource-highlight-common	3.1.9-4.3build1
+libsource-highlight4t64:amd64	3.1.9-4.3build1
+libsox-fmt-alsa:amd64	14.4.2+git20190427-4build4
+libsox-fmt-base:amd64	14.4.2+git20190427-4build4
+libsox3:amd64	14.4.2+git20190427-4build4
+libsoxr0:amd64	0.1.3-4build3
+libspeex1:amd64	1.2.1-2ubuntu2.24.04.1
+libsphinxbase3t64:amd64	0.8+5prealpha+1-17build2
+libsqlite3-0:amd64	3.45.1-1ubuntu2.7
+libsqlite3-dev:amd64	3.45.1-1ubuntu2.7
+libsratom-0-0:amd64	0.6.16-1build1
+libsrt1.5-gnutls:amd64	1.5.3-1build2
+libss2:amd64	1.47.0-2.4~exp1ubuntu4.1
+libssh-4:amd64	0.10.6-2ubuntu0.5
+libssh-gcrypt-4:amd64	0.10.6-2ubuntu0.5
+libssl-dev:amd64	3.0.13-0ubuntu3.15
+libssl3t64:amd64	3.0.13-0ubuntu3.15
+libstdc++-13-dev:amd64	13.3.0-6ubuntu2~24.04.1
+libstdc++6:amd64	14.2.0-4ubuntu2~24.04.1
+libstemmer0d:amd64	2.2.0-4build1
+libsvtav1enc1d1:amd64	1.7.0+dfsg-2build1
+libswresample4:amd64	7:6.1.1-3ubuntu5
+libswscale7:amd64	7:6.1.1-3ubuntu5
+libsystemd-shared:amd64	255.4-1ubuntu8.17
+libsystemd0:amd64	255.4-1ubuntu8.17
+libtasn1-6:amd64	4.19.0-3ubuntu0.24.04.2
+libtcl8.6:amd64	8.6.14+dfsg-1build1
+libtcmalloc-minimal4t64:amd64	2.15-3build1
+libthai-data	0.1.29-2build1
+libthai0:amd64	0.1.29-2build1
+libtheora0:amd64	1.1.1+dfsg.1-16.1build3
+libtiff6:amd64	4.5.1+git230720-4ubuntu2.5
+libtime-duration-perl	1.21-2
+libtimedate-perl	2.3300-2
+libtinfo6:amd64	6.4+20240113-1ubuntu2.2
+libtirpc-common	1.3.4+ds-1.1build1
+libtirpc3t64:amd64	1.3.4+ds-1.1build1
+libtk8.6:amd64	8.6.14-1build1
+libtool	2.4.7-7build1
+libtsan2:amd64	14.2.0-4ubuntu2~24.04.1
+libtwolame0:amd64	0.4.0-2build3
+libubsan1:amd64	14.2.0-4ubuntu2~24.04.1
+libuchardet0:amd64	0.0.8-1build1
+libudev1:amd64	255.4-1ubuntu8.17
+libudfread0:amd64	1.1.2-1build1
+libunibreak5:amd64	5.1-2build1
+libunistring5:amd64	1.1-2build1.1
+libunwind8:amd64	1.6.2-3build1.1
+libusb-1.0-0:amd64	2:1.0.27-1
+libutempter0:amd64	1.2.1-3build1
+libuuid1:amd64	2.39.3-9ubuntu6.6
+libuv1t64:amd64	1.48.0-1.1build1
+libva-drm2:amd64	2.20.0-2ubuntu0.2
+libva-x11-2:amd64	2.20.0-2ubuntu0.2
+libva2:amd64	2.20.0-2ubuntu0.2
+libvdpau1:amd64	1.5-2build1
+libvidstab1.1:amd64	1.1.0-2build1
+libvorbis0a:amd64	1.3.7-1build3
+libvorbisenc2:amd64	1.3.7-1build3
+libvorbisfile3:amd64	1.3.7-1build3
+libvpl2	2023.3.0-1build1
+libvpx9:amd64	1.14.0-1ubuntu2.3
+libvulkan1:amd64	1.3.275.0-1build1
+libwavpack1:amd64	5.6.0-1build1
+libwayland-client0:amd64	1.22.0-2.1build1
+libwayland-cursor0:amd64	1.22.0-2.1build1
+libwayland-egl1:amd64	1.22.0-2.1build1
+libwebp-dev:amd64	1.3.2-0.4build3
+libwebp7:amd64	1.3.2-0.4build3
+libwebpdecoder3:amd64	1.3.2-0.4build3
+libwebpdemux2:amd64	1.3.2-0.4build3
+libwebpmux3:amd64	1.3.2-0.4build3
+libwrap0:amd64	7.6.q-33
+libx11-6:amd64	2:1.8.7-1build1
+libx11-data	2:1.8.7-1build1
+libx11-xcb1:amd64	2:1.8.7-1build1
+libx264-164:amd64	2:0.164.3108+git31e19f9-1
+libx265-199:amd64	3.5-2build1
+libxau6:amd64	1:1.0.9-1build6
+libxcb-dri3-0:amd64	1.15-1ubuntu2
+libxcb-glx0:amd64	1.15-1ubuntu2
+libxcb-present0:amd64	1.15-1ubuntu2
+libxcb-randr0:amd64	1.15-1ubuntu2
+libxcb-render0:amd64	1.15-1ubuntu2
+libxcb-shape0:amd64	1.15-1ubuntu2
+libxcb-shm0:amd64	1.15-1ubuntu2
+libxcb-sync1:amd64	1.15-1ubuntu2
+libxcb-xfixes0:amd64	1.15-1ubuntu2
+libxcb-xkb1:amd64	1.15-1ubuntu2
+libxcb1:amd64	1.15-1ubuntu2
+libxcursor1:amd64	1:1.2.1-1build1
+libxdmcp6:amd64	1:1.1.3-0ubuntu6
+libxext6:amd64	2:1.3.4-1build2
+libxfixes3:amd64	1:6.0.0-2build1
+libxft2:amd64	2.3.6-1build1
+libxi6:amd64	2:1.8.1-1build1
+libxkbcommon-x11-0:amd64	1.6.0-1build1
+libxkbcommon0:amd64	1.6.0-1build1
+libxml2:amd64	2.9.14+dfsg-1.3ubuntu3.8
+libxml2-dev:amd64	2.9.14+dfsg-1.3ubuntu3.8
+libxmlb2:amd64	0.3.24-1~ubuntu0.24.04.1
+libxrandr2:amd64	2:1.5.2-2build1
+libxrender1:amd64	1:0.9.10-1.1build1
+libxshmfence1:amd64	1.3-1build5
+libxss1:amd64	1:1.2.3-1build3
+libxtables12:amd64	1.8.10-3ubuntu2
+libxv1:amd64	2:1.0.11-1.1build1
+libxvidcore4:amd64	2:1.3.7-1build1
+libxxf86vm1:amd64	1:1.1.4-1build4
+libxxhash0:amd64	0.8.2-2build1
+libyaml-0-2:amd64	0.2.5-1build1
+libzimg2:amd64	3.0.5+ds1-1build1
+libzix-0-0:amd64	0.4.2-2build1
+libzmq5:amd64	4.3.5-1build2
+libzstd1:amd64	1.5.5+dfsg2-2build1.1
+libzvbi-common	0.2.42-2
+libzvbi0t64:amd64	0.2.42-2
+linux-libc-dev:amd64	6.8.0-139.139
+linux-tools-common	6.8.0-139.139
+llvm-16-linker-tools	1:16.0.6-23ubuntu4
+locales	2.39-0ubuntu8.9
+login	1:4.13+dfsg1-4ubuntu3.2
+logsave	1.47.0-2.4~exp1ubuntu4.1
+lsb-release	12.0-2
+lsof	4.95.0-1build3
+lto-disabled-list	47
+m4	1.4.19-4build1
+make	4.3-4.1build2
+man-db	2.12.0-4build2
+mawk	1.3.4.20240123-1build1
+media-types	10.1.0
+mesa-libgallium:amd64	25.2.8-0ubuntu0.24.04.2
+mesa-utils	9.0.0-2
+mesa-utils-bin:amd64	9.0.0-2
+moreutils	0.69-1
+mount	2.39.3-9ubuntu6.6
+nano	7.2-2ubuntu0.2
+ncurses-base	6.4+20240113-1ubuntu2.2
+ncurses-bin	6.4+20240113-1ubuntu2.2
+net-tools	2.10-0.1ubuntu4.4
+netbase	6.4
+netcat-traditional	1.10-48
+ninja-build	1.11.1-2
+nsight-compute-2025.1.1	2025.1.1.2-1
+nvtop	3.0.2-1
+ocl-icd-dev:amd64	2.3.2-1build1
+ocl-icd-libopencl1:amd64	2.3.2-1build1
+ocl-icd-opencl-dev:amd64	2.3.2-1build1
+opencl-c-headers	3.0~2023.12.14-1
+opencl-clhpp-headers	3.0~2023.12.14-1ubuntu1
+opencl-headers	3.0~2023.12.14-1
+openssh-client	1:9.6p1-3ubuntu13.19
+openssh-server	1:9.6p1-3ubuntu13.19
+openssh-sftp-server	1:9.6p1-3ubuntu13.19
+openssl	3.0.13-0ubuntu3.15
+packagekit	1.2.8-2ubuntu1.5
+passwd	1:4.13+dfsg1-4ubuntu3.2
+patch	2.7.6-7build3
+pci.ids	0.0~2024.03.31-1ubuntu0.1
+perl	5.38.2-3.2ubuntu0.4
+perl-base	5.38.2-3.2ubuntu0.4
+perl-modules-5.38	5.38.2-3.2ubuntu0.4
+pinentry-curses	1.2.1-3ubuntu5
+pkg-config:amd64	1.8.1-2build1
+pkgconf:amd64	1.8.1-2build1
+pkgconf-bin	1.8.1-2build1
+pocl-opencl-icd:amd64	5.0-2.1build3
+polkitd	124-2ubuntu1.24.04.3
+procps	2:4.0.4-4ubuntu3.3
+psmisc	23.7-1build1
+python-apt-common	2.7.7ubuntu5.2
+python3	3.12.3-0ubuntu2.1
+python3-apt	2.7.7ubuntu5.2
+python3-blinker	1.7.0-1
+python3-cffi-backend:amd64	1.16.0-2build1
+python3-cryptography	41.0.7-4ubuntu0.4
+python3-dbus	1.3.2-5build3
+python3-dev	3.12.3-0ubuntu2.1
+python3-distro	1.9.0-1
+python3-full	3.12.3-0ubuntu2.1
+python3-gdbm:amd64	3.12.3-0ubuntu1
+python3-gi	3.48.2-1
+python3-httplib2	0.20.4-3ubuntu0.1
+python3-jwt	2.7.0-1ubuntu0.1
+python3-launchpadlib	1.11.0-6
+python3-lazr.restfulclient	0.14.6-1
+python3-lazr.uri	1.0.6-3
+python3-lib2to3	3.12.3-0ubuntu1
+python3-minimal	3.12.3-0ubuntu2.1
+python3-oauthlib	3.2.2-1
+python3-pip	24.0+dfsg-1ubuntu1.3
+python3-pip-whl	24.0+dfsg-1ubuntu1.3
+python3-pkg-resources	68.1.2-2ubuntu1.2
+python3-pyparsing	3.1.1-1
+python3-setuptools	68.1.2-2ubuntu1.2
+python3-setuptools-whl	68.1.2-2ubuntu1.2
+python3-six	1.16.0-4
+python3-software-properties	0.99.49.4
+python3-tk:amd64	3.12.3-0ubuntu1
+python3-venv	3.12.3-0ubuntu2.1
+python3-wadllib	1.3.6-5
+python3-wheel	0.42.0-2
+python3.12	3.12.3-1ubuntu0.16
+python3.12-dev	3.12.3-1ubuntu0.16
+python3.12-full	3.12.3-1ubuntu0.16
+python3.12-minimal	3.12.3-1ubuntu0.16
+python3.12-venv	3.12.3-1ubuntu0.16
+rclone	1.60.1+dfsg-3ubuntu0.24.04.6
+rdma-core	50.0-2ubuntu0.2
+readline-common	8.2-4build1
+rpcsvc-proto	1.4.2-0ubuntu7
+rsync	3.2.7-1ubuntu1.5
+rsyslog	8.2312.0-3ubuntu9.3
+sed	4.9-2ubuntu0.24.04.1
+sensible-utils	0.0.22
+sgml-base	1.31
+shared-mime-info	2.4-4
+software-properties-common	0.99.49.4
+sox	14.4.2+git20190427-4build4
+strace	6.8-0ubuntu2
+sudo	1.9.15p5-3ubuntu5.24.04.2
+systemd	255.4-1ubuntu8.17
+systemd-dev	255.4-1ubuntu8.17
+systemd-sysv	255.4-1ubuntu8.17
+sysvinit-utils	3.08-6ubuntu3
+tar	1.35+dfsg-3ubuntu0.4
+tcl-expect:amd64	5.45.4-3
+tcl8.6	8.6.14+dfsg-1build1
+tk8.6-blt2.5	2.5.3+dfsg-7build1
+tmux	3.4-1ubuntu0.1
+traceroute	1:2.1.5-1
+tzdata	2026c-0ubuntu0.24.04.1
+ubuntu-keyring	2023.11.28.1
+ucf	3.0043+nmu1
+udev	255.4-1ubuntu8.17
+unminimize	0.2.1
+unzip	6.0-28ubuntu4.1
+usb.ids	2024.03.18-1
+util-linux	2.39.3-9ubuntu6.6
+vim	2:9.1.0016-1ubuntu7.20
+vim-common	2:9.1.0016-1ubuntu7.20
+vim-runtime	2:9.1.0016-1ubuntu7.20
+vulkan-tools	1.3.275.0+dfsg1-1
+wget	1.21.4-1ubuntu4.5
+x11-common	1:7.7+23ubuntu3
+xkb-data	2.41-2ubuntu1.1
+xml-core	0.19
+xz-utils	5.6.1+really5.4.5-1ubuntu0.3
+zip	3.0-13ubuntu0.2
+zlib1g:amd64	1:1.3.dfsg-3.1ubuntu2.2
+zlib1g-dev:amd64	1:1.3.dfsg-3.1ubuntu2.2
+zstd	1.5.5+dfsg2-2build1.1
+6133 761 0:92 / / rw,relatime - overlay overlay rw,lowerdir=/var/lib/docker/overlay2/l/WPZAYZL7TXRWRKCQP2OZLZAHXU:/var/lib/docker/overlay2/l/KS5Q2L6B4YSDNWTHKZRVOCGTBG:/var/lib/docker/overlay2/l/XIGBWKV4CLFMIQKVEZEIS4WAXA:/var/lib/docker/overlay2/l/AMO3BT5644BF73G2IUQPCP7VEN:/var/lib/docker/overlay2/l/FD7BYAEOYMARSNOCBDAXV5ULNC:/var/lib/docker/overlay2/l/ZNUGUHF52VRK722HBOZJ4MQEO7:/var/lib/docker/overlay2/l/TRGTGMT65WAEJBJC3EBG6DJIVA:/var/lib/docker/overlay2/l/NJGTWOCFFC4HTQIEYK5OVULFTU:/var/lib/docker/overlay2/l/CY6K4FKJRJMKKH2AT56NPJ5TVU:/var/lib/docker/overlay2/l/77IU2PHBE33B4G3YSX3D6EYVCK:/var/lib/docker/overlay2/l/EPKUSEPUM2IACBJJF5DQ5WKWQH:/var/lib/docker/overlay2/l/PJ6FKLU4SM5XDB4W5FWB6VWMMJ:/var/lib/docker/overlay2/l/RIXPRPQ42YBXY6PNC4ONIDGOZM:/var/lib/docker/overlay2/l/ASJUII3F4ZFDNIOPENLN4AFYA7:/var/lib/docker/overlay2/l/SGKTRIWLTDT3RTVLRIBYBIGQXR:/var/lib/docker/overlay2/l/BLDELWPYKCG3Z2NC6CWBLMD5YK:/var/lib/docker/overlay2/l/R4MGJ7O7SOVEEBWQSF6BX2LOUK:/var/lib/docker/overlay2/l/C7OZBWR325X4OYBSOS6ZYRG6FB:/var/lib/docker/overlay2/l/2KLR5X6VHPHRHWSPVEV33KSFNR:/var/lib/docker/overlay2/l/BU6MNL2AJPMEGU7LX3RNVQZGPD:/var/lib/docker/overlay2/l/XG3TBPS67HGAXXLARCH6KN73SP:/var/lib/docker/overlay2/l/XRLUVEOKLEAKRFE47YAHDH5C7H:/var/lib/docker/overlay2/l/D4YWCTKTYWV4QKJDO4V7E7BUMY:/var/lib/docker/overlay2/l/T5B5L7IO4O45Z6NZB4D7ZYPRU3:/var/lib/docker/overlay2/l/CTJW6WBCV4BSCE25RCS6GGLYES:/var/lib/docker/overlay2/l/CSS5F2VT4QEXKX7ICOJK37WCOR:/var/lib/docker/overlay2/l/BN7TJENGI6BMOR5ADW4VY74IFF:/var/lib/docker/overlay2/l/OJ5CSZQOQXCXXNEPNIZLQ3R6KG:/var/lib/docker/overlay2/l/SVR3CFHBQ3Y3WRIAI4L7NRXBDI:/var/lib/docker/overlay2/l/JRB447OYMT6DDWHHNK6TLXR3YE:/var/lib/docker/overlay2/l/AY3BCM7UY5GASKYD5YBUIPOOSY:/var/lib/docker/overlay2/l/6OGFF7UEFGDUKPND5IJNTO2KTX:/var/lib/docker/overlay2/l/LHCCURWYB4MB6NKN5HB2EN3E6R:/var/lib/docker/overlay2/l/T7HOJAZ4M62JNGQZNWMZLV2DCG:/var/lib/docker/overlay2/l/2HSV663NCUPOQ5REJFS5RW7OVJ:/var/lib/docker/overlay2/l/KYFU6K7D3HVZXALGA6VCLAUVIV:/var/lib/docker/overlay2/l/QJILRN5RUBDHTNZEL3GO6NPTRD:/var/lib/docker/overlay2/l/STOQ37JQNJL3EGSX4JDZRHRBC7:/var/lib/docker/overlay2/l/3MHJ3IUNS3JN7CKWBYYVO77RYR:/var/lib/docker/overlay2/l/OKEX76FHFY7JVFTOVR3Q6P6ILQ:/var/lib/docker/overlay2/l/QA5IICKIQKAZJLIQOGU4GP6HRC:/var/lib/docker/overlay2/l/RCBDPFBG3R6IDVJGEQZ7CNPZMC,upperdir=/var/lib/docker/overlay2/5b7bac6afc5a3c57fc27bf10aa442cfd6f097b6371bb9837fbcad2a81281aa01/diff,workdir=/var/lib/docker/overlay2/5b7bac6afc5a3c57fc27bf10aa442cfd6f097b6371bb9837fbcad2a81281aa01/work,nouserxattr
+6135 6133 0:107 / /dev rw,nosuid - tmpfs tmpfs rw,size=65536k,mode=755,inode64
+6136 6133 0:108 / /proc rw,nosuid,nodev,noexec,relatime - proc proc rw
+6137 6133 0:109 / /sys ro,nosuid,nodev,noexec,relatime - sysfs sysfs ro
+6138 6135 0:105 / /dev/mqueue rw,nosuid,nodev,noexec,relatime - mqueue mqueue rw
+6139 6135 0:110 / /dev/pts rw,nosuid,noexec,relatime - devpts devpts rw,gid=5,mode=620,ptmxmode=666
+6140 6135 0:111 / /dev/shm rw,nosuid,nodev,noexec,relatime - tmpfs shm rw,size=7340032k,inode64
+6141 6133 259:3 /containers/d9b044f7106c185f7d672882974690dcfc4539c50340bf430f0bdf6fbabfe668/hostname /etc/hostname rw,relatime - xfs /dev/nvme0n1p3 rw,attr2,inode64,logbufs=8,logbsize=32k,prjquota
+6142 6133 259:3 /containers/d9b044f7106c185f7d672882974690dcfc4539c50340bf430f0bdf6fbabfe668/hosts /etc/hosts rw,relatime - xfs /dev/nvme0n1p3 rw,attr2,inode64,logbufs=8,logbsize=32k,prjquota
+6143 6133 259:3 /containers/d9b044f7106c185f7d672882974690dcfc4539c50340bf430f0bdf6fbabfe668/resolv.conf /etc/resolv.conf rw,relatime - xfs /dev/nvme0n1p3 rw,attr2,inode64,logbufs=8,logbsize=32k,prjquota
+6144 6133 0:25 /nvidia-persistenced/socket /run/nvidia-persistenced/socket ro,nosuid,nodev,noexec,relatime master:5 - tmpfs tmpfs rw,size=3278268k,mode=755,inode64
+6145 6137 0:112 / /sys/fs/cgroup rw,nosuid,nodev,noexec,relatime - tmpfs tmpfs rw,mode=755,inode64
+6146 6145 0:30 /docker/d9b044f7106c185f7d672882974690dcfc4539c50340bf430f0bdf6fbabfe668 /sys/fs/cgroup/systemd ro,nosuid,nodev,noexec,relatime master:11 - cgroup cgroup rw,xattr,name=systemd
+6147 6145 0:34 /docker/d9b044f7106c185f7d672882974690dcfc4539c50340bf430f0bdf6fbabfe668 /sys/fs/cgroup/freezer ro,nosuid,nodev,noexec,relatime master:16 - cgroup cgroup rw,freezer
+6148 6145 0:35 /docker/d9b044f7106c185f7d672882974690dcfc4539c50340bf430f0bdf6fbabfe668 /sys/fs/cgroup/net_cls,net_prio ro,nosuid,nodev,noexec,relatime master:17 - cgroup cgroup rw,net_cls,net_prio
+6149 6145 0:36 /docker/d9b044f7106c185f7d672882974690dcfc4539c50340bf430f0bdf6fbabfe668 /sys/fs/cgroup/perf_event ro,nosuid,nodev,noexec,relatime master:18 - cgroup cgroup rw,perf_event
+6150 6145 0:37 /docker/d9b044f7106c185f7d672882974690dcfc4539c50340bf430f0bdf6fbabfe668 /sys/fs/cgroup/memory ro,nosuid,nodev,noexec,relatime master:19 - cgroup cgroup rw,memory
+6151 6145 0:38 /docker/d9b044f7106c185f7d672882974690dcfc4539c50340bf430f0bdf6fbabfe668 /sys/fs/cgroup/cpuset ro,nosuid,nodev,noexec,relatime master:20 - cgroup cgroup rw,cpuset
+6152 6145 0:39 /docker/d9b044f7106c185f7d672882974690dcfc4539c50340bf430f0bdf6fbabfe668 /sys/fs/cgroup/devices ro,nosuid,nodev,noexec,relatime master:21 - cgroup cgroup rw,devices
+6153 6145 0:40 /docker/d9b044f7106c185f7d672882974690dcfc4539c50340bf430f0bdf6fbabfe668 /sys/fs/cgroup/misc ro,nosuid,nodev,noexec,relatime master:22 - cgroup cgroup rw,misc
+6154 6145 0:41 /docker/d9b044f7106c185f7d672882974690dcfc4539c50340bf430f0bdf6fbabfe668 /sys/fs/cgroup/cpu,cpuacct ro,nosuid,nodev,noexec,relatime master:23 - cgroup cgroup rw,cpu,cpuacct
+6155 6145 0:42 /docker/d9b044f7106c185f7d672882974690dcfc4539c50340bf430f0bdf6fbabfe668 /sys/fs/cgroup/hugetlb ro,nosuid,nodev,noexec,relatime master:24 - cgroup cgroup rw,hugetlb
+6156 6145 0:43 /docker/d9b044f7106c185f7d672882974690dcfc4539c50340bf430f0bdf6fbabfe668 /sys/fs/cgroup/blkio ro,nosuid,nodev,noexec,relatime master:25 - cgroup cgroup rw,blkio
+6157 6145 0:44 /docker/d9b044f7106c185f7d672882974690dcfc4539c50340bf430f0bdf6fbabfe668 /sys/fs/cgroup/pids ro,nosuid,nodev,noexec,relatime master:26 - cgroup cgroup rw,pids
+6158 6145 0:45 /docker/d9b044f7106c185f7d672882974690dcfc4539c50340bf430f0bdf6fbabfe668 /sys/fs/cgroup/rdma ro,nosuid,nodev,noexec,relatime master:27 - cgroup cgroup rw,rdma
+6159 6133 259:2 /usr/bin/nvidia-cuda-mps-control /usr/bin/nvidia-cuda-mps-control ro,nosuid,nodev,relatime master:1 - ext4 /dev/nvme0n1p2 rw,errors=remount-ro
+6160 6133 259:2 /usr/bin/nvidia-cuda-mps-server /usr/bin/nvidia-cuda-mps-server ro,nosuid,nodev,relatime master:1 - ext4 /dev/nvme0n1p2 rw,errors=remount-ro
+6161 6133 259:2 /usr/bin/nvidia-debugdump /usr/bin/nvidia-debugdump ro,nosuid,nodev,relatime master:1 - ext4 /dev/nvme0n1p2 rw,errors=remount-ro
+6162 6133 259:2 /usr/bin/nvidia-persistenced /usr/bin/nvidia-persistenced ro,nosuid,nodev,relatime master:1 - ext4 /dev/nvme0n1p2 rw,errors=remount-ro
+6163 6133 259:2 /usr/bin/nvidia-smi /usr/bin/nvidia-smi ro,nosuid,nodev,relatime master:1 - ext4 /dev/nvme0n1p2 rw,errors=remount-ro
+6164 6133 259:2 /usr/share/vulkan/icd.d/nvidia_icd.json /etc/vulkan/icd.d/nvidia_icd.json ro,nosuid,nodev,relatime master:1 - ext4 /dev/nvme0n1p2 rw,errors=remount-ro
+6165 6133 259:2 /usr/share/vulkan/implicit_layer.d/nvidia_layers.json /etc/vulkan/implicit_layer.d/nvidia_layers.json ro,nosuid,nodev,relatime master:1 - ext4 /dev/nvme0n1p2 rw,errors=remount-ro
+6166 6133 259:2 /usr/lib/x86_64-linux-gnu/libEGL_nvidia.so.550.107.02 /usr/lib/x86_64-linux-gnu/libEGL_nvidia.so.550.107.02 ro,nosuid,nodev,relatime master:1 - ext4 /dev/nvme0n1p2 rw,errors=remount-ro
+6167 6133 259:2 /usr/lib/x86_64-linux-gnu/libGLESv1_CM_nvidia.so.550.107.02 /usr/lib/x86_64-linux-gnu/libGLESv1_CM_nvidia.so.550.107.02 ro,nosuid,nodev,relatime master:1 - ext4 /dev/nvme0n1p2 rw,errors=remount-ro
+6168 6133 259:2 /usr/lib/x86_64-linux-gnu/libGLESv2_nvidia.so.550.107.02 /usr/lib/x86_64-linux-gnu/libGLESv2_nvidia.so.550.107.02 ro,nosuid,nodev,relatime master:1 - ext4 /dev/nvme0n1p2 rw,errors=remount-ro
+6169 6133 259:2 /usr/lib/x86_64-linux-gnu/libGLX_nvidia.so.550.107.02 /usr/lib/x86_64-linux-gnu/libGLX_nvidia.so.550.107.02 ro,nosuid,nodev,relatime master:1 - ext4 /dev/nvme0n1p2 rw,errors=remount-ro
+6170 6133 259:2 /usr/lib/x86_64-linux-gnu/libcuda.so.550.107.02 /usr/lib/x86_64-linux-gnu/libcuda.so.550.107.02 ro,nosuid,nodev,relatime master:1 - ext4 /dev/nvme0n1p2 rw,errors=remount-ro
+6171 6133 259:2 /usr/lib/x86_64-linux-gnu/libcudadebugger.so.550.107.02 /usr/lib/x86_64-linux-gnu/libcudadebugger.so.550.107.02 ro,nosuid,nodev,relatime master:1 - ext4 /dev/nvme0n1p2 rw,errors=remount-ro
+6172 6133 259:2 /usr/lib/x86_64-linux-gnu/libnvcuvid.so.550.107.02 /usr/lib/x86_64-linux-gnu/libnvcuvid.so.550.107.02 ro,nosuid,nodev,relatime master:1 - ext4 /dev/nvme0n1p2 rw,errors=remount-ro
+6173 6133 259:2 /usr/lib/x86_64-linux-gnu/libnvidia-allocator.so.550.107.02 /usr/lib/x86_64-linux-gnu/libnvidia-allocator.so.550.107.02 ro,nosuid,nodev,relatime master:1 - ext4 /dev/nvme0n1p2 rw,errors=remount-ro
+6174 6133 259:2 /usr/lib/x86_64-linux-gnu/libnvidia-cfg.so.550.107.02 /usr/lib/x86_64-linux-gnu/libnvidia-cfg.so.550.107.02 ro,nosuid,nodev,relatime master:1 - ext4 /dev/nvme0n1p2 rw,errors=remount-ro
+6175 6133 259:2 /usr/lib/x86_64-linux-gnu/libnvidia-egl-gbm.so.1.1.1 /usr/lib/x86_64-linux-gnu/libnvidia-egl-gbm.so.1.1.1 ro,nosuid,nodev,relatime master:1 - ext4 /dev/nvme0n1p2 rw,errors=remount-ro
+6176 6133 259:2 /usr/lib/x86_64-linux-gnu/libnvidia-egl-wayland.so.1.1.9 /usr/lib/x86_64-linux-gnu/libnvidia-egl-wayland.so.1.1.9 ro,nosuid,nodev,relatime master:1 - ext4 /dev/nvme0n1p2 rw,errors=remount-ro
+6177 6133 259:2 /usr/lib/x86_64-linux-gnu/libnvidia-eglcore.so.550.107.02 /usr/lib/x86_64-linux-gnu/libnvidia-eglcore.so.550.107.02 ro,nosuid,nodev,relatime master:1 - ext4 /dev/nvme0n1p2 rw,errors=remount-ro
+6178 6133 259:2 /usr/lib/x86_64-linux-gnu/libnvidia-encode.so.550.107.02 /usr/lib/x86_64-linux-gnu/libnvidia-encode.so.550.107.02 ro,nosuid,nodev,relatime master:1 - ext4 /dev/nvme0n1p2 rw,errors=remount-ro
+6179 6133 259:2 /usr/lib/x86_64-linux-gnu/libnvidia-fbc.so.550.107.02 /usr/lib/x86_64-linux-gnu/libnvidia-fbc.so.550.107.02 ro,nosuid,nodev,relatime master:1 - ext4 /dev/nvme0n1p2 rw,errors=remount-ro
+6180 6133 259:2 /usr/lib/x86_64-linux-gnu/libnvidia-glcore.so.550.107.02 /usr/lib/x86_64-linux-gnu/libnvidia-glcore.so.550.107.02 ro,nosuid,nodev,relatime master:1 - ext4 /dev/nvme0n1p2 rw,errors=remount-ro
+6181 6133 259:2 /usr/lib/x86_64-linux-gnu/libnvidia-glsi.so.550.107.02 /usr/lib/x86_64-linux-gnu/libnvidia-glsi.so.550.107.02 ro,nosuid,nodev,relatime master:1 - ext4 /dev/nvme0n1p2 rw,errors=remount-ro
+6182 6133 259:2 /usr/lib/x86_64-linux-gnu/libnvidia-glvkspirv.so.550.107.02 /usr/lib/x86_64-linux-gnu/libnvidia-glvkspirv.so.550.107.02 ro,nosuid,nodev,relatime master:1 - ext4 /dev/nvme0n1p2 rw,errors=remount-ro
+6183 6133 259:2 /usr/lib/x86_64-linux-gnu/libnvidia-gpucomp.so.550.107.02 /usr/lib/x86_64-linux-gnu/libnvidia-gpucomp.so.550.107.02 ro,nosuid,nodev,relatime master:1 - ext4 /dev/nvme0n1p2 rw,errors=remount-ro
+6184 6133 259:2 /usr/lib/x86_64-linux-gnu/libnvidia-ml.so.550.107.02 /usr/lib/x86_64-linux-gnu/libnvidia-ml.so.550.107.02 ro,nosuid,nodev,relatime master:1 - ext4 /dev/nvme0n1p2 rw,errors=remount-ro
+6185 6133 259:2 /usr/lib/x86_64-linux-gnu/libnvidia-ngx.so.550.107.02 /usr/lib/x86_64-linux-gnu/libnvidia-ngx.so.550.107.02 ro,nosuid,nodev,relatime master:1 - ext4 /dev/nvme0n1p2 rw,errors=remount-ro
+6186 6133 259:2 /usr/lib/x86_64-linux-gnu/libnvidia-nvvm.so.550.107.02 /usr/lib/x86_64-linux-gnu/libnvidia-nvvm.so.550.107.02 ro,nosuid,nodev,relatime master:1 - ext4 /dev/nvme0n1p2 rw,errors=remount-ro
+6187 6133 259:2 /usr/lib/x86_64-linux-gnu/libnvidia-opencl.so.550.107.02 /usr/lib/x86_64-linux-gnu/libnvidia-opencl.so.550.107.02 ro,nosuid,nodev,relatime master:1 - ext4 /dev/nvme0n1p2 rw,errors=remount-ro
+6188 6133 259:2 /usr/lib/x86_64-linux-gnu/libnvidia-opticalflow.so.550.107.02 /usr/lib/x86_64-linux-gnu/libnvidia-opticalflow.so.550.107.02 ro,nosuid,nodev,relatime master:1 - ext4 /dev/nvme0n1p2 rw,errors=remount-ro
+6189 6133 259:2 /usr/lib/x86_64-linux-gnu/libnvidia-pkcs11-openssl3.so.550.107.02 /usr/lib/x86_64-linux-gnu/libnvidia-pkcs11-openssl3.so.550.107.02 ro,nosuid,nodev,relatime master:1 - ext4 /dev/nvme0n1p2 rw,errors=remount-ro
+6190 6133 259:2 /usr/lib/x86_64-linux-gnu/libnvidia-pkcs11.so.550.107.02 /usr/lib/x86_64-linux-gnu/libnvidia-pkcs11.so.550.107.02 ro,nosuid,nodev,relatime master:1 - ext4 /dev/nvme0n1p2 rw,errors=remount-ro
+6191 6133 259:2 /usr/lib/x86_64-linux-gnu/libnvidia-ptxjitcompiler.so.550.107.02 /usr/lib/x86_64-linux-gnu/libnvidia-ptxjitcompiler.so.550.107.02 ro,nosuid,nodev,relatime master:1 - ext4 /dev/nvme0n1p2 rw,errors=remount-ro
+6192 6133 259:2 /usr/lib/x86_64-linux-gnu/libnvidia-rtcore.so.550.107.02 /usr/lib/x86_64-linux-gnu/libnvidia-rtcore.so.550.107.02 ro,nosuid,nodev,relatime master:1 - ext4 /dev/nvme0n1p2 rw,errors=remount-ro
+6193 6133 259:2 /usr/lib/x86_64-linux-gnu/libnvidia-tls.so.550.107.02 /usr/lib/x86_64-linux-gnu/libnvidia-tls.so.550.107.02 ro,nosuid,nodev,relatime master:1 - ext4 /dev/nvme0n1p2 rw,errors=remount-ro
+6194 6133 259:2 /usr/lib/x86_64-linux-gnu/libnvoptix.so.550.107.02 /usr/lib/x86_64-linux-gnu/libnvoptix.so.550.107.02 ro,nosuid,nodev,relatime master:1 - ext4 /dev/nvme0n1p2 rw,errors=remount-ro
+6195 6133 259:2 /usr/share/nvidia/nvoptix.bin /usr/share/nvidia/nvoptix.bin ro,nosuid,nodev,relatime master:1 - ext4 /dev/nvme0n1p2 rw,errors=remount-ro
+6196 6133 259:2 /usr/lib/firmware/nvidia/550.107.02/gsp_ga10x.bin /usr/lib/firmware/nvidia/550.107.02/gsp_ga10x.bin ro,nosuid,nodev,relatime master:1 - ext4 /dev/nvme0n1p2 rw,errors=remount-ro
+6197 6133 259:2 /usr/lib/firmware/nvidia/550.107.02/gsp_tu10x.bin /usr/lib/firmware/nvidia/550.107.02/gsp_tu10x.bin ro,nosuid,nodev,relatime master:1 - ext4 /dev/nvme0n1p2 rw,errors=remount-ro
+6198 6133 259:2 /usr/lib/x86_64-linux-gnu/vdpau/libvdpau_nvidia.so.550.107.02 /usr/lib/x86_64-linux-gnu/vdpau/libvdpau_nvidia.so.550.107.02 ro,nosuid,nodev,relatime master:1 - ext4 /dev/nvme0n1p2 rw,errors=remount-ro
+6199 6133 259:2 /usr/share/X11/xorg.conf.d/10-nvidia.conf /usr/share/X11/xorg.conf.d/10-nvidia.conf ro,nosuid,nodev,relatime master:1 - ext4 /dev/nvme0n1p2 rw,errors=remount-ro
+6200 6133 259:2 /usr/share/egl/egl_external_platform.d/10_nvidia_wayland.json /usr/share/egl/egl_external_platform.d/10_nvidia_wayland.json ro,nosuid,nodev,relatime master:1 - ext4 /dev/nvme0n1p2 rw,errors=remount-ro
+6201 6133 259:2 /usr/share/egl/egl_external_platform.d/15_nvidia_gbm.json /usr/share/egl/egl_external_platform.d/15_nvidia_gbm.json ro,nosuid,nodev,relatime master:1 - ext4 /dev/nvme0n1p2 rw,errors=remount-ro
+6202 6133 259:2 /usr/share/glvnd/egl_vendor.d/10_nvidia.json /usr/share/glvnd/egl_vendor.d/10_nvidia.json ro,nosuid,nodev,relatime master:1 - ext4 /dev/nvme0n1p2 rw,errors=remount-ro
+6203 6133 259:2 /usr/lib/x86_64-linux-gnu/nvidia/xorg/libglxserver_nvidia.so.550.107.02 /usr/lib/x86_64-linux-gnu/nvidia/xorg/libglxserver_nvidia.so.550.107.02 ro,nosuid,nodev,relatime master:1 - ext4 /dev/nvme0n1p2 rw,errors=remount-ro
+6204 6133 259:2 /usr/lib/x86_64-linux-gnu/nvidia/xorg/nvidia_drv.so /usr/lib/x86_64-linux-gnu/nvidia/xorg/nvidia_drv.so ro,nosuid,nodev,relatime master:1 - ext4 /dev/nvme0n1p2 rw,errors=remount-ro
+762 6136 0:108 /bus /proc/bus ro,nosuid,nodev,noexec,relatime - proc proc rw
+764 6136 0:108 /fs /proc/fs ro,nosuid,nodev,noexec,relatime - proc proc rw
+765 6136 0:108 /irq /proc/irq ro,nosuid,nodev,noexec,relatime - proc proc rw
+766 6136 0:108 /sys /proc/sys ro,nosuid,nodev,noexec,relatime - proc proc rw
+767 6136 0:108 /sysrq-trigger /proc/sysrq-trigger ro,nosuid,nodev,noexec,relatime - proc proc rw
+768 6136 0:114 / /proc/asound ro,relatime - tmpfs tmpfs ro,size=4k,nr_inodes=1,inode64
+769 6136 0:114 / /proc/acpi ro,relatime - tmpfs tmpfs ro,size=4k,nr_inodes=1,inode64
+770 6136 0:107 /null /proc/kcore rw,nosuid - tmpfs tmpfs rw,size=65536k,mode=755,inode64
+771 6136 0:107 /null /proc/keys rw,nosuid - tmpfs tmpfs rw,size=65536k,mode=755,inode64
+772 6136 0:107 /null /proc/latency_stats rw,nosuid - tmpfs tmpfs rw,size=65536k,mode=755,inode64
+773 6136 0:107 /null /proc/timer_list rw,nosuid - tmpfs tmpfs rw,size=65536k,mode=755,inode64
+774 6136 0:114 / /proc/scsi ro,relatime - tmpfs tmpfs ro,size=4k,nr_inodes=1,inode64
+775 6137 0:114 / /sys/firmware ro,relatime - tmpfs tmpfs ro,size=4k,nr_inodes=1,inode64
+776 6137 0:114 / /sys/devices/virtual/powercap ro,relatime - tmpfs tmpfs ro,size=4k,nr_inodes=1,inode64
