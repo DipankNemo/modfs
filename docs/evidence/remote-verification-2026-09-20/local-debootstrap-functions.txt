@@ -1,0 +1,34 @@
+setup_available () {
+	local m1 c path pkgdest pkg
+	m1="${MIRRORS%% *}"
+
+	archs="$ARCH"
+	if [ $ARCH_ALL_SUPPORTED -eq 1 ]; then
+		archs="all $ARCH"
+	fi
+
+	for s in $SUITE $EXTRA_SUITES; do
+		for a in $archs; do
+			for c in ${COMPONENTS:-$(echo "${USE_COMPONENTS}" | tr '|' ' ')}; do
+				path="dists/$s/$c/binary-$a/Packages"
+				pkgdest="$TARGET/$($DLDEST pkg "$s" "$c" "$a" "$m1" "$path")"
+				# XXX: What if a package is in more than one component?
+				# -- cjwatson 2009-07-29
+				# XXX: ...or suite?
+				# -- jrtc27 2019-06-11
+				"$PKGDETAILS" STANZAS "$pkgdest" "$@"
+			done
+		done
+	done >"$TARGET/var/lib/dpkg/available"
+
+	for pkg; do
+		echo "$pkg install"
+	done | in_target dpkg --set-selections
+}
+/usr/share/debootstrap/functions:1461:merge_usr_entry() {
+/usr/share/debootstrap/functions:1484:		merge_usr_entry "$entry"
+/usr/share/debootstrap/functions:1489:merge_usr() {
+/usr/share/debootstrap/functions:1524:		merge_usr_entry "$TARGET/$dir"
+/usr/share/debootstrap/functions:1533:setup_merged_usr() {
+/usr/share/debootstrap/scripts/debian-common:64:	# via merge_usr, or we deliberately avoid that migration by creating
+/usr/share/debootstrap/scripts/debian-common:96:	merge_usr

@@ -1,0 +1,10 @@
+{
+  "archives_checked": 41,
+  "manifest_digests_verified": 82,
+  "module_archives_byte_identical": 0,
+  "module_count": 40,
+  "module_package_maps_equal": 39,
+  "gpu_runtime_library_bindings": 3,
+  "boot_input_hashes_equal_to_source": 3,
+  "tcg_boot": "PASS; unchanged verdict parser"
+}

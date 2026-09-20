@@ -1,0 +1,455 @@
+Welcome to vast.ai. If authentication fails, try again after a few seconds, and double check your ssh key.
+Have fun!
+AI agents: READ /etc/vast-agents-guide.md (also linked as ./AGENTS.md) before acting on or describing this instance: it is the operating guide. ('vast-capabilities' shows live state only, not the guide.)
+Hit:1 http://archive.ubuntu.com/ubuntu jammy InRelease
+Get:2 http://archive.ubuntu.com/ubuntu jammy-updates InRelease [128 kB]
+Get:3 http://security.ubuntu.com/ubuntu jammy-security InRelease [129 kB]
+Get:4 http://archive.ubuntu.com/ubuntu jammy-backports InRelease [127 kB]
+Get:5 http://archive.ubuntu.com/ubuntu jammy/universe amd64 Packages [14.1 MB]
+Get:6 http://archive.ubuntu.com/ubuntu jammy/universe Translation-en [5652 kB]
+Get:7 http://archive.ubuntu.com/ubuntu jammy/universe amd64 c-n-f Metadata [286 kB]
+Get:8 http://archive.ubuntu.com/ubuntu jammy/multiverse amd64 Packages [217 kB]
+Get:9 http://archive.ubuntu.com/ubuntu jammy/multiverse Translation-en [112 kB]
+Get:10 http://archive.ubuntu.com/ubuntu jammy/multiverse amd64 c-n-f Metadata [8372 B]
+Get:11 http://archive.ubuntu.com/ubuntu jammy-updates/main amd64 Packages [3807 kB]
+Get:12 http://archive.ubuntu.com/ubuntu jammy-updates/universe amd64 Packages [1283 kB]
+Get:13 http://archive.ubuntu.com/ubuntu jammy-updates/universe Translation-en [324 kB]
+Get:14 http://archive.ubuntu.com/ubuntu jammy-updates/universe amd64 c-n-f Metadata [30.8 kB]
+Get:15 http://archive.ubuntu.com/ubuntu jammy-updates/multiverse amd64 Packages [76.8 kB]
+Get:16 http://archive.ubuntu.com/ubuntu jammy-updates/multiverse Translation-en [15.9 kB]
+Get:17 http://archive.ubuntu.com/ubuntu jammy-updates/multiverse amd64 c-n-f Metadata [756 B]
+Get:18 http://archive.ubuntu.com/ubuntu jammy-backports/main amd64 Packages [95.7 kB]
+Get:19 http://archive.ubuntu.com/ubuntu jammy-backports/main Translation-en [11.4 kB]
+Get:20 http://archive.ubuntu.com/ubuntu jammy-backports/main amd64 c-n-f Metadata [412 B]
+Get:21 http://archive.ubuntu.com/ubuntu jammy-backports/restricted amd64 c-n-f Metadata [116 B]
+Get:22 http://archive.ubuntu.com/ubuntu jammy-backports/universe amd64 Packages [33.7 kB]
+Get:23 http://archive.ubuntu.com/ubuntu jammy-backports/universe Translation-en [16.9 kB]
+Get:24 http://archive.ubuntu.com/ubuntu jammy-backports/universe amd64 c-n-f Metadata [676 B]
+Get:25 http://archive.ubuntu.com/ubuntu jammy-backports/multiverse amd64 c-n-f Metadata [116 B]
+Get:26 http://security.ubuntu.com/ubuntu jammy-security/universe amd64 Packages [1048 kB]
+Get:27 http://security.ubuntu.com/ubuntu jammy-security/universe Translation-en [235 kB]
+Get:28 http://security.ubuntu.com/ubuntu jammy-security/universe amd64 c-n-f Metadata [23.2 kB]
+Get:29 http://security.ubuntu.com/ubuntu jammy-security/multiverse amd64 Packages [69.4 kB]
+Get:30 http://security.ubuntu.com/ubuntu jammy-security/multiverse Translation-en [12.9 kB]
+Get:31 http://security.ubuntu.com/ubuntu jammy-security/multiverse amd64 c-n-f Metadata [544 B]
+Fetched 27.8 MB in 15s (1807 kB/s)
+Reading package lists...
+Reading package lists...
+Building dependency tree...
+Reading state information...
+gdisk is already the newest version (1.0.8-4build1).
+gdisk set to manually installed.
+python3-yaml is already the newest version (5.4.1-1ubuntu1).
+python3-yaml set to manually installed.
+squashfs-tools is already the newest version (1:4.5-3build1).
+squashfs-tools set to manually installed.
+zstd is already the newest version (1.4.8+dfsg-3build1).
+zstd set to manually installed.
+curl is already the newest version (7.81.0-1ubuntu1.27).
+curl set to manually installed.
+rsync is already the newest version (3.2.7-0ubuntu0.22.04.7).
+rsync set to manually installed.
+util-linux is already the newest version (2.37.2-4ubuntu3.6).
+util-linux set to manually installed.
+The following additional packages will be installed:
+  ibverbs-providers libboost-iostreams1.74.0 libboost-thread1.74.0 libdaxctl1
+  libgfapi0 libgfrpc0 libgfxdr0 libglusterfs0 libibverbs1 libiscsi7 libndctl6
+  libnl-route-3-200 libpmem1 libpmemobj1 librados2 librbd1 librdmacm1
+  liburing2 qemu-block-extra
+Suggested packages:
+  squid-deb-proxy-client debian-archive-keyring arch-test
+The following NEW packages will be installed:
+  attr debootstrap ibverbs-providers libboost-iostreams1.74.0
+  libboost-thread1.74.0 libdaxctl1 libgfapi0 libgfrpc0 libgfxdr0 libglusterfs0
+  libibverbs1 libiscsi7 libndctl6 libnl-route-3-200 libpmem1 libpmemobj1
+  librados2 librbd1 librdmacm1 liburing2 qemu-block-extra qemu-utils
+0 upgraded, 22 newly installed, 0 to remove and 0 not upgraded.
+Need to get 10.8 MB of archives.
+After this operation, 46.8 MB of additional disk space will be used.
+Get:1 http://archive.ubuntu.com/ubuntu jammy-updates/main amd64 attr amd64 1:2.5.1-1ubuntu0.1 [25.0 kB]
+Get:2 http://archive.ubuntu.com/ubuntu jammy/main amd64 libnl-route-3-200 amd64 3.5.0-0.1 [180 kB]
+Get:3 http://archive.ubuntu.com/ubuntu jammy/main amd64 libibverbs1 amd64 39.0-1 [69.3 kB]
+Get:4 http://archive.ubuntu.com/ubuntu jammy/main amd64 ibverbs-providers amd64 39.0-1 [341 kB]
+Get:5 http://archive.ubuntu.com/ubuntu jammy/main amd64 libboost-iostreams1.74.0 amd64 1.74.0-14ubuntu3 [245 kB]
+Get:6 http://archive.ubuntu.com/ubuntu jammy/main amd64 libboost-thread1.74.0 amd64 1.74.0-14ubuntu3 [262 kB]
+Get:7 http://archive.ubuntu.com/ubuntu jammy/main amd64 libdaxctl1 amd64 72.1-1 [19.8 kB]
+Get:8 http://archive.ubuntu.com/ubuntu jammy-updates/main amd64 libgfxdr0 amd64 10.1-1ubuntu0.2 [22.3 kB]
+Get:9 http://archive.ubuntu.com/ubuntu jammy-updates/main amd64 libglusterfs0 amd64 10.1-1ubuntu0.2 [287 kB]
+Get:10 http://archive.ubuntu.com/ubuntu jammy-updates/main amd64 libgfrpc0 amd64 10.1-1ubuntu0.2 [47.1 kB]
+Get:11 http://archive.ubuntu.com/ubuntu jammy-updates/main amd64 libgfapi0 amd64 10.1-1ubuntu0.2 [77.3 kB]
+Get:12 http://archive.ubuntu.com/ubuntu jammy/main amd64 librdmacm1 amd64 39.0-1 [71.2 kB]
+Get:13 http://archive.ubuntu.com/ubuntu jammy/main amd64 libiscsi7 amd64 1.19.0-3build2 [70.6 kB]
+Get:14 http://archive.ubuntu.com/ubuntu jammy/main amd64 libndctl6 amd64 72.1-1 [57.7 kB]
+Get:15 http://archive.ubuntu.com/ubuntu jammy/main amd64 libpmem1 amd64 1.11.1-3build1 [81.4 kB]
+Get:16 http://archive.ubuntu.com/ubuntu jammy/main amd64 libpmemobj1 amd64 1.11.1-3build1 [124 kB]
+Get:17 http://archive.ubuntu.com/ubuntu jammy-updates/main amd64 librados2 amd64 17.2.9-0ubuntu0.22.04.3 [3603 kB]
+Get:18 http://archive.ubuntu.com/ubuntu jammy-updates/main amd64 librbd1 amd64 17.2.9-0ubuntu0.22.04.3 [3557 kB]
+Get:19 http://archive.ubuntu.com/ubuntu jammy/main amd64 liburing2 amd64 2.1-2build1 [10.3 kB]
+Get:20 http://archive.ubuntu.com/ubuntu jammy-updates/main amd64 qemu-utils amd64 1:6.2+dfsg-2ubuntu6.31 [1503 kB]
+Get:21 http://archive.ubuntu.com/ubuntu jammy-updates/main amd64 qemu-block-extra amd64 1:6.2+dfsg-2ubuntu6.31 [68.1 kB]
+Get:22 http://archive.ubuntu.com/ubuntu jammy-updates/main amd64 debootstrap all 1.0.126+nmu1ubuntu0.9 [40.8 kB]
+Fetched 10.8 MB in 1s (7650 kB/s)
+Selecting previously unselected package attr.
+(Reading database ... (Reading database ... 5%(Reading database ... 10%(Reading database ... 15%(Reading database ... 20%(Reading database ... 25%(Reading database ... 30%(Reading database ... 35%(Reading database ... 40%(Reading database ... 45%(Reading database ... 50%(Reading database ... 55%(Reading database ... 60%(Reading database ... 65%(Reading database ... 70%(Reading database ... 75%(Reading database ... 80%(Reading database ... 85%(Reading database ... 90%(Reading database ... 95%(Reading database ... 100%(Reading database ... 64626 files and directories currently installed.)
+Preparing to unpack .../00-attr_1%3a2.5.1-1ubuntu0.1_amd64.deb ...
+Unpacking attr (1:2.5.1-1ubuntu0.1) ...
+Selecting previously unselected package libnl-route-3-200:amd64.
+Preparing to unpack .../01-libnl-route-3-200_3.5.0-0.1_amd64.deb ...
+Unpacking libnl-route-3-200:amd64 (3.5.0-0.1) ...
+Selecting previously unselected package libibverbs1:amd64.
+Preparing to unpack .../02-libibverbs1_39.0-1_amd64.deb ...
+Unpacking libibverbs1:amd64 (39.0-1) ...
+Selecting previously unselected package ibverbs-providers:amd64.
+Preparing to unpack .../03-ibverbs-providers_39.0-1_amd64.deb ...
+Unpacking ibverbs-providers:amd64 (39.0-1) ...
+Selecting previously unselected package libboost-iostreams1.74.0:amd64.
+Preparing to unpack .../04-libboost-iostreams1.74.0_1.74.0-14ubuntu3_amd64.deb ...
+Unpacking libboost-iostreams1.74.0:amd64 (1.74.0-14ubuntu3) ...
+Selecting previously unselected package libboost-thread1.74.0:amd64.
+Preparing to unpack .../05-libboost-thread1.74.0_1.74.0-14ubuntu3_amd64.deb ...
+Unpacking libboost-thread1.74.0:amd64 (1.74.0-14ubuntu3) ...
+Selecting previously unselected package libdaxctl1:amd64.
+Preparing to unpack .../06-libdaxctl1_72.1-1_amd64.deb ...
+Unpacking libdaxctl1:amd64 (72.1-1) ...
+Selecting previously unselected package libgfxdr0:amd64.
+Preparing to unpack .../07-libgfxdr0_10.1-1ubuntu0.2_amd64.deb ...
+Unpacking libgfxdr0:amd64 (10.1-1ubuntu0.2) ...
+Selecting previously unselected package libglusterfs0:amd64.
+Preparing to unpack .../08-libglusterfs0_10.1-1ubuntu0.2_amd64.deb ...
+Unpacking libglusterfs0:amd64 (10.1-1ubuntu0.2) ...
+Selecting previously unselected package libgfrpc0:amd64.
+Preparing to unpack .../09-libgfrpc0_10.1-1ubuntu0.2_amd64.deb ...
+Unpacking libgfrpc0:amd64 (10.1-1ubuntu0.2) ...
+Selecting previously unselected package libgfapi0:amd64.
+Preparing to unpack .../10-libgfapi0_10.1-1ubuntu0.2_amd64.deb ...
+Unpacking libgfapi0:amd64 (10.1-1ubuntu0.2) ...
+Selecting previously unselected package librdmacm1:amd64.
+Preparing to unpack .../11-librdmacm1_39.0-1_amd64.deb ...
+Unpacking librdmacm1:amd64 (39.0-1) ...
+Selecting previously unselected package libiscsi7:amd64.
+Preparing to unpack .../12-libiscsi7_1.19.0-3build2_amd64.deb ...
+Unpacking libiscsi7:amd64 (1.19.0-3build2) ...
+Selecting previously unselected package libndctl6:amd64.
+Preparing to unpack .../13-libndctl6_72.1-1_amd64.deb ...
+Unpacking libndctl6:amd64 (72.1-1) ...
+Selecting previously unselected package libpmem1:amd64.
+Preparing to unpack .../14-libpmem1_1.11.1-3build1_amd64.deb ...
+Unpacking libpmem1:amd64 (1.11.1-3build1) ...
+Selecting previously unselected package libpmemobj1:amd64.
+Preparing to unpack .../15-libpmemobj1_1.11.1-3build1_amd64.deb ...
+Unpacking libpmemobj1:amd64 (1.11.1-3build1) ...
+Selecting previously unselected package librados2.
+Preparing to unpack .../16-librados2_17.2.9-0ubuntu0.22.04.3_amd64.deb ...
+Unpacking librados2 (17.2.9-0ubuntu0.22.04.3) ...
+Selecting previously unselected package librbd1.
+Preparing to unpack .../17-librbd1_17.2.9-0ubuntu0.22.04.3_amd64.deb ...
+Unpacking librbd1 (17.2.9-0ubuntu0.22.04.3) ...
+Selecting previously unselected package liburing2:amd64.
+Preparing to unpack .../18-liburing2_2.1-2build1_amd64.deb ...
+Unpacking liburing2:amd64 (2.1-2build1) ...
+Selecting previously unselected package qemu-utils.
+Preparing to unpack .../19-qemu-utils_1%3a6.2+dfsg-2ubuntu6.31_amd64.deb ...
+Unpacking qemu-utils (1:6.2+dfsg-2ubuntu6.31) ...
+Selecting previously unselected package qemu-block-extra.
+Preparing to unpack .../20-qemu-block-extra_1%3a6.2+dfsg-2ubuntu6.31_amd64.deb ...
+Unpacking qemu-block-extra (1:6.2+dfsg-2ubuntu6.31) ...
+Selecting previously unselected package debootstrap.
+Preparing to unpack .../21-debootstrap_1.0.126+nmu1ubuntu0.9_all.deb ...
+Unpacking debootstrap (1.0.126+nmu1ubuntu0.9) ...
+Setting up debootstrap (1.0.126+nmu1ubuntu0.9) ...
+Setting up attr (1:2.5.1-1ubuntu0.1) ...
+Setting up libboost-iostreams1.74.0:amd64 (1.74.0-14ubuntu3) ...
+Setting up libnl-route-3-200:amd64 (3.5.0-0.1) ...
+Setting up libglusterfs0:amd64 (10.1-1ubuntu0.2) ...
+Setting up libdaxctl1:amd64 (72.1-1) ...
+Setting up libndctl6:amd64 (72.1-1) ...
+Setting up liburing2:amd64 (2.1-2build1) ...
+Setting up libpmem1:amd64 (1.11.1-3build1) ...
+Setting up libgfxdr0:amd64 (10.1-1ubuntu0.2) ...
+Setting up libboost-thread1.74.0:amd64 (1.74.0-14ubuntu3) ...
+Setting up libibverbs1:amd64 (39.0-1) ...
+Setting up ibverbs-providers:amd64 (39.0-1) ...
+Setting up libpmemobj1:amd64 (1.11.1-3build1) ...
+Setting up qemu-utils (1:6.2+dfsg-2ubuntu6.31) ...
+Setting up libgfrpc0:amd64 (10.1-1ubuntu0.2) ...
+Setting up librdmacm1:amd64 (39.0-1) ...
+Setting up librados2 (17.2.9-0ubuntu0.22.04.3) ...
+Setting up librbd1 (17.2.9-0ubuntu0.22.04.3) ...
+Setting up libgfapi0:amd64 (10.1-1ubuntu0.2) ...
+Setting up libiscsi7:amd64 (1.19.0-3build2) ...
+Setting up qemu-block-extra (1:6.2+dfsg-2ubuntu6.31) ...
+Created symlink /etc/systemd/system/multi-user.target.wants/run-qemu.mount → /lib/systemd/system/run-qemu.mount.
+Processing triggers for man-db (2.10.2-1) ...
+Processing triggers for libc-bin (2.35-0ubuntu3.15) ...
+
+Running kernel seems to be up-to-date.
+
+No services need to be restarted.
+
+No containers need to be restarted.
+
+No user sessions are running outdated binaries.
+
+No VM guests are running outdated hypervisor (qemu) binaries on this host.
+suggested_install_exit=0
+
+=== 1. Host tools ===
+  [ ok ] debootstrap
+  [ ok ] mksquashfs
+  [ ok ] unsquashfs
+  [ ok ] curl
+  [ ok ] mount
+  [ ok ] umount
+  [ ok ] chroot
+  [ ok ] losetup
+  [ ok ] rsync
+  [ ok ] sgdisk
+  [ ok ] mkfs.ext4
+  [ ok ] getfattr
+  [ ok ] qemu-img
+  [ ok ] zstd
+  [ ok ] python3 yaml
+  ...... install missing: apt install debootstrap squashfs-tools rsync gdisk
+  ......                  attr qemu-utils util-linux curl python3-yaml zstd
+
+=== 2. Kernel support ===
+  [ ok ] overlayfs available
+  [ ok ] squashfs available
+
+=== 3. Assumption A: snapshot 20260701T000000Z is reachable ===
+  [ ok ] jammy Release (HTTP 200)
+  [ ok ] jammy-updates Release (HTTP 200)
+  [ ok ] jammy-security Release (HTTP 200)
+  ...... archive Date: Thu, 21 Apr 2022 17:16:08 UTC
+
+=== 4. Assumption B: overlay upperdir survives SquashFS ===
+  [ ok ] overlay mounted
+  [ ok ] whiteout created as char device 0:0
+  [ ok ] opaque dir marker present (trusted.overlay.opaque)
+  [FAIL] mksquashfs failed
+mount: /srv/modfs/build/verify_wo/mnt_delta: failed to setup loop device for /srv/modfs/build/verify_wo/delta.sqsh.
+  [FAIL] cannot mount delta.sqsh
+  [FAIL] whiteout LOST in squashfs
+  [ ok ] recomposed base + delta
+  [ ok ] kept file visible
+  [FAIL] added file missing
+  [FAIL] deleted file still visible -- whiteout not honoured
+  [FAIL] new file in replaced dir missing
+  [FAIL] old dir content leaks through -- opaque marker not honoured
+
+=== RESULT: 25 passed, 7 failed ===
+Fix failures before writing the builder.
+guest_post_install_verify_exit=1
+mksquashfs version 4.5 (2021/07/22)
+copyright (C) 2021 Phillip Lougher <phillip@squashfs.org.uk>
+
+This program is free software; you can redistribute it and/or
+modify it under the terms of the GNU General Public License
+as published by the Free Software Foundation; either version 2,
+or (at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+GNU General Public License for more details.
+-mkfs-time <time>	set mkfs time to <time> which is an unsigned int
+-fstime <time>		synonym for mkfs-time
+-all-time <time>	set all inode times to <time> which is an unsigned int
+-no-xattrs		don't store extended attributes
+-xattrs			store extended attributes (default)
+mksquashfs: invalid option
+
+SYNTAX:mksquashfs source1 source2 ...  dest [options] [-e list of exclude
+dirs/files]
+
+Filesystem build options:
+-tar			read uncompressed tar file from standard in (stdin)
+-no-strip		act like tar, and do not strip leading directories
+			from source files
+-tarstyle		alternative name for -no-strip
+-cpiostyle		act like cpio, and read files from standard in (stdin)
+-cpiostyle0		like -cpiostyle, but filenames are null terminated
+-comp <comp>		select <comp> compression
+			Compressors available:
+				gzip (default)
+				lzma
+				lzo
+				lz4
+				xz
+				zstd
+-b <block_size>		set data block to <block_size>.  Default 128 Kbytes
+			Optionally a suffix of K or M can be given to specify
+			Kbytes or Mbytes respectively
+-reproducible		build images that are reproducible (default)
+-not-reproducible	build images that are not reproducible
+-mkfs-time <time>	set mkfs time to <time> which is an unsigned int
+-fstime <time>		synonym for mkfs-time
+-all-time <time>	set all inode times to <time> which is an unsigned int
+-no-exports		don't make filesystem exportable via NFS (-tar default)
+-exports		make filesystem exportable via NFS (default)
+-no-sparse		don't detect sparse files
+-no-xattrs		don't store extended attributes
+-xattrs			store extended attributes (default)
+-noI			do not compress inode table
+-noId			do not compress the uid/gid table (implied by -noI)
+-noD			do not compress data blocks
+-noF			do not compress fragment blocks
+-noX			do not compress extended attributes
+-no-tailends		don't pack tail ends into fragments (default)
+-tailends		pack tail ends into fragments
+-no-fragments		do not use fragments
+-always-use-fragments	use fragment blocks for files larger than block size
+-no-duplicates		do not perform duplicate checking
+-no-hardlinks		do not hardlink files, instead store duplicates
+-all-root		make all files owned by root
+-root-time <time>	set root directory time to <time>
+-root-mode <mode>	set root directory permissions to octal <mode>
+-root-uid <uid>		set root directory owner to <uid>
+-root-gid <gid>		set root directory group to <gid>
+-force-uid <uid>	set all file uids to <uid>
+-force-gid <gid>	set all file gids to <gid>
+-nopad			do not pad filesystem to a multiple of 4K
+-keep-as-directory	if one source directory is specified, create a root
+			directory containing that directory, rather than the
+			contents of the directory
+-action <action@expr>	evaluate <expr> on every file, and execute <action>
+			if it returns TRUE
+-log-action <act@expr>	as above, but log expression evaluation results and
+			actions performed
+-true-action <act@expr>	as above, but only log expressions which return TRUE
+-false-action <act@exp>	as above, but only log expressions which return FALSE
+-action-file <file>	as action, but read actions from <file>
+-log-action-file <file>	as -log-action, but read actions from <file>
+-true-action-file <f>	as -true-action, but read actions from <f>
+-false-action-file <f>	as -false-action, but read actions from <f>
+
+Filesystem filter options:
+-p <pseudo-definition>	Add pseudo file definition
+-pf <pseudo-file>	Add list of pseudo file definitions
+			Pseudo definitions should be of the format
+				filename d mode uid gid
+				filename m mode uid gid
+				filename b mode uid gid major minor
+				filename c mode uid gid major minor
+				filename f mode uid gid command
+				filename s mode uid gid symlink
+				filename i mode uid gid [s|f]
+				filename l filename
+				filename L pseudo_filename
+				filename D time mode uid gid
+				filename M time mode uid gid
+				filename B time mode uid gid major minor
+				filename C time mode uid gid major minor
+				filename F time mode uid gid command
+				filename S time mode uid gid symlink
+				filename I time mode uid gid [s|f]
+				filename R time mode uid gid length offset
+-sort <sort_file>	sort files according to priorities in <sort_file>.  One
+			file or dir with priority per line.  Priority -32768 to
+			32767, default priority 0
+-ef <exclude_file>	list of exclude dirs/files.  One per line
+-wildcards		Allow extended shell wildcards (globbing) to be used in
+			exclude dirs/files
+-regex			Allow POSIX regular expressions to be used in exclude
+			dirs/files
+-one-file-system	Do not cross filesystem boundaries when scanning sources
+
+Filesystem append options:
+-noappend		do not append to existing filesystem
+-root-becomes <name>	when appending source files/directories, make the
+			original root become a subdirectory in the new root
+			called <name>, rather than adding the new source items
+			to the original root
+
+Mksquashfs runtime options:
+-version		print version, licence and copyright message
+-exit-on-error		treat normally ignored errors as fatal
+-recover <name>		recover filesystem data using recovery file <name>
+-no-recovery		don't generate a recovery file
+-recovery-path <name>	use <name> as the directory to store the recovery file
+-quiet			no verbose output
+-info			print files written to filesystem
+-no-progress		don't display the progress bar
+-progress		display progress bar when using the -info option
+-throttle <percentage>	throttle the I/O input rate by the given percentage.
+			This can be used to reduce the I/O and CPU consumption
+			of Mksquashfs
+-limit <percentage>	limit the I/O input rate to the given percentage.
+			This can be used to reduce the I/O and CPU consumption
+			of Mksquashfs (alternative to -throttle)
+-processors <number>	Use <number> processors.  By default will use number of
+			processors available
+-mem <size>		Use <size> physical memory.  Currently set to 1984M
+			Optionally a suffix of K, M or G can be given to specify
+			Kbytes, Mbytes or Gbytes respectively
+
+Miscellaneous options:
+-root-owned		alternative name for -all-root
+-offset <offset>	Skip <offset> bytes at the beginning of <dest>.
+			Optionally a suffix of K, M or G can be given to specify
+			Kbytes, Mbytes or Gbytes respectively.
+			Default 0 bytes.
+-o <offset>		synonym for -offset
+-noInodeCompression	alternative name for -noI
+-noIdTableCompression	alternative name for -noId
+-noDataCompression	alternative name for -noD
+-noFragmentCompression	alternative name for -noF
+-noXattrCompression	alternative name for -noX
+
+-help			output this options text to stdout
+-h			output this options text to stdout
+
+-Xhelp			print compressor options for selected compressor
+
+Compressors available and compressor specific options:
+	gzip (default)
+	  -Xcompression-level <compression-level>
+		<compression-level> should be 1 .. 9 (default 9)
+	  -Xwindow-size <window-size>
+		<window-size> should be 8 .. 15 (default 15)
+	  -Xstrategy strategy1,strategy2,...,strategyN
+		Compress using strategy1,strategy2,...,strategyN in turn
+		and choose the best compression.
+		Available strategies: default, filtered, huffman_only,
+		run_length_encoded and fixed
+	lzma (no options)
+	lzo
+	  -Xalgorithm <algorithm>
+		Where <algorithm> is one of:
+			lzo1x_1
+			lzo1x_1_11
+			lzo1x_1_12
+			lzo1x_1_15
+			lzo1x_999 (default)
+	  -Xcompression-level <compression-level>
+		<compression-level> should be 1 .. 9 (default 8)
+		Only applies to lzo1x_999 algorithm
+	lz4
+	  -Xhc
+		Compress using LZ4 High Compression
+	xz
+	  -Xbcj filter1,filter2,...,filterN
+		Compress using filter1,filter2,...,filterN in turn
+		(in addition to no filter), and choose the best compression.
+		Available filters: x86, arm, armthumb, powerpc, sparc, ia64
+	  -Xdict-size <dict-size>
+		Use <dict-size> as the XZ dictionary size.  The dictionary size
+		can be specified as a percentage of the block size, or as an
+		absolute value.  The dictionary size must be less than or equal
+		to the block size and 8192 bytes or larger.  It must also be
+		storable in the xz header as either 2^n or as 2^n+2^(n+1).
+		Example dict-sizes are 75%, 50%, 37.5%, 25%, or 32K, 16K, 8K
+		etc.
+	zstd
+	  -Xcompression-level <compression-level>
+		<compression-level> should be 1 .. 22 (default 15)
+
+The README for the Squash-tools 4.5 release, describing the new features can be
+squash_option_exit=1
+read here https://github.com/plougher/squashfs-tools/blob/master/README-4.5
+
+The Squashfs-tools USAGE guide can be read here
+https://github.com/plougher/squashfs-tools/blob/master/USAGE
+
+The ACTIONS-README file describing how to use the new actions feature can be
+read here https://github.com/plougher/squashfs-tools/blob/master/ACTIONS-README

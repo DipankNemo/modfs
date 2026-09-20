@@ -4854,3 +4854,450 @@ shipping pays for a local spec change (79.80% here); this pin move re-ships
 one base instead of shipping forty copies, and the node still receives a whole
 flattened image. Package security versions unavailable under the existing pin
 belong to the latter update kind, not the cheap former one.
+
+## 2026-09-20 (remote verification: initial bootstrap and environment blocker)
+
+Branch `experiment/remote-verification`, worktree `~/modfs-remote`, starts at
+`a69111baedb576ea9d093626e883b6f7cd5bd3ce`. The user authorizes autonomous
+remote builds and dependency installation, superseding CLAUDE.md's older
+privilege boundary for this task. Local artefacts remain read-only. Evidence
+is committed under `docs/evidence/remote-verification-2026-09-20/`.
+
+The supplied endpoint, `ssh -p 17288 root@91.150.160.38`, is **not the machine
+described in the brief**. Observed: Ubuntu **24.04.4** userspace in an
+unprivileged Docker container; shared host kernel **6.8.0-47-generic**; RTX
+**3060, 12288 MiB**, compute capability **8.6**, injected driver **550.107.02**.
+The requested machine was Ubuntu 22.04 with a 3060 Ti / 8 GB. Available disk
+was 87,991,222,272 bytes (about 81.95 GiB), so capacity is not the blocker.
+The instance operating guide explicitly describes its unprivileged-container
+boundary; direct capability and syscall checks confirm it.
+
+Cloned from the same GitHub origin using HTTPS (no dirty-tree transfer), into
+`/root/modfs`, and checked out the exact starting commit detached. Before
+installing anything, ran the unchanged `./scripts/00_verify.sh`. Its complete
+missing-tool list is:
+
+- `debootstrap`
+- `mksquashfs`
+- `unsquashfs`
+- `sgdisk`
+- `getfattr`
+- `qemu-img`
+
+`curl`, `mount`, `umount`, `chroot`, `losetup`, `rsync`, `mkfs.ext4`, `zstd`
+and Python's `yaml` import passed. All three July snapshot Release requests
+returned HTTP 200. The run ended **PASS=14 FAIL=7, exit 1**: six missing
+tools plus `mount -t overlay` returning permission denied. No build started.
+The raw output, including the suggested apt line, is `initial-verify.log`.
+
+`remote-environment.log` records the independent diagnosis: UID 0 but no
+`CAP_SYS_ADMIN`, `CAP_SYS_MODULE` or `CAP_SYS_BOOT` in the bounding set;
+`unshare --mount --propagation private true` and
+`unshare --user --map-root-user true` both fail with Operation not permitted;
+`losetup -f` fails, and `/dev/loop-control`, `/dev/loop0`, `/dev/kvm` and
+`/dev/fuse` are absent. `/proc/filesystems` advertising overlay/squashfs does
+not grant this process permission to mount them. Installing packages cannot
+add capabilities removed from the container's bounding set.
+
+The verifier reports kernel filesystem support as available but does not
+diagnose the capability boundary. Its opaque-directory round-trip expectation
+also conflicts with the current `SQUASH_XATTR_EXCLUDE`, which deliberately
+strips opaque markers; this is a **source inspection finding**, not a reached
+runtime failure on this endpoint (the first mount already failed).
+
+The kernel differs from the required `5.15.0-185-generic`. Installing that
+kernel inside this container would not replace its shared host kernel, and
+there is no host bootloader/reboot authority here. No kernel installation,
+reboot, driver insertion/removal or passthrough change was attempted. The
+successful initial `nvidia-smi` describes the provider's existing 550 driver;
+it is **not** evidence that the ModFS 535 artefact loads or CUDA works with it.
+
+Requested a full VM/bare-metal SSH endpoint while continuing bootstrap
+documentation. Cross-machine hashes and tier 3 remain **unmeasured**, not
+zero matches or a failed guest test. TCG only replaces KVM acceleration; it
+does not remove stage 11's prerequisite mounts and loop devices.
+
+Reproduce the initial verifier on a fresh equivalent container, before any
+tool installation (the existing clone can simply rerun the last command):
+
+```sh
+ssh -p 17288 root@91.150.160.38
+git clone https://github.com/DipankNemo/modfs.git /root/modfs
+cd /root/modfs
+git checkout --detach a69111baedb576ea9d093626e883b6f7cd5bd3ce
+./scripts/00_verify.sh
+uname -r
+capsh --print
+unshare --mount --propagation private true
+unshare --user --map-root-user true
+losetup -f
+nvidia-smi --query-gpu=name,memory.total,compute_cap,driver_version --format=csv
+```
+
+### Bootstrap after installing the suggested packages
+
+Actually ran `apt-get update` followed by the verifier's entire suggested
+package list, with `apt-get install -y` for unattended execution. Installation
+succeeded (exit 0). Rerunning the unchanged verifier gives **PASS=20 FAIL=1**:
+every listed tool is now present, but the same OverlayFS mount is denied.
+`suggested-install.log` and `post-install-verify.log` retain both runs.
+
+The suggested line is sufficient for the verifier's **command-presence list**,
+not for the project. It omits `qemu-system-x86_64` (`qemu-system-x86`),
+`mkfs.vfat` (`dosfstools`) and OVMF firmware (`ovmf`). All three remain absent
+after installing that line. An actual attempt at the small-set command
+`./scripts/11_boot_test.sh --name remote-preflight base jq` exits **2**, before
+creating a bundle, at `missing tool: qemu-system-x86_64`. This is a harness
+preflight refusal, **not a guest boot or tier-3 failure**. The verifier also
+does not check usable loop devices or distinguish root from mount authority.
+
+The supplied apt packages installed SquashFS tools **4.6.1**, which advertise
+the required `-xattrs-exclude` flag. No byte normalization or builder change
+has been made. No base/catalogue build was attempted after the failed mount
+preflight; starting one would knowingly leave an unusable partial build.
+
+### Reference inventory and possible route through this same instance
+
+Contrary to the brief, the cloned Git tree contains **no tracked JSON manifests
+or CSV hash table** (`git ls-files '*.json' '*.csv'` is empty). The actual
+reference manifests are available read-only on the local machine under
+`/srv/modfs/modules`. Read and hashed all **41** corresponding artefacts
+(base + 40 modules), checking their recorded size and digest: **41/41 match**.
+`local-reference.csv` preserves every manifest hash, expected/actual artefact
+hash and byte count. This validates the comparison input only; it is not a
+cross-machine result. The old-snapshot control records `20250401T000000Z`;
+the other forty entries record `20260701T000000Z`.
+
+The user confirms this is the only available instance and asks whether a
+privileged container and/or the existing kernel can work. The host build
+kernel need not equal the NVIDIA module ABI: a privileged container with
+working loop and filesystem mounts could build and run tier 3 on kernel 6.8.
+The 535 `.ko` test still requires its exact ABI. Privileges must be granted
+by the provider/outer container runtime, not by root inside this container.
+
+Investigating a userspace QEMU/TCG Ubuntu VM on the same remote instance as an
+alternative build environment. It would have its own kernel and mount
+authority without modifying the provider's kernel or exposing the GPU. This
+preserves independent-machine execution but adds emulation overhead and must
+be reported as such. Installed `qemu-system-x86 cloud-image-utils` on the
+remote for this attempt; download/launch results will be recorded separately.
+No GPU passthrough is proposed or enabled.
+
+### The software VM boots; Jammy exposes a second bootstrap defect
+
+The same remote instance successfully boots Canonical's dated
+`jammy/20260918/jammy-server-cloudimg-amd64.img` under QEMU **8.2.2 TCG**,
+four virtual CPUs, 8 GiB RAM, a sparse 60 GiB disk. Cloud-init completed at
+about 80 seconds guest uptime. Image SHA256 matches the published checksum:
+`48c7e1ab2005bff1c5450bd6c74d0f38482f0d750e14f320367e3e1c795035f9`.
+The first checksum filter missed Canonical's `*filename` format and failed
+without verifying anything; the corrected filter passed (`vm-launch.log`).
+Commands and cloud-init configuration are retained in the evidence README.
+
+This guest is Ubuntu **22.04.5**, kernel **5.15.0-191-generic**, with full
+guest capabilities and 60,503,744,512 bytes available before tool installation.
+It cloned the project independently from GitHub and checked out `a69111b`.
+Its **pre-install** `00_verify.sh` reports three missing tools:
+`debootstrap`, `getfattr`, `qemu-img`. This is a second bootstrap population,
+not a replacement for the original container's six-tool list. Unlike the
+container, the guest successfully mounts OverlayFS and creates a whiteout.
+The initial run totals **21 passed / 10 failed**; failures beyond the three
+missing tools cascade from the unsuccessful squash operation.
+
+Installing the suggested apt line succeeds in the guest too, but **stock
+Jammy SquashFS tools 4.5 do not support `-xattrs-exclude`**. The verifier
+checks only whether `mksquashfs` exists, then suppresses its error output.
+An isolated invocation against an empty scratch directory reproduces the
+unsupported-option failure, exit 1, without requiring any mount. The exact
+command and full usage output are in `guest-suggested-install.log`.
+Therefore the suggested apt line is insufficient even on the project's
+documented Ubuntu 22.04 host environment with working mount privileges.
+
+Installing a compatible upstream SquashFS **4.6.1** toolchain in the guest,
+along with stage-11's missing tools, to run the existing commands unchanged.
+This is a required host dependency, not a change to artifact normalization.
+The tool version, source revision and compression-library version will be
+retained with build evidence. The original local machine actually runs
+Ubuntu **24.04.5**, with SquashFS tools **4.6.1** and debootstrap
+**1.0.134ubuntu2** (read-only version checks); its successful prior builds
+did not establish that Jammy's stock build tools were sufficient.
+
+This VM is a route to remote build/boot verification only. It has no GPU;
+neither its successful boot nor the container's working `nvidia-smi` tests
+loading the ModFS NVIDIA driver against physical hardware.
+
+Compatible-tool installation completed at upstream revision
+`d8cb82d9840330f9344ec37b992595b5d7b44184`. The unchanged verifier now reaches
+the actual SquashFS/loop/recomposition operations: **31 pass, one fails**.
+Whiteout preservation and deletion masking work. The sole failure is the
+previously identified obsolete expectation that the deliberately stripped
+opaque marker hides an existing lower directory's content. No check was
+disabled or changed to make this pass. Full log: `guest-extra-tools.log`.
+
+The base build started at **16:43:04 UTC** with **59,431,784,448 free bytes**,
+inside a private mount namespace and `MODFS_ROOT=/srv/modfs/build/verification`.
+Snapshot remains July, checkout remains `a69111b`. Host tools are debootstrap
+`1.0.126+nmu1ubuntu0.9`, upstream SquashFS 4.6.1, libzstd
+`1.4.8+dfsg-3build1`. Original local tools are debootstrap 1.0.134ubuntu2,
+SquashFS 4.6.1, libzstd 1.5.5. These are potential explanatory variables, not
+yet demonstrated causes of a differing build. The original-reference delta
+builder also predates 5bd645c's switch from base.dir to mounted base.sqsh;
+the current run does not silently revert that change to improve equality.
+
+For diagnosis, the committed read-only `squash_inventory.py` consumed every
+original SquashFS via `unsquashfs -pf -`: **41 archives, 65,674 per-archive
+nodes**. Inventories retain content hashes, ownership/mode/time, links and
+xattrs; archive hashes remain the comparison metric. All 41 inventory hashes
+and sizes match the earlier reference CSV. Four independently read base files
+match the helper's digests; Python syntax check passes. The gzip JSON-lines
+inventory and plain base/jq examples are committed with reproduction details.
+No local extraction, mount, repack or artifact modification was performed.
+
+### Remote base completed; a real byte-reproducibility counterexample
+
+The base build finished at **16:57:11 UTC**, exit 0, **846.31 s wall** under
+TCG. It contains the same **113 packages with identical package metadata** as
+the original reference. Nevertheless:
+
+| Base | Bytes | SHA256 |
+|---|---:|---|
+| original | 41,717,760 | `e4fbed70bb74f351b7ad27dd61289845dccabf54fc23d6504b2011dc8d8de6c6` |
+| remote | 42,541,056 | `59a850966e54b3f9b2194ceb2570efce34d77d73c1786f0ccfc18b7f571db3e8` |
+
+The inventories identify **four added paths, none removed, three changed
+existing files**, with every other common inode record/content hash equal:
+
+- `lib32`, `libx32`, `usr/lib32`, `usr/libx32` are added by the older
+  debootstrap's `setup_merged_usr`: its amd64 branch unconditionally creates
+  those multilib directories and links. The newer implementation merges
+  existing directories. Installed source excerpts are retained.
+- `/etc/shadow` and `/etc/shadow-` stay the same size but change content.
+  For all **21 accounts**, only field index 2 (password-change day) differs:
+  **20712 → 20716**, the September 16 and September 20 build dates. The
+  inode timestamps remain pinned to July. Content containing a wall-clock
+  date is not made reproducible by pinning filesystem timestamps. The retained
+  diagnosis reports only names/date fields, not password fields.
+- `/var/lib/dpkg/available` is **literally the old file concatenated twice**:
+  **107,982 → 215,964 bytes**, **103 → 206 stanzas**, identical distinct
+  stanza contents, every multiplicity doubled. This is bootstrap metadata,
+  not a different installed package population.
+
+Evidence: `remote-base-build.log`, `remote-base-manifest.json`, both base
+inventories, `base-differences.json`, `base-content-diagnosis.json`, and the
+debootstrap source excerpts. Reproduce inventories with the committed helper;
+compare `nodes` dictionaries, then independently compare `unsquashfs -cat`
+output for the three changed files. The available-file equality is a byte
+comparison, not an inference from lengths. Host libzstd also differs, but its
+contribution to compressed size has not yet been isolated; do not attribute
+the entire 823,296-byte size increase to any one cause.
+
+ARCHITECTURE's unconditional claim that bytes do not move with clock/host is
+corrected. These observations do not isolate hardware from build date or host
+tool versions. They establish that the documented pin/procedure does not pin
+all byte-affecting inputs. No measured archive has been rewritten or normalized.
+
+The user resumed after a usage-limit interruption. The original remote base
+job had completed; no rebuild was needed. At **17:03:02 UTC**, after preserving
+base output and clearing base.dir/build scratch, the catalogue began with
+**59,346,321,408 free bytes**. `run_catalogue.sh` invokes unchanged stage 08
+once per module, checks space before each invocation, preserves successful
+bundles/logs outside disposable scratch, and removes each successful upperdir
+before the next build. It requires the clean source commit and records each
+exit code; a shortage stops before the next builder starts.
+
+A harness transfer mistake is retained, not hidden: nested SSH quoting initially
+redirected a copy of `run_catalogue.sh` into **local**
+`/srv/modfs/build/run-catalogue.sh`. It was never executed. Its digest was
+recorded, its resolved path and absence of mounts checked, and that scratch
+copy removed within the permitted deletion root. Corrected quoting copied the
+same digest into the guest before execution. No local build or artifact write
+occurred. `helper-transfer-correction.json` records this correction.
+
+
+### Remote catalogue complete: 0/40 archive hashes equal (2026-09-20)
+
+The preserved job finished at **18:26:59 UTC**: **40/40 module builds exited
+0**, following the remote base at the July snapshot pin. Stage 12 subsequently
+reported **41 manifests matched their artefacts; all 41 recorded byte digests
+matched**, exit 0 (192.13 s). This is internal binding, not cross-machine
+reproducibility. The independent comparison against the untouched original
+machine is **0/40 module archives byte-identical**, and the base also differs.
+`cross-machine-comparison.csv` contains every pair of archive hashes/sizes;
+`remote-inventories.jsonl.gz` independently verifies the remote manifest hashes.
+The raw status, logs, manifests and sidecars are in `catalogue-results-bundle.tar`.
+No artifact was normalized or repacked for the comparison.
+
+All 40 remote modules lack the original three `trusted.overlay.impure=y`
+xattrs at `var/cache/apt`, `var/lib/apt`, and `var/log/apt`. For **28 modules**,
+these are the only differences in the complete decompressed inventories.
+The remaining modules have additional content/layout changes under diagnosis.
+This run does not isolate hardware: host tools, build date, and the recorded
+builder change from raw base.dir to mounted base.sqsh are confounds.
+
+A second specification confound is now explicit: current `jq` requests
+`[jq, moreutils]`, whereas the saved reference requested `[jq]`. The other 39
+module package maps agree. A separately labelled direct build of original
+`jq` alone succeeded in **68.65 s**, at the same remote base/pin: 577,536 bytes,
+SHA256 `b1b5fab8690f96397fcd1ae4198971942838fcd3f1083ee996bfa9b231e7d16b`.
+Its complete inventory differs from the original jq only at the same three
+xattrs. This supplemental build does NOT replace the catalogue row or improve
+the reported 0/40. Logs and inventory are retained as `matched-jq-*`.
+
+The base's doubled dpkg available metadata now has a direct function-level
+reproduction. With config.sh's exported COMPONENTS, the installed older
+`extract_release_components` appends all four Release components again;
+the newer host function does not. Executing each real function on the same
+synthetic Release gives eight versus four component tokens. The old
+`setup_available` loops over those duplicated tokens. Evidence:
+`component-duplication-{local,remote}.log` and previously saved source excerpts.
+
+### First remote tier-3 attempt failed before serial output
+
+After stage 12 and cleanup between phases, stage 11 packed `base webserver`
+with pinned guest kernel **5.15.0-185-generic**. The run
+`remote-webserver-20260920T190147Z` was admitted by tier 1 but ended **BROKEN**,
+exit 2, in 591.68 s including packing. It selected **KVM** because `/dev/kvm`
+is writable inside the software VM, despite the outer container lacking KVM.
+QEMU exited 0 after about two seconds; both serial and qemu.log were empty.
+That establishes a failed run, not a successful guest boot or a proved root
+cause. A TCG retry reusing the packed image is now being launched in the outer
+remote container, with the measured stage 11 verdict parser unchanged. It
+will be reported separately from the original stage 11 invocation. No GPU
+passthrough or provider host kernel change is involved.
+
+The original CUDA-reference transfer attempts were interrupted and left a
+partial file, which was never used. Instead, only libcudart and NVRTC libraries
+were extracted from the freshly built remote cuda-runtime artifact for a
+supplemental real-GPU probe against the provider's existing 550 driver.
+`gpu-built-extraction.log` records their hashes. This will not test loading
+ModFS's 535 .ko: the provider host still runs **6.8.0-47-generic**.
+
+
+### Real GPU runtime PASS; small remote tier-3 TCG boot PASS
+
+The supplemental CUDA probe **ran and passed** on the provider's RTX 3060
+(compute 8.6). `cuda_runtime_probe.py` loaded the freshly rebuilt module's
+NVRTC 11.5, NVRTC builtins and libcudart 11.5.117; compiled a trivial kernel
+for compute_86 (PTX 7.5); allocated device memory; launched 32 threads; and
+copied back exactly integers **7 through 38**. `/proc/self/maps` plus SHA256
+checks prove all three runtime/compiler libraries came from the measured
+remote cuda-runtime.sqsh. `gpu-runtime-result.json` and
+`gpu-library-binding.json` preserve the result. The driver library was the
+provider's **libcuda.so.550.107.02**, API 12.4. This is NOT a successful
+load of ModFS's nvidia-driver-535 kernel module.
+
+The provider host remains **6.8.0-47-generic**; the build VM is
+5.15.0-191-generic. The 535 artifact's nvidia.ko targets **5.15.0-185-generic**
+(`driver-abi-inspection.log`). Installing the pinned kernel is feasible in an
+owned bootable VM: stage 11 successfully fetched the 185.195 image/modules
+from the July snapshot. It cannot replace this container's shared provider
+kernel; the container lacks SYS_MODULE/SYS_BOOT and the provider explicitly
+forbids host driver/kernel changes. A privileged container would not give it
+an independent kernel. No host installation, insmod, reboot, or passthrough
+was attempted. Full 535-on-real-GPU validation needs an appropriate host under
+Dipanker's control and approval before any kernel installation/reboot.
+
+**Tier 3 passed on the remote hardware via TCG.** `run_tcg_retry.sh` copies the
+existing packed base+webserver image and the build VM's OVMF firmware into
+outer-container scratch, then invokes QEMU with the same stage-11 options
+except explicit TCG. It runs stage 11's exact Python verdict parser, extracted
+from the measured script. No image repacking, harness change, or GPU exposure.
+The image input hash is recorded. The original stage-11 KVM attempt remains
+BROKEN; the separately labelled TCG retry ran **19:55:29–19:55:50 UTC**, QEMU
+exit 0, verdict exit 0: audit PASS, webserver PASS, nginx active/running,
+zero failed units, and clean poweroff. Systemd's remaining start job was the
+test harness itself, correctly classified by the existing parser.
+
+`first-boot-results.tar` preserves the failed original run plus successful
+stage-12 binding; `tcg-boot-results.tar` preserves the complete successful
+retry, including serial, QEMU log, units, listeners, verdict, parser and input
+hashes. `tcg-verdict.log` is the readable verdict. This proves the small
+base+webserver composition boots on the second machine; it does not establish
+all-catalogue tier-3 success or guest GPU access.
+
+
+### Cross-machine mechanisms reproduced; no normalization
+
+The common three-xattr difference is now reproduced independently of machine:
+`impure_fixture.sh` runs on the same 5.15.0-191 guest with two minimal lower
+trees. Modifying entries present in the raw lower tree yields
+`trusted.overlay.impure=y` at all three apt parents; creating entries absent
+from the filtered lower tree yields none. This matches the 5bd645c change
+from raw base.dir to filtered base.sqsh. The value is constant but its
+**presence is not**. None of the 41 measured archives was altered.
+
+`content_probe.py` performed read-only comparisons of the additional changes:
+
+- The six service modules with shadow changes (memcached, mta-msmtp, redis,
+  tcpdump, mysql, postgres) differ only in password-change days in those files.
+  All other fields match; only digests of non-date fields are published.
+- Nullmailer's package config runs `hostname --fqdn`. It embeds **ketchup →
+  modfs-verification** in mailname and debconf. No UTS namespace was isolated
+  by the builder, so writing a chroot hostname file does not prevent this.
+- LLVM has exactly **19 identical inode records at relocated lib32 paths**,
+  caused by the old debootstrap's multilib symlink layout. The loader cache
+  changes alongside the layout.
+- Both Emacs Info indexes contain exactly the same line multisets; only
+  ordering differs. `info_order_fixture.sh`, using the module's own install-info,
+  reproduces the remote dir.old SHA **920d564e...** with forward input order
+  and the original **777b731c...** with reverse order. C and C.UTF-8 give the
+  same results. The package's `update-info-dir` iterates unsorted `find` output.
+  This is a demonstrated ordering mechanism, not a locale diagnosis.
+- Java's JKS has **120 matching certificate aliases and certificate hashes**,
+  with **120 differing creation timestamps**. Its postinst also generates
+  classes.jsa with `java -Xshare:dump`. The original/remote dumps differ at
+  294,944 bytes of 11,907,072. A separate same-guest fixture runs the shipped
+  OpenJDK 11.0.31 twice: each diagnostic dump is 11,911,168 bytes, but their
+  hashes differ and 3,340,448 byte positions differ. These dumps are diagnostic
+  files, not artifact replacements. The serialized header contains runtime
+  memory/heap fields; exact attribution of every byte to addresses, padding,
+  or other JVM state is not established.
+- MySQL has 166 differing initialized MariaDB files beyond shadow. The
+  postinst invokes mysql_install_db. A sampled sys/version.frm differs only
+  in its creation timestamp. The Aria control file stores its UUID at offset
+  4 (confirmed against MariaDB source): original
+  **2d65b1e7-b1ed-11f1-9f51-5254006d4170**, remote
+  **21e4310b-b51b-11f1-8028-525400123456**. These decode to the respective
+  build dates; the remote node matches the guest NIC 52:54:00:12:34:56.
+- PostgreSQL's package scripts call initdb and generate a snakeoil certificate.
+  The public certificate subject, serial and validity dates differ, along with
+  its key/hash link; cluster identifiers in pg_control are
+  **7686173460724561641 → 7687674230391027728**. WAL also differs. Private
+  certificate keys were not emitted by the content probe.
+- Pipdemo resolves unpinned **idna 3.19 → 3.20**. Of 82 differing pyc files,
+  **77 have identical marshalled bodies** and differing timestamp headers.
+  Five changed idna pyc bodies correspond to five changed Python sources.
+
+All 40 modules thus have an observed mismatch mechanism, with the additional
+mechanisms catalogued in REPORT.md and the full per-path difference archive.
+Host libzstd also differs (1.5.5 original, 1.4.8 remote), but its separate
+contribution to compressed sizes was not measured. This does not isolate
+hardware from procedure/toolchain/date, and does not explain every individual
+byte in generated database/CDS state. The honest comparison remains **0/40**.
+
+The canonical ARCHITECTURE now records the complete remote result and its
+limits. `verify_evidence.py` independently recomputes every comparison CSV field,
+checks all 82 manifest-versus-inventory hashes, validates three mapped CUDA
+library hashes, and checks the successful boot used the exact original verdict
+parser. It passed. No production builder or exclusion policy was changed.
+
+
+Final housekeeping checks at 20:08 UTC: both remote clones remain clean at
+`a69111b`; the build guest has **51,416,104,960 free bytes**, no mounts left
+under `/srv/modfs/build`, and all **41 payloads preserved** in its results
+area. The outer container had 74,895,679,488 bytes free before removing the
+unused 364,736,512-byte interrupted CUDA-reference transfer. That partial
+file's SHA256 was recorded before deletion; it was never used by the GPU
+probe. This deletion was strictly under `/srv/modfs/build`. The build VM,
+packed image and results remain available for follow-up. Local artifact
+storage was never changed. Python/shell syntax checks and evidence validation
+passed; the branch contains documentation, diagnostic helpers and evidence,
+not a production behavior change.
+
+
+A final read-only hash check also confirms the source packed guest image,
+OVMF firmware and measured stage-11 script exactly match the three recorded
+TCG inputs. The measured script matches Git's a69111b version. This closes
+the image-transfer provenance check; `verify_evidence.py` now validates those
+three matches as well and passes. The retained image SHA256 is
+`21427b38ed4bf8c4c17f47c7884a3e6727b204d712b0e5b33ab3af72d2d2d77b`.

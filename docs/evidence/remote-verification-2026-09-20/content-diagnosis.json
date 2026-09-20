@@ -1,0 +1,224 @@
+{
+  "base": {
+    "etc/shadow": {
+      "all_other_fields_equal": true,
+      "dates": [
+        [
+          "20712",
+          "20716"
+        ]
+      ]
+    },
+    "etc/shadow-": {
+      "all_other_fields_equal": true,
+      "dates": [
+        [
+          "20712",
+          "20716"
+        ]
+      ]
+    }
+  },
+  "memcached": {
+    "etc/shadow": {
+      "all_other_fields_equal": true,
+      "dates": [
+        [
+          "20712",
+          "20716"
+        ],
+        [
+          "20713",
+          "20716"
+        ]
+      ]
+    },
+    "etc/shadow-": {
+      "all_other_fields_equal": true,
+      "dates": [
+        [
+          "20712",
+          "20716"
+        ],
+        [
+          "20713",
+          "20716"
+        ]
+      ]
+    }
+  },
+  "mta-msmtp": {
+    "etc/shadow": {
+      "all_other_fields_equal": true,
+      "dates": [
+        [
+          "20712",
+          "20716"
+        ]
+      ]
+    },
+    "etc/shadow-": {
+      "all_other_fields_equal": true,
+      "dates": [
+        [
+          "20712",
+          "20716"
+        ]
+      ]
+    }
+  },
+  "redis": {
+    "etc/shadow": {
+      "all_other_fields_equal": true,
+      "dates": [
+        [
+          "20712",
+          "20716"
+        ],
+        [
+          "20713",
+          "20716"
+        ]
+      ]
+    },
+    "etc/shadow-": {
+      "all_other_fields_equal": true,
+      "dates": [
+        [
+          "20712",
+          "20716"
+        ],
+        [
+          "20713",
+          "20716"
+        ]
+      ]
+    }
+  },
+  "tcpdump": {
+    "etc/shadow": {
+      "all_other_fields_equal": true,
+      "dates": [
+        [
+          "20712",
+          "20716"
+        ],
+        [
+          "20713",
+          "20716"
+        ]
+      ]
+    },
+    "etc/shadow-": {
+      "all_other_fields_equal": true,
+      "dates": [
+        [
+          "20712",
+          "20716"
+        ],
+        [
+          "20713",
+          "20716"
+        ]
+      ]
+    }
+  },
+  "mysql": {
+    "etc/shadow": {
+      "all_other_fields_equal": true,
+      "dates": [
+        [
+          "20712",
+          "20716"
+        ]
+      ]
+    },
+    "etc/shadow-": {
+      "all_other_fields_equal": true,
+      "dates": [
+        [
+          "20712",
+          "20716"
+        ]
+      ]
+    }
+  },
+  "postgres": {
+    "etc/shadow": {
+      "all_other_fields_equal": true,
+      "dates": [
+        [
+          "20712",
+          "20716"
+        ]
+      ]
+    },
+    "etc/shadow-": {
+      "all_other_fields_equal": true,
+      "dates": [
+        [
+          "20712",
+          "20716"
+        ]
+      ]
+    }
+  },
+  "postgres_public_certificate": {
+    "original": "subject=CN = ketchup\nserial=3A12A724B22FB36C7B33DBCE97500CDFEAEC80FA\nnotBefore=Sep 16 16:38:31 2026 GMT\nnotAfter=Sep 13 16:38:31 2036 GMT\nsha256 Fingerprint=47:6D:59:C0:9B:CA:FB:4A:3F:1C:CF:55:A4:02:01:72:1A:D1:12:E8:4F:EB:27:DD:D5:E8:36:1E:FA:74:5A:2D\n",
+    "remote": "subject=CN = modfs-verification\nserial=3324A816B8097EE61CCE171DAA42F1371F4F44B7\nnotBefore=Sep 20 17:41:41 2026 GMT\nnotAfter=Sep 17 17:41:41 2036 GMT\nsha256 Fingerprint=73:FA:D3:1A:E4:53:05:65:D6:5F:79:8E:C3:BF:86:B5:C6:80:2E:61:4E:39:C2:32:3F:AC:36:53:11:62:47:6C\n"
+  },
+  "postgres_system_identifier_le64": {
+    "original": 7686173460724561641,
+    "remote": 7687674230391027728
+  },
+  "java": {
+    "entries": 120,
+    "same_aliases": true,
+    "all_certificates_equal": true,
+    "all_creation_times_differ": true,
+    "original_creation_ms_range": [
+      1789576519126,
+      1789576519396
+    ],
+    "remote_creation_ms_range": [
+      1789925350275,
+      1789925354151
+    ]
+  },
+  "pyc": {
+    "changed_pyc_files": 82,
+    "identical_marshaled_payloads": 77,
+    "flags": [
+      0
+    ],
+    "timestamp_pairs": [
+      [
+        1789576856,
+        1789926865
+      ],
+      [
+        1789576856,
+        1789926866
+      ],
+      [
+        1789576857,
+        1789926866
+      ],
+      [
+        1789576857,
+        1789926867
+      ]
+    ],
+    "different_payloads": [
+      "usr/local/lib/python3.10/dist-packages/idna/__pycache__/codec.cpython-310.pyc",
+      "usr/local/lib/python3.10/dist-packages/idna/__pycache__/core.cpython-310.pyc",
+      "usr/local/lib/python3.10/dist-packages/idna/__pycache__/idnadata.cpython-310.pyc",
+      "usr/local/lib/python3.10/dist-packages/idna/__pycache__/package_data.cpython-310.pyc",
+      "usr/local/lib/python3.10/dist-packages/idna/__pycache__/uts46data.cpython-310.pyc"
+    ]
+  },
+  "emacs:usr/share/info/dir": "--- original:emacs:usr/share/info/dir\n+++ remote:emacs:usr/share/info/dir\n@@ -56,9 +56,9 @@\n * df: (coreutils)df invocation.                 Report file system disk usage.\n * diff: (diffutils)Invoking diff.               Compare 2 files line by line.\n * diff3: (diffutils)Invoking diff3.             Compare 3 files line by line.\n-* dir: (coreutils)dir invocation.               List directories briefly.\n * dircolors: (coreutils)dircolors invocation.   Color setup for ls.\n * dirname: (coreutils)dirname invocation.       Strip last file name component.\n+* dir: (coreutils)dir invocation.               List directories briefly.\n * du: (coreutils)du invocation.                 Report on disk usage.\n * echo: (coreutils)echo invocation.             Print a line of text.\n * env: (coreutils)env invocation.               Modify the environment.\n@@ -99,15 +99,15 @@\n * paste: (coreutils)paste invocation.           Merge lines of files.\n * patch: (diffutils)Invoking patch.             Apply a patch to a file.\n * pathchk: (coreutils)pathchk invocation.       Check file name portability.\n-* pr: (coreutils)pr invocation.                 Paginate or columnate files.\n * printenv: (coreutils)printenv invocation.     Print environment variables.\n * printf: (coreutils)printf invocation.         Format and print data.\n+* pr: (coreutils)pr invocation.                 Paginate or columnate files.\n * ptx: (coreutils)ptx invocation.               Produce permuted indexes.\n * pwd: (coreutils)pwd invocation.               Print working directory.\n * readlink: (coreutils)readlink invocation.     Print referent of a symlink.\n * realpath: (coreutils)realpath invocation.     Print resolved file names.\n+* rmdir: (coreutils)rmdir invocation.           Remove empty directories.\n * rm: (coreutils)rm invocation.                 Remove files.\n-* rmdir: (coreutils)rmdir invocation.           Remove empty directories.\n * runcon: (coreutils)runcon invocation.         Run in specified SELinux CTX.\n * sdiff: (diffutils)Invoking sdiff.             Merge 2 files side-by-side.\n * seq: (coreutils)seq invocation.               Print numeric sequences\n@@ -129,9 +129,9 @@\n * test: (coreutils)test invocation.             File/string tests.\n * timeout: (coreutils)timeout invocation.       Run with time limit.\n * touch: (coreutils)touch invocation.           Change file timestamps.\n-* tr: (coreutils)tr invocation.                 Translate characters.\n * true: (coreutils)true invocation.             Do nothing, successfully.\n * truncate: (coreutils)truncate invocation.     Shrink/extend size of a file.\n+* tr: (coreutils)tr invocation.                 Translate characters.\n * tsort: (coreutils)tsort invocation.           Topological sort.\n * tty: (coreutils)tty invocation.               Print terminal name.\n * uname: (coreutils)uname invocation.           Print system information.\n@@ -143,8 +143,8 @@\n * users: (coreutils)users invocation.           Print current user names.\n * vdir: (coreutils)vdir invocation.             List directories verbosely.\n * wc: (coreutils)wc invocation.                 Line, word, and byte counts.\n+* whoami: (coreutils)whoami invocation.         Print effective user ID.\n * who: (coreutils)who invocation.               Print who is logged in.\n-* whoami: (coreutils)whoami invocation.         Print effective user ID.\n * xargs: (find)Invoking xargs.                  Operating on many files.\n * yes: (coreutils)yes invocation.               Print a string indefinitely.\n * zcat: (gzip)Overview.                         Decompression to stdout.\n",
+  "emacs:usr/share/info/dir.old": "--- original:emacs:usr/share/info/dir.old\n+++ remote:emacs:usr/share/info/dir.old\n@@ -53,9 +53,9 @@\n * df: (coreutils)df invocation.                 Report file system disk usage.\n * diff: (diffutils)Invoking diff.               Compare 2 files line by line.\n * diff3: (diffutils)Invoking diff3.             Compare 3 files line by line.\n-* dir: (coreutils)dir invocation.               List directories briefly.\n * dircolors: (coreutils)dircolors invocation.   Color setup for ls.\n * dirname: (coreutils)dirname invocation.       Strip last file name component.\n+* dir: (coreutils)dir invocation.               List directories briefly.\n * du: (coreutils)du invocation.                 Report on disk usage.\n * echo: (coreutils)echo invocation.             Print a line of text.\n * env: (coreutils)env invocation.               Modify the environment.\n@@ -96,15 +96,15 @@\n * paste: (coreutils)paste invocation.           Merge lines of files.\n * patch: (diffutils)Invoking patch.             Apply a patch to a file.\n * pathchk: (coreutils)pathchk invocation.       Check file name portability.\n-* pr: (coreutils)pr invocation.                 Paginate or columnate files.\n * printenv: (coreutils)printenv invocation.     Print environment variables.\n * printf: (coreutils)printf invocation.         Format and print data.\n+* pr: (coreutils)pr invocation.                 Paginate or columnate files.\n * ptx: (coreutils)ptx invocation.               Produce permuted indexes.\n * pwd: (coreutils)pwd invocation.               Print working directory.\n * readlink: (coreutils)readlink invocation.     Print referent of a symlink.\n * realpath: (coreutils)realpath invocation.     Print resolved file names.\n+* rmdir: (coreutils)rmdir invocation.           Remove empty directories.\n * rm: (coreutils)rm invocation.                 Remove files.\n-* rmdir: (coreutils)rmdir invocation.           Remove empty directories.\n * runcon: (coreutils)runcon invocation.         Run in specified SELinux CTX.\n * sdiff: (diffutils)Invoking sdiff.             Merge 2 files side-by-side.\n * seq: (coreutils)seq invocation.               Print numeric sequences\n@@ -126,9 +126,9 @@\n * test: (coreutils)test invocation.             File/string tests.\n * timeout: (coreutils)timeout invocation.       Run with time limit.\n * touch: (coreutils)touch invocation.           Change file timestamps.\n-* tr: (coreutils)tr invocation.                 Translate characters.\n * true: (coreutils)true invocation.             Do nothing, successfully.\n * truncate: (coreutils)truncate invocation.     Shrink/extend size of a file.\n+* tr: (coreutils)tr invocation.                 Translate characters.\n * tsort: (coreutils)tsort invocation.           Topological sort.\n * tty: (coreutils)tty invocation.               Print terminal name.\n * uname: (coreutils)uname invocation.           Print system information.\n@@ -140,8 +140,8 @@\n * users: (coreutils)users invocation.           Print current user names.\n * vdir: (coreutils)vdir invocation.             List directories verbosely.\n * wc: (coreutils)wc invocation.                 Line, word, and byte counts.\n+* whoami: (coreutils)whoami invocation.         Print effective user ID.\n * who: (coreutils)who invocation.               Print who is logged in.\n-* whoami: (coreutils)whoami invocation.         Print effective user ID.\n * xargs: (find)Invoking xargs.                  Operating on many files.\n * yes: (coreutils)yes invocation.               Print a string indefinitely.\n * zcat: (gzip)Overview.                         Decompression to stdout.\n",
+  "mta-nullmailer:etc/mailname": "--- original:mta-nullmailer:etc/mailname\n+++ remote:mta-nullmailer:etc/mailname\n@@ -1 +1 @@\n-ketchup\n+modfs-verification\n",
+  "mta-nullmailer:var/cache/debconf/config.dat": "--- original:mta-nullmailer:var/cache/debconf/config.dat\n+++ remote:mta-nullmailer:var/cache/debconf/config.dat\n@@ -211,6 +211,6 @@\n \n Name: shared/mailname\n Template: shared/mailname\n-Value: ketchup\n-Owners: nullmailer\n-\n+Value: modfs-verification\n+Owners: nullmailer\n+\n"
+}

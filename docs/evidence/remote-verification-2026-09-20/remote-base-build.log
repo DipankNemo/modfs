@@ -1,0 +1,82 @@
+Welcome to vast.ai. If authentication fails, try again after a few seconds, and double check your ssh key.
+Have fun!
+AI agents: READ /etc/vast-agents-guide.md (also linked as ./AGENTS.md) before acting on or describing this instance: it is the operating guide. ('vast-capabilities' shows live state only, not the guide.)
+a69111baedb576ea9d093626e883b6f7cd5bd3ce
+2026-09-20T16:43:04+00:00
+Filesystem       1B-blocks       Used   Available Use% Mounted on
+/dev/vda1      62241562624 2793000960 59431784448   5% /
+[1;34m[16:43:05][0m removing any partial build
+[1;34m[16:43:05][0m debootstrap jammy/amd64 from snapshot 20260701T000000Z
+[1;34m[16:43:05][0m   (this takes 5-15 min, downloads ~150 MB)
+I: Configuring libgnutls30:amd64...
+I: Configuring apt...
+I: Configuring libc-bin...
+I: Configuring ca-certificates...
+I: Base system installed successfully.
+[1;34m[16:51:58][0m configuring chroot
+[1;34m[16:51:58][0m apt update
+[1;34m[16:53:05][0m aligning base with snapshot archive view (release + updates + security)
+0 added, 0 removed; done.
+Running hooks in /etc/ca-certificates/update.d...
+done.
+[1;34m[16:56:15][0m   61 package(s) moved to -updates level
+           apt 2.4.14
+           base-files 12ubuntu4.7
+           bash 5.1-6ubuntu1.1
+           bsdutils 1:2.37.2-4ubuntu3.5
+           ca-certificates 20260601~22.04.1
+           coreutils 8.32-4.1ubuntu1.3
+           dpkg 1.21.1ubuntu2.6
+           e2fsprogs 1.46.5-2ubuntu1.2
+           gcc-12-base:amd64 12.3.0-1ubuntu1~22.04.3
+           gpgv 2.2.27-3ubuntu2.5
+           gzip 1.10-4ubuntu4.1
+           libapt-pkg6.0:amd64 2.4.14
+           libblkid1:amd64 2.37.2-4ubuntu3.5
+           libc-bin 2.35-0ubuntu3.13
+           libc6:amd64 2.35-0ubuntu3.13
+           libcap2:amd64 1:2.44-1ubuntu0.22.04.3
+           libcom-err2:amd64 1.46.5-2ubuntu1.2
+           libext2fs2:amd64 1.46.5-2ubuntu1.2
+           libgcc-s1:amd64 12.3.0-1ubuntu1~22.04.3
+           libgcrypt20:amd64 1.9.4-3ubuntu3.2
+[1;34m[16:56:15][0m installing base packages: systemd systemd-sysv sudo ca-certificates
+Preparing to unpack .../sudo_1.9.9-1ubuntu2.6_amd64.deb ...
+Unpacking sudo (1.9.9-1ubuntu2.6) ...
+Setting up systemd-sysv (249.11-0ubuntu3.21) ...
+Setting up sudo (1.9.9-1ubuntu2.6) ...
+Processing triggers for libc-bin (2.35-0ubuntu3.13) ...
+[1;34m[16:56:48][0m cleaning apt caches
+[1;34m[16:56:49][0m machine-id emptied -- regenerated on first boot
+[1;34m[16:56:49][0m base contains 113 packages
+[1;34m[16:56:49][0m squashing -> /srv/modfs/build/verification/modules/base.sqsh
+[1;34m[16:57:03][0m extracting metadata -> /srv/modfs/build/verification/modules/base.json
+[1;34m[16:57:04][0m extracting metadata for 'base'
+[1;34m[16:57:04][0m   tree   : /srv/modfs/build/verification/build/metadata-base.20324/base
+[1;34m[16:57:04][0m   parent : <none>
+  files    : 4969 path(s), 2126 dir(s), 10 not shipped, 2 diversion(s) -> base.files.json.zst
+  packages : 113 contributed (113 added, 0 upgraded)
+  removed  : 0
+  requested: systemd systemd-sysv sudo ca-certificates
+  accounts : 21 user(s), 42 group(s); 7 unit(s) name an identity
+  audit    : static-reserved group adm=4, group audio=29, group backup=34, group bin=2, group cdrom=24, group daemon=1, group dialout=20, group dip=30, group disk=6, group fax=21, group floppy=25, group games=60, group gnats=41, group irc=39, group kmem=15, group list=38, group lp=7, group mail=8, group man=12, group news=9, group nogroup=65534, group operator=37, group plugdev=46, group proxy=13, group root=0, group sasl=45, group shadow=42, group src=40, group staff=50, group sudo=27, group sys=3, group tape=26, group tty=5, group utmp=43, group uucp=10, group video=44, group voice=22, group www-data=33, user backup=34, user bin=2, user daemon=1, user games=5, user gnats=41, user irc=39, user list=38, user lp=7, user mail=8, user man=6, user news=9, user nobody=65534, user proxy=13, user root=0, user sync=4, user sys=3, user uucp=10, user www-data=33
+  audit    : base-dynamic    group systemd-journal=101, group systemd-network=102, group systemd-resolve=103, group users=100, user _apt=100, user systemd-network=101, user systemd-resolve=102
+  artifact : base.sqsh (42541056 bytes)
+  sha256   : 59a850966e54b3f9b2194ceb2570efce34d77d73c1786f0ccfc18b7f571db3e8
+  source   : artifact
+  binding  : fields 4c36b5b5ac3091dd  sidecar b2b00f6969ad34b4
+  written  : /srv/modfs/build/verification/modules/base.json
+[1;34m[16:57:10][0m metadata written -> /srv/modfs/build/verification/modules/base.json
+[1;34m[16:57:10][0m DONE
+[1;34m[16:57:10][0m   rootfs : 109MB
+[1;34m[16:57:10][0m   squash : 41MB
+[1;34m[16:57:10][0m   packages: 113
+[1;34m[16:57:11][0m next: sudo ./scripts/02_build_delta.sh webserver nginx
+real 846.31
+user 716.43
+sys 240.12
+base_build_exit=0
+2026-09-20T16:57:11+00:00
+Filesystem       1B-blocks       Used   Available Use% Mounted on
+/dev/vda1      62241562624 2962702336 59262083072   5% /
+59a850966e54b3f9b2194ceb2570efce34d77d73c1786f0ccfc18b7f571db3e8  /srv/modfs/build/verification/modules/base.sqsh

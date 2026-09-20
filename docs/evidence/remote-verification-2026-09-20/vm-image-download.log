@@ -1,0 +1,10 @@
+Welcome to vast.ai. If authentication fails, try again after a few seconds, and double check your ssh key.
+Have fun!
+AI agents: READ /etc/vast-agents-guide.md (also linked as ./AGENTS.md) before acting on or describing this instance: it is the operating guide. ('vast-capabilities' shows live state only, not the guide.)
+  % Total    % Received % Xferd  Average Speed   Time    Time     Time  Current
+                                 Dload  Upload   Total   Spent    Left  Speed
+  0     0    0     0    0     0      0      0 --:--:-- --:--:-- --:--:--     0  1  701M    1 13.0M    0     0  20.2M      0  0:00:34 --:--:--  0:00:34 20.2M  8  701M    8 62.8M    0     0  38.8M      0  0:00:18  0:00:01  0:00:17 38.8M 17  701M   17  126M    0     0  48.1M      0  0:00:14  0:00:02  0:00:12 48.1M 26  701M   26  186M    0     0  51.5M      0  0:00:13  0:00:03  0:00:10 51.5M 34  701M   34  245M    0     0  53.0M      0  0:00:13  0:00:04  0:00:09 53.0M 42  701M   42  301M    0     0  53.4M      0  0:00:13  0:00:05  0:00:08 57.6M 50  701M   50  355M    0     0  53.7M      0  0:00:13  0:00:06  0:00:07 58.5M 59  701M   59  418M    0     0  54.9M      0  0:00:12  0:00:07  0:00:05 58.5M 66  701M   66  465M    0     0  54.0M      0  0:00:12  0:00:08  0:00:04 55.8M 73  701M   73  516M    0     0  53.7M      0  0:00:13  0:00:09  0:00:04 54.2M 81  701M   81  570M    0     0  53.6M      0  0:00:13  0:00:10  0:00:03 53.9M 86  701M   86  607M    0     0  52.1M      0  0:00:13  0:00:11  0:00:02 50.1M 94  701M   94  663M    0     0  52.5M      0  0:00:13  0:00:12  0:00:01 48.7M100  701M  100  701M    0     0  52.6M      0  0:00:13  0:00:13 --:--:-- 50.2M
+  % Total    % Received % Xferd  Average Speed   Time    Time     Time  Current
+                                 Dload  Upload   Total   Spent    Left  Speed
+  0     0    0     0    0     0      0      0 --:--:-- --:--:-- --:--:--     0100  7706  100  7706    0     0  59062      0 --:--:-- --:--:-- --:--:-- 59276
+sha256sum: 'standard input': no properly formatted checksum lines found

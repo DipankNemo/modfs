@@ -1,0 +1,10 @@
+{
+  "var/lib/mysql/sys/version.frm": {
+    "bytes": 501,
+    "content": "TYPE=VIEW\nquery=select \\'1.5.1\\' AS `sys_version`,version() AS `mysql_version`\nmd5=91a844b992f5531ded209bb44c10bae7\nupdatable=0\nalgorithm=0\ndefiner_user=mariadb.sys\ndefiner_host=localhost\nsuid=0\nwith_check_option=0\ntimestamp=0001789926358427897\ncreate-version=2\nsource=SELECT \\'1.5.1\\' AS sys_version,\\n        version() AS mysql_version;\nclient_cs_name=utf8mb3\nconnection_cl_name=utf8mb3_general_ci\nview_body_utf8=select \\'1.5.1\\' AS `sys_version`,version() AS `mysql_version`\nmariadb-version=100623\n"
+  },
+  "var/lib/mysql/aria_log_control": {
+    "bytes": 52,
+    "content": "fefe0c0121e4310bb51b11f180285254001234561e0016000020732ff6e261a2d599010000a44b060001000000e3000000000000"
+  }
+}

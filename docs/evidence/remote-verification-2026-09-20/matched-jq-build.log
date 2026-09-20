@@ -1,0 +1,45 @@
+Welcome to vast.ai. If authentication fails, try again after a few seconds, and double check your ssh key.
+Have fun!
+AI agents: READ /etc/vast-agents-guide.md (also linked as ./AGENTS.md) before acting on or describing this instance: it is the operating guide. ('vast-capabilities' shows live state only, not the guide.)
+2026-09-20T18:58:43+00:00
+Filesystem       1B-blocks       Used   Available Use% Mounted on
+/dev/vda1      62241562624 6772342784 55452442624  11% /
+[1;34m[18:58:43][0m delta module 'jq' on parent 'base'
+[1;34m[18:58:43][0m   packages: jq
+[1;34m[18:58:44][0m overlay mounted: base (ro) + empty upper
+[1;34m[18:58:46][0m identity policy: system uid/gid confined to 3600-3699
+[1;34m[18:58:46][0m apt update
+[1;34m[18:59:31][0m installing: jq
+Unpacking jq (1.6-2.1ubuntu3.2) ...
+Setting up libonig5:amd64 (6.9.7.1-2build1) ...
+Setting up libjq1:amd64 (1.6-2.1ubuntu3.2) ...
+Setting up jq (1.6-2.1ubuntu3.2) ...
+Processing triggers for libc-bin (2.35-0ubuntu3.13) ...
+[1;34m[18:59:42][0m delta adds 3 packages
+[1;34m[18:59:42][0m cleaning caches
+[1;34m[18:59:44][0m overlay unmounted; upperdir now holds the delta
+[1;34m[18:59:44][0m squashing upperdir -> /srv/modfs/build/matched-jq/modules/jq.sqsh
+[1;34m[18:59:45][0m DELTA DONE
+[1;34m[18:59:45][0m   upperdir raw : 2.0MB
+[1;34m[18:59:45][0m   delta .sqsh  : 564KB
+[1;34m[18:59:45][0m   parent .sqsh : 41MB
+[1;34m[18:59:45][0m extracting metadata -> /srv/modfs/build/matched-jq/modules/jq.json
+[1;34m[18:59:46][0m extracting metadata for 'jq'
+[1;34m[18:59:46][0m   tree   : /srv/modfs/build/matched-jq/build/metadata-jq.48671/jq
+[1;34m[18:59:46][0m   parent : base
+  files    : 14 path(s), 22 dir(s), 0 not shipped, 0 diversion(s) -> jq.files.json.zst
+  packages : 3 contributed (3 added, 0 upgraded)
+  removed  : 0
+  requested: jq
+  accounts : 0 user(s), 0 group(s); 0 unit(s) name an identity
+  uid range: 3600-3699
+  artifact : jq.sqsh (577536 bytes)
+  sha256   : b1b5fab8690f96397fcd1ae4198971942838fcd3f1083ee996bfa9b231e7d16b
+  source   : artifact
+  binding  : fields c78e845ecba33c9c  sidecar 2a21afc8a82f3c4c
+  written  : /srv/modfs/build/matched-jq/modules/jq.json
+[1;34m[18:59:52][0m metadata written -> /srv/modfs/build/matched-jq/modules/jq.json
+real 68.65
+user 46.87
+sys 19.20
+matched_jq_exit=0

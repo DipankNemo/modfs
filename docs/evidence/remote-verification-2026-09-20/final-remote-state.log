@@ -1,0 +1,13 @@
+Welcome to vast.ai. If authentication fails, try again after a few seconds, and double check your ssh key.
+Have fun!
+AI agents: READ /etc/vast-agents-guide.md (also linked as ./AGENTS.md) before acting on or describing this instance: it is the operating guide. ('vast-capabilities' shows live state only, not the guide.)
+Outer container final state
+2026-09-20T20:08:13+00:00
+6.8.0-47-generic
+a69111baedb576ea9d093626e883b6f7cd5bd3ce
+Filesystem       1B-blocks        Used   Available Use% Mounted on
+overlay        88046829568 13151150080 74895679488  15% /
+Discarding unused interrupted reference transfer only:
+/srv/modfs/build/gpu-reference/cuda-runtime.sqsh 364736512 bytes
+cc1a91c967a5d8a7a3764fb2dfc2288c75f83fff94e58ee987e5aeb013000d8d  /srv/modfs/build/gpu-reference/cuda-runtime.sqsh
+No host reboot, module load or GPU passthrough performed. Build VM remains available.

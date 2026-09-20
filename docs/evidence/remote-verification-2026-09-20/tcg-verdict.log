@@ -1,0 +1,21 @@
+
+  tier-1 admission : ADMITTED
+  systemd state    : starting   (jobs remaining: 1)
+    outstanding job: 85 modfs-boottest.service start running
+    ^ steady: the only outstanding job is the harness itself
+  failed units     : 0
+
+  unit matrix
+    nginx.service              enabled   active    sub=running   exit=0   result=success
+
+  listening sockets
+    udp   UNCONN 0      0      127.0.0.53%lo:53        0.0.0.0:*    users:(("systemd-resolve",pid=247,fd=12)
+    tcp   LISTEN 0      511          0.0.0.0:80        0.0.0.0:*    users:(("nginx",pid=286,fd=6),("nginx",p
+    tcp   LISTEN 0      4096   127.0.0.53%lo:53        0.0.0.0:*    users:(("systemd-resolve",pid=247,fd=13)
+    tcp   LISTEN 0      511             [::]:80           [::]:*    users:(("nginx",pid=286,fd=7),("nginx",p
+
+  check audit      PASS
+  probe webserver  PASS
+
+  ALL GREEN -- every expected unit active, every probe passed
+========================================================================

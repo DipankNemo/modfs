@@ -1,0 +1,47 @@
+Welcome to vast.ai. If authentication fails, try again after a few seconds, and double check your ssh key.
+Have fun!
+AI agents: READ /etc/vast-agents-guide.md (also linked as ./AGENTS.md) before acting on or describing this instance: it is the operating guide. ('vast-capabilities' shows live state only, not the guide.)
+5.15.0-191-generic
+Filesystem       1B-blocks        Used   Available Use% Mounted on
+/dev/vda1      62241562624 10707132416 51517652992  18% /
+Parallel unsquashfs: Using 4 processors
+1 inodes (586 blocks) to write
+
+
+created 1 file
+created 7 directories
+created 0 symlinks
+created 0 devices
+created 0 fifos
+created 0 sockets
+created 0 hardlinks
+filename:       /srv/modfs/build/driver-abi-inspection/usr/lib/modules/5.15.0-185-generic/kernel/nvidia-535/nvidia.ko
+description:    NVIDIA core GPU kernel module
+firmware:       nvidia/535.309.01/gsp_tu10x.bin
+firmware:       nvidia/535.309.01/gsp_ga10x.bin
+alias:          char-major-195-*
+version:        535.309.01
+supported:      external
+license:        NVIDIA
+srcversion:     7A793A050471BE66E41685F
+alias:          pci:v000010DEd*sv*sd*bc06sc80i00*
+alias:          pci:v000010DEd*sv*sd*bc03sc02i00*
+alias:          pci:v000010DEd*sv*sd*bc03sc00i00*
+depends:        drm
+retpoline:      Y
+name:           nvidia
+vermagic:       5.15.0-185-generic SMP mod_unload modversions 
+parm:           NvSwitchRegDwords:NvSwitch regkey (charp)
+parm:           NvSwitchBlacklist:NvSwitchBlacklist=uuid[,uuid...] (charp)
+parm:           NVreg_ResmanDebugLevel:int
+parm:           NVreg_RmLogonRC:int
+parm:           NVreg_ModifyDeviceFiles:int
+parm:           NVreg_DeviceFileUID:int
+parm:           NVreg_DeviceFileGID:int
+parm:           NVreg_DeviceFileMode:int
+parm:           NVreg_InitializeSystemMemoryAllocations:int
+parm:           NVreg_UsePageAttributeTable:int
+parm:           NVreg_EnablePCIeGen3:int
+parm:           NVreg_EnableMSI:int
+
+Host kernel above is the build VM, not provider. No insmod attempted.

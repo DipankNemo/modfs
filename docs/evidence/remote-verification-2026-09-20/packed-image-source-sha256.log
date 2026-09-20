@@ -1,0 +1,6 @@
+Welcome to vast.ai. If authentication fails, try again after a few seconds, and double check your ssh key.
+Have fun!
+AI agents: READ /etc/vast-agents-guide.md (also linked as ./AGENTS.md) before acting on or describing this instance: it is the operating guide. ('vast-capabilities' shows live state only, not the guide.)
+21427b38ed4bf8c4c17f47c7884a3e6727b204d712b0e5b33ab3af72d2d2d77b  /srv/modfs/build/verification/build/boot-remote-webserver-20260920T190147Z/disk.img
+79809fbf9a39943c576a072df411d3393eb54e9b53dece84ba66c50b4de3d34d  /usr/share/OVMF/OVMF_CODE_4M.fd
+def342fdef8adb0e5e097dec7b4a08bea409c1f84aa590b27c5eb34957940b5b  /root/modfs/scripts/11_boot_test.sh
