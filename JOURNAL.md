@@ -4933,3 +4933,52 @@ unshare --user --map-root-user true
 losetup -f
 nvidia-smi --query-gpu=name,memory.total,compute_cap,driver_version --format=csv
 ```
+
+### Bootstrap after installing the suggested packages
+
+Actually ran `apt-get update` followed by the verifier's entire suggested
+package list, with `apt-get install -y` for unattended execution. Installation
+succeeded (exit 0). Rerunning the unchanged verifier gives **PASS=20 FAIL=1**:
+every listed tool is now present, but the same OverlayFS mount is denied.
+`suggested-install.log` and `post-install-verify.log` retain both runs.
+
+The suggested line is sufficient for the verifier's **command-presence list**,
+not for the project. It omits `qemu-system-x86_64` (`qemu-system-x86`),
+`mkfs.vfat` (`dosfstools`) and OVMF firmware (`ovmf`). All three remain absent
+after installing that line. An actual attempt at the small-set command
+`./scripts/11_boot_test.sh --name remote-preflight base jq` exits **2**, before
+creating a bundle, at `missing tool: qemu-system-x86_64`. This is a harness
+preflight refusal, **not a guest boot or tier-3 failure**. The verifier also
+does not check usable loop devices or distinguish root from mount authority.
+
+The supplied apt packages installed SquashFS tools **4.6.1**, which advertise
+the required `-xattrs-exclude` flag. No byte normalization or builder change
+has been made. No base/catalogue build was attempted after the failed mount
+preflight; starting one would knowingly leave an unusable partial build.
+
+### Reference inventory and possible route through this same instance
+
+Contrary to the brief, the cloned Git tree contains **no tracked JSON manifests
+or CSV hash table** (`git ls-files '*.json' '*.csv'` is empty). The actual
+reference manifests are available read-only on the local machine under
+`/srv/modfs/modules`. Read and hashed all **41** corresponding artefacts
+(base + 40 modules), checking their recorded size and digest: **41/41 match**.
+`local-reference.csv` preserves every manifest hash, expected/actual artefact
+hash and byte count. This validates the comparison input only; it is not a
+cross-machine result. The old-snapshot control records `20250401T000000Z`;
+the other forty entries record `20260701T000000Z`.
+
+The user confirms this is the only available instance and asks whether a
+privileged container and/or the existing kernel can work. The host build
+kernel need not equal the NVIDIA module ABI: a privileged container with
+working loop and filesystem mounts could build and run tier 3 on kernel 6.8.
+The 535 `.ko` test still requires its exact ABI. Privileges must be granted
+by the provider/outer container runtime, not by root inside this container.
+
+Investigating a userspace QEMU/TCG Ubuntu VM on the same remote instance as an
+alternative build environment. It would have its own kernel and mount
+authority without modifying the provider's kernel or exposing the GPU. This
+preserves independent-machine execution but adds emulation overhead and must
+be reported as such. Installed `qemu-system-x86 cloud-image-utils` on the
+remote for this attempt; download/launch results will be recorded separately.
+No GPU passthrough is proposed or enabled.

@@ -1,0 +1,78 @@
+Welcome to vast.ai. If authentication fails, try again after a few seconds, and double check your ssh key.
+Have fun!
+AI agents: READ /etc/vast-agents-guide.md (also linked as ./AGENTS.md) before acting on or describing this instance: it is the operating guide. ('vast-capabilities' shows live state only, not the guide.)
+
+=== 1. Host tools ===
+  [ ok ] debootstrap
+  [ ok ] mksquashfs
+  [ ok ] unsquashfs
+  [ ok ] curl
+  [ ok ] mount
+  [ ok ] umount
+  [ ok ] chroot
+  [ ok ] losetup
+  [ ok ] rsync
+  [ ok ] sgdisk
+  [ ok ] mkfs.ext4
+  [ ok ] getfattr
+  [ ok ] qemu-img
+  [ ok ] zstd
+  [ ok ] python3 yaml
+  ...... install missing: apt install debootstrap squashfs-tools rsync gdisk
+  ......                  attr qemu-utils util-linux curl python3-yaml zstd
+
+=== 2. Kernel support ===
+  [ ok ] overlayfs available
+  [ ok ] squashfs available
+
+=== 3. Assumption A: snapshot 20260701T000000Z is reachable ===
+  [ ok ] jammy Release (HTTP 200)
+  [ ok ] jammy-updates Release (HTTP 200)
+  [ ok ] jammy-security Release (HTTP 200)
+  ...... archive Date: Thu, 21 Apr 2022 17:16:08 UTC
+
+=== 4. Assumption B: overlay upperdir survives SquashFS ===
+  [FAIL] cannot mount overlayfs (is upperdir on a fs supporting trusted xattrs?)
+
+PASS=20 FAIL=1
+verify_exit=1
+boot_preflight_exit=2
+still_missing=qemu-system-x86_64
+still_missing=mkfs.vfat
+mount: /srv/modfs/build/verify_wo/merged: permission denied.
+       dmesg(1) may have more information after failed mount system call.
+[1;31m[FAIL][0m missing tool: qemu-system-x86_64
+/usr/bin/udevadm
+absent=/usr/share/OVMF/OVMF_CODE_4M.fd
+absent=/usr/share/ovmf/OVMF.fd
+mksquashfs version 4.6.1 (2023/03/25)
+copyright (C) 2023 Phillip Lougher <phillip@squashfs.org.uk>
+
+This program is free software; you can redistribute it and/or
+modify it under the terms of the GNU General Public License
+as published by the Free Software Foundation; either version 2,
+or (at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+GNU General Public License for more details.
+Filesystem extended attribute (xattrs) options:
+-no-xattrs		do not store extended attributes
+-xattrs			store extended attributes (default)
+-xattrs-exclude <regex>	exclude any xattr names matching <regex>.  <regex> is a
+			POSIX regular expression, e.g. -xattrs-exclude '^user.'
+			excludes xattrs from the user namespace
+-xattrs-include <regex>	include any xattr names matching <regex>.  <regex> is a
+			POSIX regular expression, e.g. -xattrs-include '^user.'
+			includes xattrs from the user namespace
+-xattrs-add <name=val>	add the xattr <name> with <val> to files.  If an
+			multiple times to add multiple xattrs
+12
+               total        used        free      shared  buff/cache   available
+Mem:            31Gi       5.4Gi       4.9Gi       5.7Mi        21Gi        25Gi
+Swap:             0B          0B          0B
+Filesystem       1B-blocks      Used   Available Use% Mounted on
+overlay        88046829568 111607808 87935221760   1% /
+cat: /sys/fs/cgroup/memory.max: No such file or directory
+cat: /sys/fs/cgroup/cpu.max: No such file or directory
