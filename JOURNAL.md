@@ -5025,3 +5025,30 @@ did not establish that Jammy's stock build tools were sufficient.
 This VM is a route to remote build/boot verification only. It has no GPU;
 neither its successful boot nor the container's working `nvidia-smi` tests
 loading the ModFS NVIDIA driver against physical hardware.
+
+Compatible-tool installation completed at upstream revision
+`d8cb82d9840330f9344ec37b992595b5d7b44184`. The unchanged verifier now reaches
+the actual SquashFS/loop/recomposition operations: **31 pass, one fails**.
+Whiteout preservation and deletion masking work. The sole failure is the
+previously identified obsolete expectation that the deliberately stripped
+opaque marker hides an existing lower directory's content. No check was
+disabled or changed to make this pass. Full log: `guest-extra-tools.log`.
+
+The base build started at **16:43:04 UTC** with **59,431,784,448 free bytes**,
+inside a private mount namespace and `MODFS_ROOT=/srv/modfs/build/verification`.
+Snapshot remains July, checkout remains `a69111b`. Host tools are debootstrap
+`1.0.126+nmu1ubuntu0.9`, upstream SquashFS 4.6.1, libzstd
+`1.4.8+dfsg-3build1`. Original local tools are debootstrap 1.0.134ubuntu2,
+SquashFS 4.6.1, libzstd 1.5.5. These are potential explanatory variables, not
+yet demonstrated causes of a differing build. The original-reference delta
+builder also predates 5bd645c's switch from base.dir to mounted base.sqsh;
+the current run does not silently revert that change to improve equality.
+
+For diagnosis, the committed read-only `squash_inventory.py` consumed every
+original SquashFS via `unsquashfs -pf -`: **41 archives, 65,674 per-archive
+nodes**. Inventories retain content hashes, ownership/mode/time, links and
+xattrs; archive hashes remain the comparison metric. All 41 inventory hashes
+and sizes match the earlier reference CSV. Four independently read base files
+match the helper's digests; Python syntax check passes. The gzip JSON-lines
+inventory and plain base/jq examples are committed with reproduction details.
+No local extraction, mount, repack or artifact modification was performed.

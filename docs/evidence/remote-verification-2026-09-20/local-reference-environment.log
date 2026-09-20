@@ -1,0 +1,35 @@
+2026-09-20T16:41:29+00:00
+7.0.0-31-generic
+PRETTY_NAME="Ubuntu 24.04.5 LTS"
+NAME="Ubuntu"
+VERSION_ID="24.04"
+VERSION="24.04.5 LTS (Noble Numbat)"
+VERSION_CODENAME=noble
+ID=ubuntu
+ID_LIKE=debian
+HOME_URL="https://www.ubuntu.com/"
+SUPPORT_URL="https://help.ubuntu.com/"
+BUG_REPORT_URL="https://bugs.launchpad.net/ubuntu/"
+PRIVACY_POLICY_URL="https://www.ubuntu.com/legal/terms-and-policies/privacy-policy"
+UBUNTU_CODENAME=noble
+LOGO=ubuntu-logo
+/usr/bin/mksquashfs
+mksquashfs version 4.6.1 (2023/03/25)
+copyright (C) 2023 Phillip Lougher <phillip@squashfs.org.uk>
+
+This program is free software; you can redistribute it and/or
+modify it under the terms of the GNU General Public License
+as published by the Free Software Foundation; either version 2,
+or (at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+GNU General Public License for more details.
+debootstrap 1.0.134ubuntu2
+debootstrap	1.0.134ubuntu2
+libzstd1:amd64	1.5.5+dfsg2-2build1.1
+libzstd1:i386	1.5.5+dfsg2-2build1.1
+squashfs-tools	1:4.6.1-1build1
+zstd	1.5.5+dfsg2-2build1.1
+a69111baedb576ea9d093626e883b6f7cd5bd3ce

@@ -129,3 +129,64 @@ The private key remains on the remote and is never committed. The guest also
 clones from GitHub origin; no source tree is copied into it. Its first clone
 and pre-install verifier output are in `guest-initial-verify-retry.log` (the
 earlier log is an SSH connection attempt before boot completed).
+
+## Guest tool bootstrap and inventories
+
+The guest ran the same initial verifier and suggested apt line before any
+extra tool installation. `guest-suggested-install.log` records the 4.5 option
+failure. The follow-up command sequence (`guest-extra-tools.log`) was:
+
+```sh
+export DEBIAN_FRONTEND=noninteractive
+apt-get install -y build-essential libzstd-dev liblz4-dev liblzo2-dev liblzma-dev libattr1-dev zlib1g-dev pkg-config qemu-system-x86 dosfstools ovmf
+mkdir -p /srv/modfs/build/toolchain
+cd /srv/modfs/build/toolchain
+git clone --branch 4.6.1 --depth 1 https://github.com/plougher/squashfs-tools.git
+cd squashfs-tools
+git rev-parse HEAD
+make -C squashfs-tools -j4 ZSTD_SUPPORT=1 XZ_SUPPORT=1 LZO_SUPPORT=1 LZ4_SUPPORT=1
+install -m 755 squashfs-tools/mksquashfs squashfs-tools/unsquashfs /usr/local/bin/
+mksquashfs -version
+dpkg-query -W debootstrap libzstd1 squashfs-tools
+cd /root/modfs
+./scripts/00_verify.sh
+```
+
+The upstream revision was `d8cb82d9840330f9344ec37b992595b5d7b44184`.
+The `/usr/local/bin` tools supersede the distro's 4.5 executable on PATH;
+dpkg still correctly reports the distro package as 4.5. With compatible tools,
+the verifier reports 31 passes and the obsolete opaque-directory expectation
+fails. Do not describe that as a completely passing verifier.
+
+`squash_inventory.py` is a read-only measurement helper. It consumes
+`unsquashfs -pf -` and hashes the embedded file data without extracting it.
+It retains inode metadata, links and xattrs; regular-file pseudo-stream data
+offsets are replaced by per-file hashes. It neither rewrites an archive nor
+changes the cross-machine archive-hash comparison. Example:
+
+```sh
+python3 squash_inventory.py /srv/modfs/modules/base.sqsh > new-base-inventory.json
+```
+
+`local-inventories.jsonl.gz` contains one JSON document for each of the 41
+reference artefacts, produced by that helper and gzip-compressed for storage.
+Every archive hash/size was checked against `local-reference.csv` afterwards.
+The plain base and jq inventories are also retained for convenient inspection.
+Validation: all 41 archives parse; 65,674 total per-archive nodes; four base
+file digests independently match `unsquashfs -cat` (`etc/adduser.conf`,
+`usr/bin/bash`, `var/lib/dpkg/status`, `etc/machine-id`). Python syntax check
+passed. This is diagnostic coverage, not a general-purpose SquashFS parser.
+
+The base build runs in the guest with the unchanged `a69111b` checkout:
+
+```sh
+cd /root/modfs
+export MODFS_ROOT=/srv/modfs/build/verification
+export MODFS_SNAPSHOT_ID=20260701T000000Z
+export PYTHONDONTWRITEBYTECODE=1
+df -B1 /srv/modfs/build  # require >40 billion free bytes before starting
+/usr/bin/time -p unshare --mount --propagation private ./scripts/01_build_base.sh --version 1.0
+```
+
+`remote-base-build.log` records the actual result and elapsed time. Logs are
+also preserved in the guest under `/srv/modfs/results/remote-verification-2026-09-20/`.
