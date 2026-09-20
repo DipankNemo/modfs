@@ -25,7 +25,13 @@ if [ -z "$SOURCE_EPOCH" ]; then
 fi
 unset _snap_ts
 
-SUITE="jammy"
+# Overridable like MODFS_ROOT/SPEC_DIR/BUILD_DIR, so a whole generation can be
+# built for another Ubuntu release into a separate tree WITHOUT editing any
+# script. The catalogue and every published measurement are jammy; a noble
+# generation exists to test whether the method is release-specific, and to
+# reach a kernel ABI for which prebuilt NVIDIA modules and real hardware
+# actually coincide.
+SUITE="${MODFS_SUITE:-jammy}"
 ARCH="amd64"
 COMPONENTS="main universe restricted multiverse"
 
