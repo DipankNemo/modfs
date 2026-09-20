@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Measure whole-artefact transfers between two retained catalogue roots.
 
-Hashes actual bytes, checks the recorded size/digest, and fails on incomplete
-catalogues. Size growth is not shipping: a changed artefact ships in full.
+Hashes actual bytes and fails on missing artefacts or size/digest mismatches.
+Absent manifests are treated as removals; verify build coverage separately. Size growth is not shipping: a changed artefact ships in full.
 The monolithic catalogue total is explicitly a B+d model, not a built image.
 """
 import argparse
