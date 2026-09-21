@@ -122,6 +122,15 @@ reconciliation layer above all modules. **178/178, 0 invisible.** It also makes
 composition **order-independent** — without it, stacking order decides which
 packages disappear.
 
+> **Corrected 21 September (I-03).** That sentence is too strong as written, and
+> it stood unqualified for six weeks. Order-independence holds **in record
+> content only**: merged forward and reversed, `base+postgres+mysql+java+
+> webserver` gives `passwd`, `group`, `shadow`, `gshadow`, `subuid` and `subgid`
+> set-equal in every case and **byte-equal in none**, because record order
+> follows first appearance. `ARCHITECTURE.md` §4 carries the measurement;
+> `tests/review_claims.py::test_no_unconditional_order_claim` now fails the
+> build if the unqualified form returns.
+
 **Forced next:** an arithmetic discrepancy in Phase 3's output — pytools
 reported 27 added packages but only 24 new stanzas — was still unexplained.
 

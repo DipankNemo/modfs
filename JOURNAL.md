@@ -5467,3 +5467,158 @@ three matches as well and passes. The retained image SHA256 is
   The contract is not a ban -- 148 + 27.2 N is correct where labelled as
   composing -- it is that a document publishing one half must publish the other.
 - 22 of the 24 inconsistencies remain, deliberately unapplied.
+
+## 2026-09-21 (reconciliation pass: code against evidence against documents)
+
+Ran the code, then compared what it did against what the documents say. The
+previous pass compared documents against each other, which is why everything
+below survived it.
+
+### The 24 inconsistencies are closed; five more were found
+
+I-03 was still live in `EVOLUTION.md:122` and `MEETING.md:49` — the unqualified
+"reconciliation makes composition order-independent". Both now carry a dated
+correction rather than a rewrite: the sentence stands as written and the
+qualifier sits under it, because `MEETING.md` is a record of what was said on
+6 August and falsifying it would be worse than the error. I-09 and I-12 looked
+live to a crude grep and are genuinely closed; the hits were
+`inconsistencies.md` quoting the defects it documents.
+
+Five new, recorded as I-25…I-29. **I-28 is the one with thesis value.**
+
+### I-28 — the check verified the label and never the number
+
+Four documents published `compose 148 + 27.2 ms × N`. That is the fit of
+`results/tier2/compose-sweep-2026-09-18-pre-round2.csv`. The current 152-row
+sweep gives **175.2 + 30.55 N** (R² = 0.975), which `thesis/evidence/tier2-fit.csv`
+has held since 18 September.
+
+Three compounding failures, none of them in the system under test:
+
+1. `thesis/evidence/claims.md` had **already traced it, twice, and marked it
+   STALE** with the correct replacement. The trace was generated, published and
+   never read. Twenty-one rows in that file were marked STALE; every one mapped
+   to an inconsistency that had since been applied, so the file had become a
+   list of solved problems that still read as open.
+2. `tests/review_claims.py::test_cost_scope` covers this exact claim and passed
+   throughout. It asserts that a compose-only fit is not published as the cost
+   of tier 2 without the verify fit beside it. All four documents satisfied
+   that. They were correctly **labelled** and numerically **stale**.
+3. I-11 had been applied to `STATE_OF_PLAY` — the cell was split into compose
+   and verify — while the coefficient inside the cell was left alone. The shape
+   of the claim was corrected and its content was not.
+
+This is the project's signature defect arriving at the level of its own
+evidence, and it is the same shape as V7 comparing directory entry names, V2
+comparing package name sets, and `00_verify` checking that a tool exists rather
+than that it works. **The check only looks where it was pointed.**
+
+Fixed in all four documents. `ARCHITECTURE.md:491` called `148 + 27.2` "the
+later fit" — true when written, misleading now — and is marked superseded. New
+test `test_cost_fit_is_the_current_generation` reads the coefficients out of
+`tier2-fit.csv`, so it tracks the regenerated evidence instead of a literal, and
+fails on any document publishing the old fit without saying it is superseded.
+It found two more lines than I had, which is the argument for writing it.
+
+### I-26 — the test suite's verdict depended on the developer's umask
+
+`tests/review_verification.py` `put()` wrote fixtures with `write_text`, at the
+process umask; `setUp` chmodded its own account files to 0644 explicitly. Two
+tests add a second layer through `put()` and never chmod it. V6 compares the
+merged account file's mode against its layers', so:
+
+```
+umask 022 -> Ran 29 tests ... OK (skipped=1)
+umask 002 -> Ran 29 tests ... FAILED (failures=2)
+            etc/group: mode/uid/gid (420, 1000, 1000), expected (436, 1000, 1000)
+```
+
+420 is 0644, 436 is 0664. **V6 was right in both runs.** The bug had been in the
+tree since the account work of 16 September and is invisible to anyone whose
+shell uses the more common `umask 022`. `put()` now takes `mode=0o644`; 29/29
+under umasks 002, 022, 027 and 077.
+
+A test whose result depends on the shell that launched it is not evidence — the
+same shape as V7 resolving an absolute symlink against the checking host, where
+the verdict depended on the machine.
+
+### I-27 — four test files need root and none of them said so to the runner
+
+`review_account_metadata.py` (whose docstring literally says "Root required."),
+`review_probes.py`, `review_replaces.py` and `review_binding_coverage.py` mount
+artefacts or repack squashfs. Nothing checked `geteuid`. An unprivileged sweep
+reported **19 failures** with messages like `Parallel unsquashfs: Using 6
+processors` and `mount ... exit status 32`, so a real defect would have been
+indistinguishable from the privilege boundary — in a project whose working
+agreement is that the assistant cannot run privileged commands at all. Each
+class now carries `ROOT_ONLY`. The unprivileged sweep is ten files green with
+declared skips.
+
+### A live cohort bug, found from an unmerged branch's journal
+
+`13_storage_ratios.sh` guards against a module **declared** large and not built.
+Nothing guarded the symmetric case: a large module **present** and undeclared
+falls silently into "small adversarial", because the split is a membership test
+against a hardcoded literal set containing `nvidia-driver-535`.
+
+`experiment/noble-generation` renames the driver to `nvidia-driver-580`. On that
+catalogue the script warns on stderr that 535 is missing — easy to miss — and
+then puts a 542.6 MB artefact into the cohort whose mean delta is 7.5 MB.
+Measured on a synthetic catalogue reproducing the rename, and the effect is not
+cosmetic:
+
+```
+correct  small cohort: N=31 ratio=5.59x
+with one misclassified 542.6 MB driver: N=32 ratio=2.59x
+```
+
+The headline storage number would have more than halved, silently. Both
+`13_storage_ratios.sh` and `16_build_evidence.sh` now refuse an undeclared
+module at or above the smallest declared-large one. The split stays a
+JUDGEMENT — size does not decide it — but an undeclared module that large is a
+decision nobody has made, so it fails rather than averaging into the wrong
+cohort. Tested both branches on a synthetic catalogue: exit 0 when the
+catalogue matches the declared set, exit 2 on the rename.
+
+### `experiment/noble-generation` is 9 commits and 12,056 lines, and STILL RUNNING
+
+Read for this pass, not merged and not to be merged yet. This is **not** the
+`experiment/base-fattening` situation — that branch was finished and forgotten;
+this one is mid-flight and paused on a Codex usage limit, expected to resume.
+It is deliberately being run against the CURRENT 24.04 userspace, kernel and
+driver, so that the GPU claim rests on real hardware rather than on a pinned
+fiction. Two substantial interim results exist, and neither is final:
+
+- **A complete second generation on Ubuntu 24.04.** 40 modules plus base, 0
+  missing, stage 12 re-derived 41/41 bindings with 41/41 archive digests
+  matching. Noble base is 107 packages / 43,204,608 B against jammy's 113 /
+  41,717,760 B. Two explicit packages are needed that jammy did not need —
+  `adduser` (noble minbase no longer brings it, and the builder needs
+  `/etc/adduser.conf` to establish UID ranges before APT) and
+  `systemd-boot-efi`. That is a real portability finding, and it is the
+  strongest available answer to "is this method Ubuntu-22.04-specific?"
+- **CUDA computes on real hardware.** GTX 1060 6 GB, compute 6.1; the
+  artefact's own NVRTC 12.0 compiled `compute_61` PTX 8.0 and a 32-thread
+  launch returned exactly 7…38. Three loaded library hashes match
+  `unsquashfs -cat` from the CUDA module, whose digest matches its manifest.
+  The branch states its own scope: the **host's** 580.173.02 kernel driver was
+  already loaded and **no ModFS kernel module was inserted**.
+
+`STATE_OF_PLAY` §7.9 still said "Nothing shows that CUDA computes: there is no
+GPU on this machine." It is now marked as being overtaken, with the scope limit
+kept and the branch's in-flight status stated, because a result on a running
+branch is not a result yet. Re-audit when it lands; do not carry the claim
+across on trust.
+
+Noble storage, modelled rather than measured against real monolithic builds:
+small 4.626x, large 1.159x, all 40 1.679x, against jammy's 5.59 / 1.20 / 1.84.
+One confound is declared by the branch itself: noble `jq` requests
+`[jq, moreutils]` where the jammy artefact requested `[jq]`, so 10,858,496 B
+against 565,248 B is a changed input spec and not a release effect.
+
+### Status
+
+Unprivileged test sweep, ten files: `review_claims` 8/8, `v7_attacks` 4/4,
+`round2_attacks` 11/11, `review_binding` 8/8, `review_verification` 29/29,
+`review_extended_states` 5/5, and four root-only files skipping cleanly.
+`bash -n` and `py_compile` clean across `scripts/` and `tests/`.

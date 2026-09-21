@@ -2,6 +2,27 @@
 
 **Chapter: Discussion**
 
+> **Status update 2026-09-21.** This file is hand-written and is NOT refreshed by
+> `scripts/16_build_evidence.sh`, so the verdicts below are the state at the time
+> of the audit. **All 21 rows marked STALE have since been applied** — see
+> `inconsistencies.md`, whose index carries the per-item status. Two of them
+> deserve to be read rather than ticked off:
+>
+> - the `148 + 27.2 ms × N` rows (`:106`, `:146`) were traced and marked STALE
+>   here, and then published as current in four documents for three more days,
+>   because nobody read the trace and the test covering that claim checked the
+>   number's *label* and never its *currency* (`inconsistencies.md` I-28);
+> - the rows reading "TRACED for the 38-module catalogue, STALE as current" are
+>   not errors in the original measurement. Each reproduces exactly for the
+>   catalogue it was taken on — `storage.md` §S5 demonstrates this for every
+>   published storage figure — and they moved because the catalogue grew to 40,
+>   not because the method changed.
+>
+> The verdict vocabulary below is therefore worth keeping in the thesis: **TRACED
+> to a retained file** and **STALE against the current generation** are different
+> statements, and a number can honestly be both.
+
+
 _Hand-written, not generated. `scripts/16_build_evidence.sh` does not touch this
 file. Audit taken **2026-09-21** against the artefacts, CSVs and run bundles then
 on disk, at commit `7402b0a`, catalogue **40 modules**._
@@ -273,7 +294,7 @@ nine of its historical figures carry their own generation marker.
 | "**Run A** — 26 modules — **did not boot.**" | `:1011` | no bundle in `/srv/modfs/results/boot/` has 26 modules | **UNTRACEABLE** — Run A left no retained bundle |
 | "**Run B** — `base + webserver + apache` — is one successful UEFI/systemd boot in which … nginx started, Apache did not" | `:1018–1021` | `results/boot/m3-nginx-apache-20260903T080746Z/`: state `degraded`, `failed-unit apache2.service`, listeners `0.0.0.0:80 → nginx` | **TRACED** — and the bundle records `verdict: FAIL`, because an expected service failure is still a failed unit |
 | "The GPU stack boots — 2026-09-19" | `:1073` | `results/boot/gpu-stack-20260918T231943Z/result.json` — `verdict: PASS`, state `running`, 0 failed units, 2/2 probes | **TRACED** |
-| "**Nothing shows that CUDA computes: there is no GPU on this machine.**" | `STATE_OF_PLAY:§7.9` | no bundle records a GPU device | **TRACED** (as a negative) |
+| "**Nothing shows that CUDA computes: there is no GPU on this machine.**" | `STATE_OF_PLAY:§7.9` | no bundle records a GPU device **on `main`**; `experiment/noble-generation` (unmerged) retains `gpu-runtime/result.json` — GTX 1060 6 GB, compute 6.1, NVRTC 12.0, PTX 8.0, a 32-thread launch returning 7…38, three artefact library hashes traced to the manifest | **TRACED as a negative for `main`; being overtaken off-branch.** The branch is still running — hold this row until it finishes, then re-audit rather than merging the claim across on trust |
 
 ---
 

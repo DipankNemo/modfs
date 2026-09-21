@@ -4,6 +4,13 @@ What exists, what it actually does, and what was found to be lying about itself.
 Written after three independent review passes in two days. `ARCHITECTURE.md`
 remains canonical for design; this is an orientation map.
 
+> **Read §6 with its date.** This document is a snapshot taken when the
+> catalogue held **38** modules. It holds 40 today, and every count that scales
+> with the catalogue has moved. `thesis/evidence/` is regenerated from the
+> retained artefacts by `scripts/16_build_evidence.sh` and is the authority for
+> every number; where this document and that directory disagree, that directory
+> is right. Corrections made since 18 September are marked inline.
+
 ---
 
 ## 1. What the system is, in one paragraph
@@ -21,7 +28,8 @@ and flattens the result into a conventional ext4 root. The saving is
 ## 2. The conflict taxonomy
 
 Nine classes. Seven were designed; classes 8 and 9 were **discovered by running
-the system** and are not yet in `ARCHITECTURE.md` §4.
+the system**. ~~Not yet in `ARCHITECTURE.md` §4.~~ — **added 21 September**;
+§4's table now carries all nine rows.
 
 | # | Class | What goes wrong | Handling | Status |
 |---|---|---|---|---|
@@ -89,7 +97,7 @@ merged registry rather than content in their own right.
 | Tier | What it does | Cost |
 |---|---|---|
 | 1 | Metadata only, no mounts (`05_check.sh`) | 89 ms at N=2 → 398 ms at N=36 |
-| 2 | Compose (`10_compose_sweep.sh`) | compose 148 + 27.2 ms × N; verify 161.3 + 41.8 ms × N |
+| 2 | Compose (`10_compose_sweep.sh`) | compose 175.2 + 30.55 ms × N; verify 161.3 + 41.8 ms × N — **corrected 21 September**; `148 + 27.2` was the pre-round-2 CSV |
 | 3 | Pack a UEFI image, boot under QEMU (`11_boot_test.sh`) | 183-331 s over 15 completed runs, median 199 s; 2 aborts excluded |
 
 Tier-2 checks, in `verify_compose.py`:
@@ -103,10 +111,10 @@ Tier-2 checks, in `verify_compose.py`:
 - **V7** every path in any layer is visible in the merge, compared by `(kind, size)`
 - **V8** every debconf record any layer answered survives the merge
 
-> **Documentation drift:** `10_compose_sweep.sh`'s own header still advertises
-> only V1–V6. V7 and V8 exist but the script describing them does not mention
-> them. Same defect as before: the script that runs the check documenting itself
-> as not having it.
+> **Documentation drift — closed 21 September.** `10_compose_sweep.sh`'s header
+> advertised only V1–V6 while V7 and V8 both ran: the script that does the work
+> documenting itself as not doing it, the same shape found three times before.
+> The header now lists V1–V8.
 
 ---
 
@@ -130,14 +138,16 @@ shapes.
 
 ### 5b. The harness constraining the measurement
 
-Four separate cases where **the instrument, not the system, was the limit** —
-and every one was invisible while N was small or probes were weak.
+**Six** separate cases where **the instrument, not the system, was the limit** —
+and every one was invisible while N was small, probes were weak, or the machine
+happened to be configured the way the author's was.
 
 1. **`require_no_mounts` parsed field 2** of `/proc/self/mountinfo` instead of field 5. The guard was completely inert.
 2. **Signal handlers `return`ed** instead of re-raising, so scripts continued after Ctrl-C and exited 0.
 3. **The observer was the job.** The boot harness waited for a steady state its own queued job prevented — `systemctl is-system-running --wait` could never succeed at any timeout. 180 s wasted per run. Compounded by `grep -c . || echo 0` producing the two-line string `0\n0`, so the drain loop could not break *even on an empty queue*: one symptom, two sufficient causes.
 4. **The 4096-byte mount-data ceiling.** OverlayFS packs every lower layer into one option string. A 37-layer set failed or succeeded *depending on how long its scratch directory name was*. Fixed with relative lowerdirs: 4319 bytes → 419.
 5. **`07_smoke_test.sh` never created `/tmp`.** Nine probes "failed"; all nine were the harness. Invisible for the life of the project because no probe had ever written a file.
+6. **The test suite's verdict depended on the developer's umask** (found 21 September). `review_verification.py`'s `put()` helper wrote fixture files at the process umask while `setUp` chmodded its own explicitly. V6 compares the merged file's mode against the layers', so under `umask 002` two passing tests reported FAIL and under `umask 022` they passed — the same suite, the same commit, two verdicts. V6 was right both times. Fixed by giving `put()` an explicit mode; now 29/29 under umasks 002, 022, 027 and 077. **A test whose result depends on the shell that launched it is not evidence**, and this one had been in the tree since the account work on 16 September.
 
 ### 5c. Evidence that was quietly false
 
@@ -150,17 +160,28 @@ and every one was invisible while N was small or probes were weak.
 
 ---
 
-## 6. Current evidence
+## 6. Evidence as of 18 September — and what it is today
 
-| | |
-|---|---|
-| Tier 1 | 703 pairs, **ACCEPT 630 / REJECT 73** — matches an independent combinatorial prediction |
-| Tier 2 | 152 compositions, N=2→36, **152 PASS** |
-| Tier 3 | 36 probes pass under systemd; only `apache2.service` fails (class 8) |
-| Smoke | 75 passed, 0 failed, 1 skipped over the 36-module set (37 layers incl. base; N counts module deltas, base excluded) |
-| Regression | `v7_attacks.py` 4/4, `round2_attacks.py` 11/11 |
-| Storage | 5.59× small / 1.32× large / **2.51× whole catalogue** |
-| Cost | tier 2 compose = 148 + 27.2 ms × N; verify = 161.3 + 41.8 ms × N |
+Every row moved when the catalogue grew from 38 to 40. Neither column is wrong:
+each is correct for the catalogue it was measured on, and that is the point —
+**these are properties of the catalogue as much as of the method.** The right
+column is regenerated; take it, not the left, into the thesis.
+
+| | 18 September (38 modules) | today (40 modules), from `thesis/evidence/` |
+|---|---|---|
+| Tier 1 | 703 pairs, ACCEPT 630 / REJECT 73 | **780 pairs, ACCEPT 667 / REJECT 113**; also 9880 triples, ACCEPT 7807 / REJECT 2073 — `tier1.md` |
+| Tier 2 | 152 compositions, N=2→36, 152 PASS | **152 compositions, N=2→38, 152 PASS** — `tier2.md` |
+| Tier 3 | 36 probes pass; only `apache2.service` fails (class 8) | unchanged; 20 retained bundles, **6 PASS / 5 FAIL / 4 ABORTED / 2 BROKEN / 3 no result** — `tier3.md` |
+| Smoke | 75 passed, 0 failed, 1 skipped over the 36-module set (37 layers incl. base; N counts module deltas, base excluded) | unchanged |
+| Regression | `v7_attacks.py` 4/4, `round2_attacks.py` 11/11 | unchanged, plus `review_verification.py` 29/29 and `review_binding.py` 8/8 |
+| Storage | 5.59× small / 1.32× large / **2.51× whole catalogue** | **5.59× small / 1.20× large / 1.84× whole catalogue** — `storage.md` |
+| Cost | tier 2 compose = 148 + 27.2 ms × N; verify = 161.3 + 41.8 ms × N | **compose = 175.2 + 30.55 ms × N**; verify unchanged — `tier2-fit.csv` |
+
+`storage.md` §S5 recomputes **every** published storage figure from the
+artefacts on disk and shows each one reproduces for the catalogue it names. The
+ratio did not change because the method changed; it changed because
+`cuda-runtime` (680 MB) and `nvidia-driver-535` (232 MB) joined a catalogue
+whose median module is 7.5 MB.
 
 **Base fattening** (measured, not adopted): server-side **−24.1%**, but *no
 single-module node can ever win* — structurally, because the shared set is
@@ -177,10 +198,10 @@ build**; the thesis must state which it claims.
 3. **V7 non-regular nodes** — FIFOs, sockets, device nodes collapse together.
 4. **Order-independence is semantic, not byte-wise.** `ARCHITECTURE` §4 says the merged account files are "identical under order reversal". Measured: **set-equal yes, byte-equal no.** The claim is too strong as written.
 5. **Four probes satisfied by a sibling** — `gawk`, `gcc`, `rsync` and one more. Documented with `probe_note` rather than fixed.
-6. **The sidecar seal is optional** — `binding.sidecar_sha256` lives *inside* `binding`, which cannot be inside its own digest, so deleting that one field disables the check while the manifest seal still verifies. A tampered sidecar can invent collisions or erase evidence. *(Codex H1; fix pending.)*
+6. ~~**The sidecar seal is optional**~~ — **closed.** `binding.sidecar_sha256` lives *inside* `binding` and so cannot be covered by its own digest; deleting that one field used to disable the check while the manifest seal still verified, letting a tampered sidecar invent collisions or erase evidence. The seal is now **consumer policy, not document policy**: `manifest_binding.validate_manifest()` rejects a manifest whose `sidecar_sha256` is missing or malformed, and `load_sidecar()` refuses to parse ownership data until the digest matches. A document can no longer opt out of being checked. Covered by `tests/review_binding.py` — `test_missing_sidecar_digest`, `test_malformed_sidecar_digest`, `test_tampered_sidecar`, `test_resealed_reduced_coverage`, 8/8. *(Codex H1.)*
 7. **No Related Work section** exists.
 8. **Verification cost is outside the published model.** `total_ms` is exactly `mount_ms + reconcile_ms` — it measures composing, not verifying.
-9. ~~**CUDA/TensorFlow**: costed, not built. The blocker is *not* the absence of a kernel — the kernel is pinned and deterministic. It is that the resolved ABI is **recorded nowhere**.~~ — **CUDA done 2026-09-19.** The ABI is recorded in every tier-3 run bundle's `result.json`, and two real modules are built: `nvidia-driver-535` (231.6 MB stored) and `cuda-runtime` (680.2 MB stored). Both pass tier 1, tier 2 at every N up to 38, and a tier-3 UEFI boot. The diagnosis above was exactly right — the ABI being unrecorded was the whole blocker. **Nothing shows that CUDA computes: there is no GPU on this machine.** See ARCHITECTURE §5 and §9, and the 19 September JOURNAL entries. TensorFlow is unchanged and still excluded: it exists only on PyPI, which has no snapshot service, so it cannot satisfy the pinning premise at all.
+9. ~~**CUDA/TensorFlow**: costed, not built. The blocker is *not* the absence of a kernel — the kernel is pinned and deterministic. It is that the resolved ABI is **recorded nowhere**.~~ — **CUDA done 2026-09-19.** The ABI is recorded in every tier-3 run bundle's `result.json`, and two real modules are built: `nvidia-driver-535` (231.6 MB stored) and `cuda-runtime` (680.2 MB stored). Both pass tier 1, tier 2 at every N up to 38, and a tier-3 UEFI boot. The diagnosis above was exactly right — the ABI being unrecorded was the whole blocker. ~~**Nothing shows that CUDA computes: there is no GPU on this machine.**~~ — **being overtaken by `experiment/noble-generation`, which is STILL RUNNING and whose conclusions are not final.** There is a GPU: a GTX 1060 6 GB with driver 580.173.02. A supplementary runtime probe compiled a `compute_61` kernel with the **artefact's own** NVRTC 12.0, launched 32 threads and got exactly 7…38 back; the three CUDA libraries it loaded hash-match `unsquashfs -cat` from the module, whose digest matches its manifest. Scope, stated by that branch itself: the **host's** kernel driver was already loaded — *no ModFS kernel module was inserted*. **This result is not on `main`, and that branch is mid-flight** — it is deliberately being run against the current 24.04 userspace, kernel and driver so the GPU claim rests on real hardware rather than on a pinned fiction. Do not cite it as settled until the branch finishes. See ARCHITECTURE §5 and §9, and the 19 September JOURNAL entries. TensorFlow is unchanged and still excluded: it exists only on PyPI, which has no snapshot service, so it cannot satisfy the pinning premise at all.
 
 ---
 
@@ -191,13 +212,14 @@ build**; the thesis must state which it claims.
   ARCHITECTURE.md             canonical design — if code disagrees, the code is wrong
   JOURNAL.md                  running findings log; becomes Implementation + Evaluation
   config.sh                   paths, SQUASH_EXCLUDES, SQUASH_XATTR_EXCLUDE
-  specs/modules.yaml          the 38-module catalogue: packages, probes, requires
+  specs/modules.yaml          the 40-module catalogue: packages, probes, requires
   specs/uid-ranges.yaml       100-wide UID windows from 2000, append-only
-  scripts/00..12_*.sh         pipeline, numbered by stage
+  scripts/00..16_*.sh         pipeline, numbered by stage
   scripts/reconcile.py        the registry merges (class 5)
   scripts/verify_compose.py   V1–V8
   scripts/sample_sets.py      constraint-aware sampler
-  tests/                      v7_attacks.py, round2_attacks.py, repro_check.sh
+  tests/                      v7_attacks.py, round2_attacks.py, review_*.py, repro_check.sh
+  thesis/evidence/            REGENERATED numbers — the authority for the thesis
 
 /srv/modfs/                   artefacts (NOT git)
   modules/<name>.sqsh         the delta artefact

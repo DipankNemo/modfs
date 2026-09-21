@@ -23,7 +23,7 @@ chapter needs input that does not exist yet, it says so.
 - tier 3: the high-N runs reach `multi-user` with 36/36 probes passing and exactly ONE failed unit, `apache2.service` -- which is class 8, a real conflict rather than a defect, and must not be reported as zero
 - storage: 5.59× / 1.20× / 1.84× (40 modules), with the monolithic baseline
   with 6 of 40 monoliths rebuilt for real and 34 modelled as B + d; those 6 show the model OVERSTATES the saving by 0.2-0.9 %, and they span 0.3-37 MB of delta while cuda-runtime alone is 18.4x the largest of them
-- cost: compose 148 + 27.2 ms × N; verify 161.3 + 41.8 ms × N
+- cost: compose 175.2 + 30.55 ms × N (R²=0.975); verify 161.3 + 41.8 ms × N (R²=0.961) — the CURRENT sweep, 152 rows, `thesis/evidence/tier2-fit.csv`. The older `148 + 27.2 N` is the pre-round-2 CSV and must not be published as today's cost
 - base fattening: server-side −24.1%, and why no single-module node can win
 - GPU: a 680 MB module composes at the same per-layer cost and saves 5.8%
 - the verification findings: 20+ defects across three independent review passes

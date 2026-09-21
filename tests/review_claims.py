@@ -63,6 +63,52 @@ class ClaimTests(unittest.TestCase):
         self.assertEqual(half, [], 'quotes the compose fit without the verify fit '
                                    '(161.3 + 41.8 N): %s' % ', '.join(half))
         self.assertIn('| 2 | Compose only |', DOC)
+    def test_cost_fit_is_the_current_generation(self):
+        """A cost claim must quote the CURRENT sweep, not merely be labelled.
+
+        test_cost_scope above checks the LABEL -- that a compose fit is not
+        published as the cost of tier 2, which also verifies. It passed for
+        three days while every document published `148 + 27.2 N`, the fit of a
+        superseded CSV, because a correctly labelled stale number satisfies a
+        label check. thesis/evidence/claims.md had already traced it and marked
+        it STALE; nothing read that file.
+
+        Same shape as V7 comparing names rather than files: the check only
+        looks at what it was pointed at. So this one reads the coefficients out
+        of the regenerated evidence and fails if a document publishes different
+        ones without saying they are superseded."""
+        import csv
+        fit = ROOT/'thesis'/'evidence'/'tier2-fit.csv'
+        if not fit.exists():
+            self.skipTest('run scripts/16_build_evidence.sh to regenerate the fit')
+        row = next(r for r in csv.DictReader(fit.open())
+                   if r['quantity'] == 'total (compose only)')
+        current = '%s + %s' % (row['intercept_ms'], row['slope_ms_per_module'])
+        # A line may quote a superseded fit only while saying so.
+        SUPERSEDED = re.compile(r'pre-round|supersed|older|earlier|historical|'
+                                r'must not be published|not the fit of the current',
+                                re.I)
+        stale = []
+        for name, text in CLAIM_DOCS.items():
+            for i, line in enumerate(text.split('\n'), 1):
+                # Exempt a line that supersedes itself: either it says so in
+                # words, or it carries the current slope right beside the old
+                # one, which is a dated comparison rather than a claim.
+                if ('148 + 27.2' in line
+                        and not SUPERSEDED.search(line)
+                        and row['slope_ms_per_module'] not in line):
+                    stale.append('%s:%d' % (name, i))
+        self.assertEqual(stale, [],
+                         'publishes the superseded compose fit 148 + 27.2 N with no '
+                         'marker saying so; the current sweep gives %s -- at: %s'
+                         % (current, ', '.join(stale)))
+        # And whoever publishes a tier-2 cost must publish the current one.
+        for name, text in CLAIM_DOCS.items():
+            if '148 + 27.2' in text or '30.55' in text:
+                self.assertIn(current.split(' + ')[0], text,
+                              '%s discusses the tier-2 cost but never states the '
+                              'current intercept %s' % (name, current))
+
     def test_no_mixed_generation_ratios(self):
         self.assertNotIn('tier 2 costs almost exactly 2× tier 1', DOC)
         self.assertNotIn('**230–250×**', DOC)

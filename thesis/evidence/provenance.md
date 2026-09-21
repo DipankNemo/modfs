@@ -2,7 +2,7 @@
 
 **Chapter: Evaluation (appendix)**
 
-_Generated 2026-09-21 12:54:25Z from `/srv/modfs/results` at commit `5d0ed1ce5f3b720deda8f4d01b783a4d055f20ec` (branch `main`, working tree DIRTY). The commit is the state of the PIPELINE when this table was generated, which is not necessarily the commit the measurement was taken at — where a run bundle records its own commit, that file is the authority._
+_Generated 2026-09-21 13:05:34Z from `/srv/modfs/results` at commit `afd284ea136814cb4c6fe965ad348f822b8d8430` (branch `main`, working tree clean). The commit is the state of the PIPELINE when this table was generated, which is not necessarily the commit the measurement was taken at — where a run bundle records its own commit, that file is the authority._
 
 _Catalogue today: **40 modules** (40 with artefacts). Newest artefact: `cuda-runtime` at 2026-09-18 22:58:43Z._
 

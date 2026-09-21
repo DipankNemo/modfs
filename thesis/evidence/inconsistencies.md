@@ -3,9 +3,21 @@
 **Chapter: Discussion**
 
 _Hand-written, not generated. `scripts/16_build_evidence.sh` does not touch this
-file. Pass taken **2026-09-21**, commit `7402b0a`, catalogue **40 modules**.
-**Nothing here is applied.** Each entry is: what each document says, what the
-evidence says, and the one-line correction._
+file. First pass **2026-09-21**, commit `7402b0a`, catalogue **40 modules**. Each
+entry is: what each document says, what the evidence says, and the one-line
+correction._
+
+> **Applied 2026-09-21.** All 24 entries are now closed — 17 in commit
+> `afd284e`, I-03 and the residue of I-11 in the pass that followed. A second
+> pass the same day, run against the working tree rather than the brief, found
+> **five more (I-25…I-29)**, all recorded at the end of this file and all
+> applied. **I-28 is the one worth reading**: a superseded number was published
+> as current in four documents, `thesis/evidence/claims.md` had already traced
+> it and marked it STALE, and the test covering that claim passed throughout
+> because it checked the number's *label* and never its *currency*.
+>
+> This file is the audit trail, so nothing below is deleted or rewritten. Status
+> lines are updated in place; the original finding text stands.
 
 ---
 
@@ -595,31 +607,155 @@ produced the ambiguity.
 
 ---
 
+---
+
+## 10. Second pass, 21 September — found against the working tree, not the brief
+
+The first pass compared documents against each other. This one ran the code and
+compared documents against what the code *did*. Five more, all applied.
+
+### I-25 — STATE_OF_PLAY §5b says "Four separate cases" above a list of five
+
+**Status: APPLIED.**
+
+`docs/STATE_OF_PLAY_2026-09-18.md:141` — "**Four** separate cases where the
+instrument, not the system, was the limit", immediately above five numbered
+items. A count written before the last item was added and never revisited.
+
+**Correction.** Six, once I-26 below is included. Applied.
+
+### I-26 — the test suite's verdict depended on the developer's umask
+
+**Status: APPLIED.** *(defect in the evidence, not in the system)*
+
+`tests/review_verification.py`'s `put()` helper wrote fixture files with
+`Path.write_text`, which applies the process umask; `setUp` chmodded its own
+account files explicitly to 0644. Two tests — `test_member_union` and
+`test_declared_nonidentity_override` — add a *second* layer through `put()` and
+never chmod it.
+
+**Evidence.** V6 compares the merged account file's mode against its layers'.
+Under `umask 022` the fixture lands 0644 and matches; under `umask 002` it lands
+0664 and does not:
+
+```
+umask 022 → Ran 29 tests … OK (skipped=1)
+umask 002 → Ran 29 tests … FAILED (failures=2)
+            etc/group: mode/uid/gid (420, 1000, 1000), expected (436, 1000, 1000)
+```
+
+`420` is 0644 and `436` is 0664. **V6 was right in both runs**; the fixture was
+lying. The bug had been in the tree since the account work of 16 September and
+was invisible to anyone whose shell used the more common `umask 022`.
+
+**Correction.** `put()` takes an explicit `mode=0o644`. Now 29/29 under umasks
+002, 022, 027 and 077. *A test whose result depends on the shell that launched
+it is not evidence* — the same shape as V7 resolving an absolute symlink against
+the checking host, where the verdict depended on the machine.
+
+### I-27 — four test files declare "root required" in prose and none enforce it
+
+**Status: APPLIED.**
+
+`review_account_metadata.py`, `review_probes.py`, `review_replaces.py` and
+`review_binding_coverage.py` all mount artefacts or repack squashfs images.
+`review_account_metadata.py`'s docstring even says "Root required." Nothing
+checked. An unprivileged run reported **19 failures** across the four files,
+with messages like `Parallel unsquashfs: Using 6 processors` and
+`mount … exit status 32` — so a genuine defect would have been indistinguishable
+from the privilege boundary, in a project whose working agreement is that the
+assistant *cannot* run privileged commands.
+
+**Correction.** A module-level `ROOT_ONLY = unittest.skipUnless(os.geteuid() == 0,
+…)` on each class. The unprivileged sweep is now ten files green with declared
+skips, and a red file means a real failure.
+
+### I-28 — the superseded cost fit was published as current in four documents
+
+**Status: APPLIED.** *(the most instructive entry in this file)*
+
+`thesis/PLAN.md:26`, `README.md:18`, `docs/STATE_OF_PLAY_2026-09-18.md:100` and
+`thesis/refs/NOTES.md:744` all published **`compose 148 + 27.2 ms × N`**. That is
+the fit of `/srv/modfs/results/tier2/compose-sweep-2026-09-18-pre-round2.csv`.
+The current sweep, `/srv/modfs/logs/compose-sweep.csv`, 152 rows, gives
+**`175.2 + 30.55 N`** (R² = 0.975) — `thesis/evidence/tier2-fit.csv`.
+
+**Three things make this worth writing up.**
+
+1. `thesis/evidence/claims.md` had **already traced it**, twice, and marked it
+   **STALE** with the correct replacement. The trace was generated, published,
+   and not read.
+2. `tests/review_claims.py::test_cost_scope` covered this exact claim and
+   **passed throughout**, because it asserts that a compose fit is not published
+   as the cost of tier 2 without the verify fit beside it. Every one of the four
+   documents satisfied that: they were correctly *labelled* and numerically
+   *stale*. **The check verified the label and never the number.**
+3. I-11 was applied to `STATE_OF_PLAY` — the cell was split into compose and
+   verify — while the coefficient inside the cell was left at the old value. A
+   correction applied to the shape of a claim and not its content.
+
+This is the project's signature defect at the level of its own evidence: the same
+shape as V7 comparing directory entry names, V2 comparing package name sets, and
+`00_verify` checking that a tool exists rather than that it works. **The check
+only looks where it was pointed.**
+
+**Correction.** All four documents carry `175.2 + 30.55 N`.
+`ARCHITECTURE.md:491` called `148 + 27.2` "the later fit", true when written and
+misleading now; it is marked superseded. A new test,
+`test_cost_fit_is_the_current_generation`, reads the coefficients out of
+`tier2-fit.csv` — so it tracks the regenerated evidence instead of a literal —
+and fails on any document publishing the old fit without saying it is superseded.
+
+### I-29 — STATE_OF_PLAY §6 was titled "Current evidence" and held 38-module counts
+
+**Status: APPLIED.**
+
+Tier 1 "703 pairs" is exactly C(38,2); the catalogue holds 40, where C(40,2) =
+780 and the sweep records ACCEPT 667 / REJECT 113. Tier 2 read "N=2→36" against
+a measured 2→38. Storage read 5.59× / 1.32× / 2.51× against 5.59× / 1.20× /
+1.84×. Nothing here was ever *wrong* — each figure reproduces exactly for the
+catalogue it was taken on, which `storage.md` §S5 demonstrates for every
+published storage number — but the heading claimed a currency the section did
+not have.
+
+**Correction.** §6 is now a two-column table, 18 September beside today, with
+the regenerated `thesis/evidence/` named as the authority; the document carries
+a staleness banner at the top. §8's tree listing said "38-module catalogue",
+"`scripts/00..12_*.sh`" and a three-file `tests/`; it now says 40, `00..16`, and
+names `thesis/evidence/` as the source of thesis numbers.
+
+---
+
 ## Index
 
 | id | one line | status |
 |---|---|---|
-| I-01 | §6's "181–808 ms, compose + verify" | ALREADY CLOSED |
-| I-02 | `148 + 27.2 N` versus the 19.9 split | closed in ARCHITECTURE, live in STATE_OF_PLAY, PLAN |
-| I-03 | unconditional "order-independent" | closed in ARCHITECTURE, live in EVOLUTION, MEETING |
-| I-04 | "larger base has not been run" | ALREADY CLOSED |
-| I-05 | three reproducibility hashes | ALREADY CLOSED |
-| I-06 | ARCHITECTURE §4 lists 7 classes, project has 9 | LIVE |
-| I-07 | `reconcile.py` "Five registries"; six merged, eight documented | LIVE |
-| I-08 | `10_compose_sweep.sh` header advertises V1–V6 | LIVE |
-| I-09 | EVOLUTION "0 version skew across 378 pairs" | LIVE |
-| I-10 | "351/351 verified" versus 350 + 1 | ALREADY CLOSED |
-| I-11 | STATE_OF_PLAY tier-2 row labelled "verify" | LIVE |
-| I-12 | tier-3 "189–204 s" has a 183 s run outside it | LIVE |
-| I-13 | tier-3 "~3 min" versus 183–331 s | LIVE |
-| I-14 | PLAN "monolithic baseline rebuilt like-for-like" | LIVE |
-| I-15 | PLAN "10,660 at higher N"; one sentence, two catalogues | LIVE |
-| I-16 | PLAN "tier 3: 0 failed units" | LIVE |
-| I-17 | N counts layers in smoke, modules in tier 2 | LIVE |
-| I-18 | "`fake-cuda` rejected against 35 of 36" | LIVE |
-| I-19 | "seven large modules are 78 % of delta bytes" | LIVE |
-| I-20 | 792.8 MB versus 792.7 MB | LIVE, cosmetic |
-| I-21 | `13_storage_ratios.sh` prints MiB under an MB heading | LIVE |
-| I-22 | EVOLUTION "96 compositions" versus 81 composed | LIVE |
-| I-23 | `README.md` is a 22-August document | LIVE |
-| I-24 | `thesis/PLAN.md:42` points at the wrong refs directory | LIVE |
+| I-01 | §6's "181–808 ms, compose + verify" | already closed — reverified |
+| I-02 | `148 + 27.2 N` versus the 19.9 split | **APPLIED** |
+| I-03 | unconditional "order-independent" | **APPLIED** |
+| I-04 | "larger base has not been run" | already closed — reverified |
+| I-05 | three reproducibility hashes | already closed — reverified |
+| I-06 | ARCHITECTURE §4 lists 7 classes, project has 9 | **APPLIED** |
+| I-07 | `reconcile.py` "Five registries"; six merged, eight documented | **APPLIED** |
+| I-08 | `10_compose_sweep.sh` header advertises V1–V6 | **APPLIED** |
+| I-09 | EVOLUTION "0 version skew across 378 pairs" | **APPLIED** |
+| I-10 | "351/351 verified" versus 350 + 1 | already closed — reverified |
+| I-11 | STATE_OF_PLAY tier-2 row labelled "verify" | **APPLIED** |
+| I-12 | tier-3 "189–204 s" has a 183 s run outside it | **APPLIED** |
+| I-13 | tier-3 "~3 min" versus 183–331 s | **APPLIED** |
+| I-14 | PLAN "monolithic baseline rebuilt like-for-like" | **APPLIED** |
+| I-15 | PLAN "10,660 at higher N"; one sentence, two catalogues | **APPLIED** |
+| I-16 | PLAN "tier 3: 0 failed units" | **APPLIED** |
+| I-17 | N counts layers in smoke, modules in tier 2 | **APPLIED** |
+| I-18 | "`fake-cuda` rejected against 35 of 36" | **APPLIED** |
+| I-19 | "seven large modules are 78 % of delta bytes" | **APPLIED** |
+| I-20 | 792.8 MB versus 792.7 MB | **APPLIED** |
+| I-21 | `13_storage_ratios.sh` prints MiB under an MB heading | **APPLIED** |
+| I-22 | EVOLUTION "96 compositions" versus 81 composed | **APPLIED** |
+| I-23 | `README.md` is a 22-August document | **APPLIED** |
+| I-24 | `thesis/PLAN.md:42` points at the wrong refs directory | **APPLIED** |
+| I-25 | STATE_OF_PLAY §5b says "four" above five items | **APPLIED** |
+| I-26 | test verdict depended on the developer's umask | **APPLIED** |
+| I-27 | four test files need root; none enforced it | **APPLIED** |
+| I-28 | superseded cost fit published as current in four documents | **APPLIED** |
+| I-29 | STATE_OF_PLAY §6 "Current evidence" held 38-module counts | **APPLIED** |

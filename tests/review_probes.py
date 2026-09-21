@@ -7,6 +7,14 @@ import subprocess
 import tempfile
 import unittest
 import yaml
+
+# These tests mount artefacts and repack squashfs images, so they need root.
+# Without this gate an unprivileged run reports them as FAILURES with an
+# unrelated message, which makes a real defect indistinguishable from the
+# privilege boundary.
+ROOT_ONLY = unittest.skipUnless(os.geteuid() == 0,
+                               'needs root: mounts artefacts / repacks squashfs')
+
 REPO = Path(__file__).resolve().parents[1]
 
 def command(args):
@@ -52,6 +60,7 @@ def probe(merged, name):
     return subprocess.run(['chroot', str(merged), 'timeout', '45', 'sh', '-c', shell],
                           input='', text=True, capture_output=True)
 
+@ROOT_ONLY
 class PostgresTests(unittest.TestCase):
     def test_server_loads(self):
         with composition('postgres') as merged:
@@ -65,6 +74,7 @@ class PostgresTests(unittest.TestCase):
             p = probe(merged, 'postgres')
             self.assertNotEqual(p.returncode, 0, 'broken server passed its catalogue probe')
 
+@ROOT_ONLY
 class ZstdTests(unittest.TestCase):
     def test_repeatable(self):
         with composition('zstd') as merged:

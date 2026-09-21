@@ -488,7 +488,11 @@ experiment. They must not be divided to claim a precise cross-tier ratio.
 `total_ms` in the tier-2 CSV equals `mount_ms + reconcile_ms` on every row.
 Neither verification nor the preceding integrity/admission checks are included.
 The earlier **181–808 ms** table described a pre-debconf generation; it cannot
-be combined with the later **148 + 27.2 N** fit or labelled “Compose + verify”.
+be combined with the superseded **148 + 27.2 N** fit or labelled “Compose +
+verify”. That fit is itself superseded: the current 152-row sweep gives
+**175.2 + 30.55 N** (R² = 0.975), and `thesis/evidence/tier2-fit.csv` is the
+authority. Three generations of this one number now exist, which is why a cost
+figure without its CSV is not a claim.
 The former 2× and 230–250× comparisons mixed generations and omitted verification;
 they are withdrawn. A matched full-pipeline timing experiment is still needed.
 

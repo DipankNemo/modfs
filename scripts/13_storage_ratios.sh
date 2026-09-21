@@ -72,6 +72,33 @@ if unknown:
     sys.stderr.write('declared large but not built: %s\n'
                      % ', '.join(sorted(unknown)))
 
+# The symmetric case, which this script was blind to until 2026-09-21.
+#
+# The guard above catches a declared-large module that is ABSENT. Nothing
+# caught a large module that is PRESENT and undeclared: it fell into "small
+# adversarial" silently, because the cohort split is a membership test against
+# a hardcoded literal set. The noble port renames the driver to
+# nvidia-driver-580, so on that catalogue this script would have warned that
+# `nvidia-driver-535` was missing -- on stderr, easy to miss -- and then put a
+# 542 MB driver in the cohort whose mean delta is 7.5 MB.
+#
+# The split stays a JUDGEMENT; size does not decide it. But an undeclared
+# module larger than the smallest declared-large one is a decision nobody has
+# made, so refuse rather than average it into the wrong cohort.
+built_large = [n for n in names if n in LARGE]
+if built_large:
+    floor = min(size(n) for n in built_large)
+    undeclared = sorted((n for n in names
+                         if n not in LARGE and size(n) >= floor),
+                        key=size, reverse=True)
+    if undeclared:
+        sys.stderr.write(
+            'undeclared module at or above the large-cohort floor (%.1f MB): %s\n'
+            'Add it to LARGE, or state in ARCHITECTURE section 7 why it is small.\n'
+            % (floor / 1e6,
+               ', '.join('%s (%.1f MB)' % (n, size(n) / 1e6) for n in undeclared)))
+        sys.exit(2)
+
 rows = []
 for label, cohort in (('small adversarial', [n for n in names if n not in LARGE]),
                       ('large realistic',   [n for n in names if n in LARGE]),

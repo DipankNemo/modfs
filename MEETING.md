@@ -49,6 +49,12 @@ dpkg says 'nginx' : INSTALLED
 This also makes the result **order-independent**: without reconciliation the
 stacking order decides which packages disappear.
 
+> **Corrected 21 September (I-03).** Left as spoken on 6 August; the claim was
+> too strong. Order-independence holds **in record content**, not in bytes: the
+> merged registry files are set-equal under order reversal and byte-equal in no
+> measured case, because record order follows first appearance. See
+> `ARCHITECTURE.md` §4 for the measurement.
+
 ---
 
 ## 3. Architecture

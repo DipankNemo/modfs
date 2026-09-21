@@ -43,10 +43,16 @@ class VerificationFixture(unittest.TestCase):
         (self.root / 'actual.ld').write_text('')
         (self.root / 'audit.txt').write_text('')
 
-    def put(self, root, relative, text):
+    def put(self, root, relative, text, mode=0o644):
+        # V6 compares the merged file's mode against the layers', so a fixture
+        # written at the caller's umask makes the verdict depend on the
+        # developer's shell: under umask 002 these files land 0664 and the
+        # merged copy stays 0644, and two passing tests failed. Set the mode
+        # explicitly so the fixture says what it means.
         p = root / relative
         p.parent.mkdir(parents=True, exist_ok=True)
         p.write_text(text)
+        p.chmod(mode)
         return p
 
     def verify(self, good):

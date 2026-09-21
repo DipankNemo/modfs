@@ -15,7 +15,7 @@ Three tiers, each cheaper than the next by roughly two orders of magnitude:
 | tier | what it does | cost |
 |---|---|---|
 | 1 | metadata only, no mounts (`05_check.sh`) | 89 ms at N=2 → 398 ms at N=36 |
-| 2 | compose for real and verify V1–V8 (`10_compose_sweep.sh`) | compose 148 + 27.2 ms × N; verify 161.3 + 41.8 ms × N |
+| 2 | compose for real and verify V1–V8 (`10_compose_sweep.sh`) | compose 175.2 + 30.55 ms × N; verify 161.3 + 41.8 ms × N |
 | 3 | pack a UEFI image and boot under QEMU (`11_boot_test.sh`) | 183–331 s, median 199 s |
 
 Nine conflict classes are catalogued in `ARCHITECTURE.md` §4. Two of them —

@@ -7,8 +7,17 @@ import subprocess
 import tempfile
 import unittest
 from legacy_generation import adopt_fixture
+
+# These tests mount artefacts and repack squashfs images, so they need root.
+# Without this gate an unprivileged run reports them as FAILURES with an
+# unrelated message, which makes a real defect indistinguishable from the
+# privilege boundary.
+ROOT_ONLY = unittest.skipUnless(os.geteuid() == 0,
+                               'needs root: mounts artefacts / repacks squashfs')
+
 REPO = Path(__file__).resolve().parents[1]
 
+@ROOT_ONLY
 class CoverageTests(unittest.TestCase):
     def setUp(self):
         self.root = Path(tempfile.mkdtemp(prefix='binding-coverage-', dir='/srv/modfs/build'))

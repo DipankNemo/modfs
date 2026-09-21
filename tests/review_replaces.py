@@ -8,6 +8,15 @@ import unittest
 from legacy_generation import adopt_fixture
 from review_probes import REPO, command, composition
 
+# These tests mount artefacts and repack squashfs images, so they need root.
+# Without this gate an unprivileged run reports them as FAILURES with an
+# unrelated message, which makes a real defect indistinguishable from the
+# privilege boundary.
+ROOT_ONLY = unittest.skipUnless(os.geteuid() == 0,
+                               'needs root: mounts artefacts / repacks squashfs')
+
+
+@ROOT_ONLY
 class ReplacesTests(unittest.TestCase):
     def test_partial_takeover_policy(self):
         root = Path(tempfile.mkdtemp(prefix='replaces-review-', dir='/srv/modfs/build'))

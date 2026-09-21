@@ -764,6 +764,27 @@ def build_storage():
         NOTES.append('declared large but not built: %s' % ', '.join(sorted(unknown)))
     sz = lambda n: DELTAS[n]['bytes']
 
+    # The symmetric case: a large module PRESENT but undeclared falls silently
+    # into "small adversarial", because the split is a membership test against
+    # a hardcoded literal. On the noble catalogue the driver is
+    # nvidia-driver-580, and the effect is not cosmetic: adding one 542 MB
+    # artefact to the small cohort moves its ratio from 5.59x to 2.59x. Same
+    # guard as 13_storage_ratios.sh; the two LARGE sets are kept in step by the
+    # consistency check, which is why the guard has to be in step as well.
+    _built_large = [n for n in names if n in LARGE]
+    if _built_large:
+        _floor = min(sz(n) for n in _built_large)
+        _undecl = sorted((n for n in names if n not in LARGE and sz(n) >= _floor),
+                         key=sz, reverse=True)
+        if _undecl:
+            NOTES.append(
+                'UNDECLARED LARGE MODULE -- the storage cohorts below are wrong. '
+                'At or above the large-cohort floor (%.1f MB): %s. Add it to '
+                'LARGE in BOTH 16_build_evidence.sh and 13_storage_ratios.sh, or '
+                'state in ARCHITECTURE section 7 why it is small.'
+                % (_floor / W,
+                   ', '.join('%s (%.1f MB)' % (n, sz(n) / W) for n in _undecl)))
+
     def cohort(label, ns):
         d = sum(sz(n) for n in ns); N = len(ns)
         stored = B + d; model = N * B + d
