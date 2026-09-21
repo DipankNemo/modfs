@@ -111,6 +111,8 @@ remounted as a lowerdir. **31 checks, 31 passed** — 30 until a `python3-yaml` 
 | 5 | State divergence | Registry files rewritten by every module | Structural, always occurs | Reconcile or regenerate |
 | 6 | Implicit base upgrade | Delta upgrades a package inherited from base | Compare delta vs parent versions | Prevent; detect recurrence |
 | 7 | **Identity collision** | Two modules independently allocate the same UID/GID to different names | Compare account records across manifests | Reject — **implemented** |
+| 8 | **Runtime resource conflict** | Packages compose; the *services* cannot coexist — `apache2` and `nginx` both bind `:80` | Not expressible in dpkg metadata; visible only at tier 3, and a startup race, so nondeterministic | **Observe; no detection below tier 3** |
+| 9 | **Opaque directory erasure** | One module's `trusted.overlay.opaque` deletes another's files with **no file collision** | Measured across the catalogue: 869 markers, 456 directories, 178 claimed by ≥2 modules | Prevented at source — `opaque` stripped at squash time; **V7** verifies |
 
 ### Class 7 — identity collision
 
@@ -222,8 +224,11 @@ production-safe, and is not done.
 - **Diversions / `Replaces`** — `/var/lib/dpkg/diversions`, same union problem
 - **Maintainer script side effects** — postinst appending to a shared config
 - **Trigger interactions** — ldconfig, initramfs, font caches
-- **Runtime resource conflicts** — two modules claiming port 80. Outside dpkg's
-  model; heuristically detectable via systemd units, not statically solvable.
+- ~~**Runtime resource conflicts**~~ — promoted to **class 8** on 2026-09-17.
+  Observed since 3 September in the `m3`/`m4` boot runs as `degraded` plus
+  `failed-unit apache2.service`, and diagnosed on 17 September: `nginx` holds
+  `0.0.0.0:80` and `apache2` cannot start. Still outside dpkg's model and still
+  not statically solvable, which is the finding rather than a gap.
 
 ### Class 6 — found, diagnosed, fixed
 `pytools` silently upgraded `gcc-12-base`, `libgcc-s1`, `libstdc++6`.
@@ -478,7 +483,7 @@ experiment. They must not be divided to claim a precise cross-tier ratio.
 |---|---|---|---|
 | 1 | Metadata check | **89 ms → 398 ms** | 152 sequential sets, before correction H1 |
 | 2 | Compose only | **203 ms → 1090 ms** | round-2 table in §7, 152 compositions; verification excluded |
-| 3 | QEMU boot test | **189–204 s** | two N=36 runs; not a catalogue-wide boot census |
+| 3 | QEMU boot test | **183–331 s**, median 199 s | 15 completed runs, 2 aborts excluded; not a catalogue-wide boot census |
 
 `total_ms` in the tier-2 CSV equals `mount_ms + reconcile_ms` on every row.
 Neither verification nor the preceding integrity/admission checks are included.
@@ -538,7 +543,7 @@ construction. Two properties of it matter:
   tier-1 pair sweep, because the one exclusion this catalogue has is expressed
   only through a virtual package name and appears in no module manifest.
 - **A rejected pair is not automatically an exclusion.** `fake-cuda` is
-  rejected against 35 of 36 siblings and still belongs in the largest admitted
+  rejected against 38 of 39 siblings and still belongs in the largest admitted
   set, because the driver it requires is in there too. Requirements (§5)
   *explain* 35 of the 36 rejections; only the unexplained residue becomes an
   edge. Conflating the two would have banished `fake-cuda` from every high-N
@@ -670,7 +675,7 @@ monoliths and is superseded:
 | Cohort | N | Stored | Monolithic | Ratio |
 |---|---:|---:|---:|---:|
 | small adversarial modules | 31 | 272.8 MB | 1 524.3 MB | **5.59×** |
-| large realistic modules | 7 | 792.8 MB | 1 043.1 MB | **1.32×** |
+| large realistic modules | 7 | 792.7 MB | 1 043.1 MB | **1.32×** |
 | whole catalogue | 38 | 1 023.8 MB | 2 567.4 MB | **2.51×** |
 
 > **Re-measured 2026-09-19 after two real GPU modules were added** —
@@ -707,7 +712,7 @@ The ratio is
 
 so it tends to N as deltas shrink and to 1 as they grow. With B = 41.7 MB, a
 mean delta of 7.5 MB gives 5.59×; a mean delta of 107.3 MB gives 1.32×. The
-seven large modules are 78 % of all delta bytes and return almost nothing.
+seven large modules are 76.5 % of all delta bytes at 38 modules; the nine are 87.8 % at 40 and return almost nothing.
 
 The monolithic column is MODELLED as `B + d`, and the six rebuilt monolithic
 artefacts let that model be checked rather than assumed. Measured monolithic

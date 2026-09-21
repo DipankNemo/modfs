@@ -388,7 +388,7 @@ just the final configuration.
 | Class | Status |
 |---|---|
 | 1 Benign overlap | detected, measured |
-| 2 Version skew | 0 across 378 pairs |
+| 2 Version skew | 0 among the 27 well-formed modules; 5 against the positive control, which is the check working |
 | 3 Declared conflict | detected, incl. virtual packages |
 | 4 File collision | detected, 4 suppressed instances |
 | 5 State divergence | **reconciled — all four registries** |
@@ -413,7 +413,7 @@ self-validating harness · cross-machine reproduction.
 Three of those four gaps closed, and the fourth turned out to be the smallest
 of the problems.
 
-**Tier 2 at scale.** 96 compositions from N=2 to N=27, then all 351 pairs
+**Tier 2 at scale.** 96 sets drawn, 81 composed, 15 refused by tier-1 admission, then all 351 pairs
 exhaustively. Everything passed structurally. The cost model in the
 methodology was wrong by 64×: tier 2 costs 155 ms, not the assumed 10 s, so
 the asymmetry the three-tier argument rests on is *not* between tiers 1 and 2

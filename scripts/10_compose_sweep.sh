@@ -24,6 +24,10 @@
 #   V6  the composed account databases (passwd, group, shadow, gshadow, subuid,
 #       subgid) are the exact SEMANTIC union of the layers, compared record by
 #       record rather than by line -- numeric uniqueness is not composition
+#   V7  every path present in any layer is VISIBLE in the merged view, compared
+#       by (kind, size) and never traversing a symlink, so a decoy cannot stand
+#       in for a payload and the verdict cannot depend on the checking host
+#   V8  every debconf record any layer answered survives the merge
 # and records mount, reconcile and total time so cost against N is measurable.
 #
 # The positive control is excluded: it is built from a different snapshot and

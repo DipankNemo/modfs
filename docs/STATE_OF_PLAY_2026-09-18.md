@@ -90,7 +90,7 @@ merged registry rather than content in their own right.
 |---|---|---|
 | 1 | Metadata only, no mounts (`05_check.sh`) | 89 ms at N=2 → 398 ms at N=36 |
 | 2 | Compose (`10_compose_sweep.sh`) | compose 148 + 27.2 ms × N; verify 161.3 + 41.8 ms × N |
-| 3 | Pack a UEFI image, boot under QEMU (`11_boot_test.sh`) | ~3 min |
+| 3 | Pack a UEFI image, boot under QEMU (`11_boot_test.sh`) | 183-331 s over 15 completed runs, median 199 s; 2 aborts excluded |
 
 Tier-2 checks, in `verify_compose.py`:
 
@@ -157,7 +157,7 @@ and every one was invisible while N was small or probes were weak.
 | Tier 1 | 703 pairs, **ACCEPT 630 / REJECT 73** — matches an independent combinatorial prediction |
 | Tier 2 | 152 compositions, N=2→36, **152 PASS** |
 | Tier 3 | 36 probes pass under systemd; only `apache2.service` fails (class 8) |
-| Smoke | 75 passed, 0 failed at N=37 |
+| Smoke | 75 passed, 0 failed, 1 skipped over the 36-module set (37 layers incl. base; N counts module deltas, base excluded) |
 | Regression | `v7_attacks.py` 4/4, `round2_attacks.py` 11/11 |
 | Storage | 5.59× small / 1.32× large / **2.51× whole catalogue** |
 | Cost | tier 2 compose = 148 + 27.2 ms × N; verify = 161.3 + 41.8 ms × N |

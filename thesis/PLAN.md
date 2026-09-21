@@ -18,11 +18,11 @@ chapter needs input that does not exist yet, it says so.
 
 - conflict taxonomy: 9 classes, 2 discovered by running the system
 - tier 1: 703 pairs, ACCEPT 630 / REJECT 73, matching an independent
-  combinatorial model; 10,660 combinations at higher N
+  combinatorial model; at 40 modules: 780 pairs (667 ACCEPT / 113 REJECT) and 9,880 triples (7,807 / 2,073)
 - tier 2: 152 compositions, N=2→38, V1–V8 clean
-- tier 3: boots, 0 failed units, per-unit causal matrix
+- tier 3: the high-N runs reach `multi-user` with 36/36 probes passing and exactly ONE failed unit, `apache2.service` -- which is class 8, a real conflict rather than a defect, and must not be reported as zero
 - storage: 5.59× / 1.20× / 1.84× (40 modules), with the monolithic baseline
-  rebuilt like-for-like and the model validated against 6 measured monoliths
+  with 6 of 40 monoliths rebuilt for real and 34 modelled as B + d; those 6 show the model OVERSTATES the saving by 0.2-0.9 %, and they span 0.3-37 MB of delta while cuda-runtime alone is 18.4x the largest of them
 - cost: compose 148 + 27.2 ms × N; verify 161.3 + 41.8 ms × N
 - base fattening: server-side −24.1%, and why no single-module node can win
 - GPU: a 680 MB module composes at the same per-layer cost and saves 5.8%
@@ -39,4 +39,4 @@ chapter needs input that does not exist yet, it says so.
 ## Needed from Dipanker
 
 1. `thesis/template/` — the university's .cls/.sty and any sample main.tex
-2. `docs/refs/` — the reference papers, plus one line each: what claim it supports
+2. `thesis/refs/` — the 17 papers (`txt/` extractions, `pdf/` originals, `refs.bib`), with per-paper digests in `thesis/refs/NOTES.md`
