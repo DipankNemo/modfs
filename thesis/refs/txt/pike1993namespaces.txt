@@ -1,0 +1,272 @@
+                                               The      Use of Name            Spaces        in Plan      9
+
+                                                                      R o b Pike
+                                                                   D a v e Presotto
+                                                                  Ken Thompson
+                                                                  H o w a r d Trickey
+                                                                 Phil Winterbottora
+                                                         A T & T BeU Laboratories
+                                                       Murray Hill, N e w Jersey 07974
+                                                                    USA
+
+
+                                                                     ABSTRACT
+
+                          Plan 9 is a distributed system built at the C o m p u t i n g Sciences R e s e a r c h Center o f
+              A T & T Bell Laboratories over the last few years. Its goal is to p r o v i d e a production-
+              quality s y s t e m for s o f t w a r e d e v e l o p m e n t and general c o m p u t a t i o n using h e t e r o g e n e o u s
+              hardware a n d m i n i m a l software. A Plan 9 system c o m p r i s e s C P U a n d file servers in a
+              central location c o n n e c t e d together by fast networks. S l o w e r n e t w o r k s fan o u t to
+              workstation-class m a c h i n e s that serve as user terminals. Plan 9 argues that given a few
+              carefully i m p l e m e n t e d abstractions it is possible to p r o d u c e a small o p e r a t i n g s y s t e m that
+              p r o v i d e s s u p p o r t for the largest systems on a variety o f architectures and networks. T h e
+              f o u n d a t i o n s o f the system axe built on t w o ideas: a per-process n a m e space a n d a s i m p l e
+              m e s s a g e - o r i e n t e d file system protocol.
+
+          T h e operating s y s t e m for the C P U servers and termipals is structured as a traditional kernel: a single
+c o m p i l e d i m a g e c o n t a i n i n g c o d e f o r resource m a n a g e m e n t , process control, user processes, virtual m e m o r y ,
+a n d I/O. B e c a u s e t h e f d e server is a separate m a c h i n e , the file s y s t e m is not c o m p i l e d in, a l t h o u g h the m a n -
+a g e m e n t o f the narne space, a p ~ - p r o c e s s attribute, is. T h e entire kernel for the m u l t i p r o c e s s o r S G I P o w e r
+Series m a c h i n e is 2 5 0 0 0 lines o f t , the largest p a r t o f which is c o d e for f o u r n e t w o r k s i n c l u d i n g the Ether-
+net with t h e I n t e r n e t protocol suite. F e w e r than 1500 lines are machine-specific, a n d a functional k e r n e l
+with m i n i m a l I/O can b e p u t together from source files totaling 6000 lines. [Pike90]
+           T h e s y s t e m is relatively small for several reasons. First, it is all new: it has n o t h a d t i m e to acerete as
+m a n y fixes and features as other systems. Also, o t h e r than the n e t w o r k protocol, it adheres to n o external
+interface; in particular, it is n o t Unix-compatible. E c o n o m y stems f r o m careful selection o f services and
+interfaces. Finally, w h e r e v e r possible the s y s t e m is built a r o u n d t w o simple ideas: every r e s o u r c e in the
+s y s t e m , ei .Her local or r e m o t e , is represented b y a hierarchical file s y s t e m ; a n d a user or p r o c e s s a s s e m b l e s
+a private v i e w o f the system by constructing a file n a m e space that c o n n e c t s these resources. [Needharn]
+
+File P r o t o c o l
+           All r e s o u r c e s in Plan 9 look like file systems. That d o e s n o t m e a n that they are repositories for per-
+m a n e n t files o n disk, but that the interface to t h e m is file-oriented: finding files (resources) in a hierarchical
+n a m e tree, attaching to t h e m by n a m e , a n d accessing their contents by read a n d write calls. T h e r e are
+d o z e n s o f file s y s t e m types in Plan 9, but only a few represent traditional files. At this level o f abstraction,
+files in P l a n 9 are s i m i l a r to objects, e x c e p t that files are already p r o v i d e d with n a m i n g , access, a n d protec-
+tion m e t h o d s that m u s t be created afresh for objects. Object-oriented readers m a y a p p r o a c h the rest o f this
+p a p e r as a study in h o w to m a k e objects look like files.
+       The interface to file s y s t e m s is def'med by a protocol, called 9P, a n a l o g o u s but n o t very similar to the
+N F S protocol. T h e protocol talks about files, not blocks; given a connection to the root directory o f a file
+
+
+                                                                                   72
+ server, the 9P m e s s a g e s navigate the file hierarchy, open files for 1/O, and read or write arbitrary byte,s in
+ the files. 9 P contains 17 m e s s a g e types: three for initializing and authenticating a c o n n e c t i o n and fourteen
+ for manipulating objects. The m e s s a g e s are generated by the kernel in response to user- o r kernel-level I / O
+ requests. H e r e is a quick tour o f the m a j o r m e s s a g e types: The a u t h and a t t a c h         m e s s a g e s authenticate a
+ c o n n e c t i o n , established b y m e a n s outside 9P, and validate its user. T h e result is an authenticated c h a n n e l
+ that points to the root o f the server. T h e c l o n e m e s s a g e m a k e s a new channel identical to an existing
+ channel, w h i c h m a y b e m o v e d to a file on the server using a w a l k m e s s a g e to d e s c e n d each level in the
+ hierarchy. T h e s t e t t a n d w s t a t m e s s a g e s read and write the attributes o f the file pointed to b y a channel.
+ T h e o p e n m e s s a g e prepares a c h a n n e l for subsequent r e a d a n d w r i t e m e s s a g e s to access the contents o f
+ the file, w h i l e c r e a t e   and r e m o v e p e r f o r m o n the files, the actions impiied by their names. T h e c l u n k
+ m e s s a g e discards a c h a n n e l w i t h o u t affecting the f'de. N o n e o f the 9P m e s s a g e s c o n s i d e r caching; file
+ caches are provided, w h e n n e e d e d , either within the server (centralized caching) o r b y i m p l e m e n t i n g the
+ c a c h e as a transparent file system b e t w e e n the client a n d the 9P c o n n e c t i o n to the server (client caching).
+             F o r e f f i c i e n c y , the c o n n e c t i o n to local k e m e l - r e s i d e n t file systems, mislez,dingly called devices, is by
+ regular r a t h e r than r e m o t e p r o c e d u r e calls. T h e procedures m a p o n e - t o - o n e with 9P m e s s a g e types.
+ L o c a l l y each c h a n n e l has an associated data structure that holds a t y p e field u s e d to index a table o f proce-
+ d u r e calls, one set per file s y s t e m type, analogous to selecting the m e t h o d set f o r - a n object. O n e kernel-
+ resident file s y s t e m , the m o u n t device, translates the local 9P p r o c e d u r e calls into R P C m e s s a g e s to remote
+ services over a separately p r o v i d e d transport protocol such ass T C P o r IL, a n e w reliable datagram protocol,
+ o r o v e r a pipe to a u s e r process. W r i t e a n d r e a d calls transmit the m e s s a g e s o v e r t h e transport layer. The
+ m o u n t d e v i c e is t h e sole bridge b e t w e e n the procedural i n t e r f a c e seen b y user p r o g r a m s and r e m o t e and
+ user-level services. It d o e s all a s s o c i a t e d marshaling, buffer m a n a g e m e n t , a n d multiplexing a n d is the o n l y
+ integral R P C m e c h a n i s m in Plan 9. T h e m o u n t d e v i c e is in e f f e c t a proxy object. T h e r e is no R P C stub
+ compiler; instead the m o u n t driver a n d all servers j u s t share a library that packs a n d unpacks 9P messages.
+
+ Examples
+          O n e file s y s t e m type serves p e r m a n e n t files f r o m the m a i n file server, a stand-alone mulfiprocessor
+system w i t h a 3 5 0 - g i g a b y t e optical W O R M j u k e b o x that holds the data, fronted b y a two-level b l o c k c a c h e
+c o m p r i s i n g 7 gigabytes o f m a g n e t i c disk and 128 m e g a b y t e s o f . R A M . Clients c o n n e c t to the file server
+using a n y o f a v a r i e t y o f n e t w o r k s a n d protocols a n d access fries u s i n g 9P. T h e f'fle server runs a distinct
+operating s y s t e m a n d has no support for user processes; other than a restricted set o f c o m m a n d s available
+o n the console, all it does is a n s w e r 9P m e s s a g e s f r o m clients.
+           O n c e a d a y , at 5:00 A M , the file server s w e e p s through the c a c h e blocks a n d m a r k s dirty blocks
+c o p y - o n - w r i t e . It creates a c o p y o f the root d i r e c t o r y a n d labels it with the c u r r e n t date, for e x a m p l e
+1 9 92 / 0 3 1 4 . It then starts a b a c k g r o u n d process to c o p y t h e dirty blocks to the W O R M . T h e result is that
+the server retains an i m a g e o f the file s y s t e m a s i t was early e a c h m o r n i n g . T h e set o f old root directories is
+accessible using 9P, so a client m a y e x a m i n e b a c k u p files using o r d i n a r y c o m m a n d s . Several advantages
+stem f r o m having the b a c k u p s e r v i c e i m p l e m e n t e d as a plain file system. M o s t obviously, o r d i n a r y c o m -
+m a n d s can access them. F o r e x a m p l e , to see w h e n a bug w a s fixed
+          grep      "mouse       bug    fix"      1992/*/sys/src/cn~d/8~/file.c
+T h e owner, access times, permissions, and other properties o f the files are also b a c k e d up. B e c a u s e it is a
+file system, the b a c k u p still has protections; it is n o t possible t o s u b v e r t s e c u r i t y b y l o o k i n g at the backup.
+           T h e file server is o n l y one t y p e o f file s y s t e m . A n u m b e r o f u n u s u a l services are p r o v i d e d within the
+k e r n e l as local file systems. T h e s e services are n o t limited to I/O d e v i c e s :such as disks. T h e y include net-
+w o r k d e v i c e s a n d their associated protocols, the b i t m a p display a n d mouse; a representation o f processes
+similar t o / p r o c       [Killiart], the n a m e / v a l u e pairs that form the " e n v k o n m e n t p a s s e d to a n e w process, pro-
+filit~g services, a n d other resources. E a c h o f these is r e p r e s e n t e d a s a file s y s t e m - - d i r e c t o r i e s eontainirig
+sets o f files         b u t the constituent files do not r e p r e s e n t p e r m a n e n t storage on disk. I n s t e a d , they are closer
+in properties to U N I X d e v i c e files.
+      For e x a m p l e , t h e console d e v i c e contains the file / d e v / c o n s ,                similar to the U N I X file
+/dev/console:           w h e n written, t a l e r / c o n s a p p e n d s to the c o n s o l e t y p e s c r i p t ; When read, it returns
+characters t y p e d o n the k e y b o a r d . Other files in t h e c o n s o l e d e v i c e include / d ~ v / t ~ . m e . the n u m b e r o f
+
+
+                                                                                   73
+s e c o n d s since the epoch, /dev/cputlme, the c o m p u t a t i o n time u s e d by the process r e a d i n g the d e v i c e ,
+/dev/pid,               the p r o c e s s id o f the process reading zhe device, a n d / d e v / u s e r ,    the l o g i n n a m e o f the user
+accessing the device. All these files contain text, n o t binary n u m b e r s , so their u s e is free o f b y t e - o r d e r
+problems. Their c o n t e n t s are s y n t h e s i z e d on d e m a n d w h e n read; w h e n written, they c a u s e m o d i f i c a t i o n s to
+kernel data structures.
+           T h e p r o c e s s d e v i c e contains o n e directory per live local Drocess, n a m e d by its n u m e r i c p r o c e s s id:
+/proc/1,              /proc/2,          etc. Each directory contains a set o f files that access the process. F o r e x a m p l e , in
+e a c h d i r e c t o r y the file mem is an i m a g e o f the virtual m e m o r y o f the process that m a y b e read or w r i t t e n for
+debugging. The t e x t                   file is a sort o f link to the file from w h i c h the process was e x e c u t e d ; it m a y be
+o p e n e d to r e a d the s y m b o l tables f o r the process. T h e c t l file m a y b e written textual m e s s a g e s s u c h as
+s t o p or k i l l          tn control the e x e c u t i o n o f the process. T h e s t a t u s   f d e contains a f i x e d - f o r m a t line o f
+text c o n t a i n i n g in. 9rmation about the process: its n a m e , owner, state, arid so on. T e x t strings written to the
+n o t e file are d e l i v e r e d to the process as notes, a n a l o g o u s to U N I X signals. B y p r o v i d i n g these services as
+textual I/O on files rather than as s y s t e m calls (such as k i l l )                     or special-purl~ose operations (such as
+p t r a c e ) , the P l a n 9 process device simplifies the i m p l e m e n t a t i o n o f d e b u g g e r s a n d related p r o g r a m s . F o r
+e x a m p l e , the c o m m a n d
+           cat     /proc/*/status
+
+is a crude f o r m o f the p s c o m m a n d ; the actual p s m e r e l y r e f o r m a t s the d a t a s o obtained.
+            T h e bitmap d e v i c e contains three files, / d e v / m o u s e ,                    /dev/zcreen,               and /dev/bitblt,                  that
+p r o v i d e an interface to t h e local b i t m a p display (if any) and p o i n t i n g device. T h e m o u s e f d e returns a
+f i x e d - f o r m a t r e c o r d c o n t a i n i n g 1 b y t e o f b u t t o n state a n d 4 bytes e a c h o f x a n d y p o s i t i o n o f the m o u s e . I f
+the m o u s e has n o t m o v e d since the file w a s last read, a subsequent r e a d will b l o c k . T h e s c r e e n file con-
+tains a m e m o r y i m a g e o f the contents o f the display; the b i t b l t                               file p r o v i d e s a p r o c e d u r a l interface.
+Calls to the graphics library are t r a n s l a t e d into m e s s a g e s that are written t o the b i t b l t                           f d e to p e r f o r m bit-
+m a p graphics operations. (This is essentially a nested R P C protocol.)
+        T h e v a r i o u s services b e i n g u s e d b y a process arc gathered t o g e t h e r into the p r o c e s s ' s n a m e space, a
+single r o o t e d h i e r a r c h y o f file n a m e s . W h e n a process forks, the c h i l d process shares t h e n a m e s p a c e with
+the parent. S e v e r a l s y s t e m calls m a n i p u l a t e n a m e spaces. G i v e n a file descriptor f d that holds an o p e n
+c o m m u n i c a t i o n s c h a n n e l to a service, the call
+           mount(int            fd,     char      *old,       int      flags)
+
+a u t h e n t i c a t e s the u s e r a n d attaches the file tree o f the service to the d i r e c t o r y n a m e d b y o l d . T h e f l a g s
+s p e c i f y h o w t h e t r e e is to b e a t t a c h e d to o l d : replacing the current c o n t e n t s o r a p p e a r i n g b e f o r e or a f t e r the
+c u r r e n t c o n t e n t s o f the directory. A directory with several services m o u n t e d is c a l l e d a union directory and
+is s e a r c h e d in the specified order. T h e call
+           bAnd(char            *new,       char.*old,             int     flags)
+
+t a k e s the portion o f the e x i s t i n g n a m e space visible at n e w , either a file or a d i r e c t o r y , a n d m a k e s it also
+visible at o l d . F o r e x a m p l e ,
+           bind("1992/O30i/sys/inelude", " / s y s / i n c l u d e " .                                   REPLACE)
+
+c a u s e s the d i r e c t o r y o f i n c l u d e fries to be overlaid with its contents f r o m the d u m p o n M a r c h first.
+          A process is created b y the r f o r k s y s t e m call, w h i c h takes as a r g u m e n t a bit v e c t o r d e f i n i n g w h i c h
+attributes o f the p r o c e s s are to be s h a r e d b e t w e e n p a r e n t a n d child instead o f copied. O n e o f the attributes
+is the n a m e space: w h e n shared, c h a n g e s m a d e b y either process are visible in the other; w h e n c o p i e d ,
+c h a n g e s are indepen0ent.
+           A l t h o u g h there is no global n a m e space, for a process to f u n c t i o n s e n s i b l y the local n a m e s p a c e s m u s t
+a d h e r e to global c o n v e n t i o n s . Nonetheless, the use o f local n a m e spaces is critical to the s y s t e m . B o t h these
+ideas are illustrated b y the use o f the n a m e space to h a n d l e h e t e r o g e n e i t y . T h e binaries for a g i v e n architec-
+ture are c o n t a i n e d in a directory n a m e d b y the architecture, for e x a m p l e / m i p s / b i n ;        in use, that d i r e c t o r y
+is b o u n d to the c o n v e n t i o n a l location / b i n . P r o g r a m s such as shell scripts n e e d n o t k n o w the C P U type
+t h e y are e x e c u t i n g on to f i n d binaries to run. A d i r e c t o r y o f private binaries is u s u a l l y u n i o n e d with / b i n .
+
+
+                                                                                            74
+ ( C o m p a r e this to the a d hoc and s p e c i a l - p u r p o s e idea o f the P A T H variable, w h i c h is not used in t h e Plan 9
+ shell.) L o c a l b i n d i n g s are also helpful for d e b u g g i n g , for e x a m p l e b y binding an o l d library to the standard
+ p l a c e and linking a p r o g r a m to s e e if recent c h a n g e s to the library are r e s p o n s i b l e for a b u g in the program.
+              T h e w i n d o w s y s t e m , 8 ~ [Pike91], is a s e r v e r for files such as / d e v / c o n s            and / d e v / b i t b l t .
+ E a c h client sees a distinct c o p y o f these files in its local n a m e space: there axe m a n y instances o f
+ /dev/cons,               e a c h s e r v e d b y 8~4 to the local n a m e space o f a w i n d o w . Again, 8~, implements services
+ using local n a m e s p a c e s plus the use o f I/O to c o n v e n t i o n a l l y n a m e d files. Each client just c o n n e c t s its
+ standard input, output, a n d error files to / d e w / c o n s ,              with a n a l o g o u s operations t o access b i t m a p graph-
+ ics. C o m p a r e this to the implementation o f / d e v / t t y              on U N I X , w h i c h is d o n e b y special c o d e in the ker-
+ nel that o v e r l o a d s the file, w h e n o p e n e d , with the standard input o r o u t p u t o f the process. Special arrange-
+ m e n t m u s t be m a d e b y a U N I X w i n d o w system for / d e v / t t y           to b e h a v e as e x p e c t e d ; 8v2 instead u s e s the
+ p r o v i s i o n o f the c o r r e s p o n d i n g file as its central idea, w h i c h to s u c c e e d d e p e n d s criticaUy on local n a m e
+ spaces.
+             T h e e n v i r o n m e n t 8 ~ p r o v i d e s im clients is e x a c t l y the c n v k o n m e n t u n d e r w h i c h it is i m p l e m e n t e d : a
+ c o n v e n t i o n a l set o f files in / c l e v . This permits the w i n d o w s y s t e m to b e run r e c u r s i v e l y in o n e o f its o w n
+ w i n d o w s , w h i c h is h a n d y for d e b u g g i n g . It also m e a n s that if the files are e x p o r t e d to another machine, as
+ d e s c r i b e d b e l o w , t h e w i n d o w s y s t e m o r client applications m a y b e run transparently o n r e m o t e m a c h i n e s ,
+ e v e n o n e s w i t h o u t graphics hardware. This m e c h a n i s m is used for Plan 9 ' s i m p l e m e n t a t i o n o f the X win-
+ d e w system: X is run as a client o f 8 ~ , o f t e n on a r e m o t e m a c h i n e with lots o f m e m o r y . In this configura-
+ tion, using E t h e r n e t to c o n n e c t M I P S machines, w e m e a s u r e o n l y a 10% d e g r a d a t i o n in graphics perfor-
+ m a n c e relative to r u n n i n g X o n a b a r e Plan 9 machine.
+          A n unusual application o f t h e s e ideas is a statistics-gathering file s y s t e m i m p l e m e n t e d b y a c o m m a n d
+ called-iostats.                T h e c o m m a n d encapsulates a p r o c e s s in a local n a m e space, monitoring 9 P r e q u e s t s
+ from the p r o c e s s to the o u t s i d e w o r l d            the n a m e space in w h i c h i o s t a t s         is itself running. W h e n the
+ c o m m a n d c o m p l e t e s , i t s t a t s r e p o r t s u s a g e a n d p e r f o r m a n c e figures for file activity. F o r e x a m p l e
+           iostats           8~
+ can b e u s e d to d i s c o v e r h o w m u c h I/O the w i n d o w s y s t e m d o e s to the b i t m a p d e v i c e , font files, and s o on.
+           The import               c o m m a n d c o n n e c t s a p i e c e o f n a m e s p a c e f r o m a r e m o t e s y s t e m to the local n a m e
+space. Its i m p l e m e n t a t i o n is to dial the r e m o t e m a c h i n e a n d start a p r o c e s s there that s e r v e s t h e r e m o t e
+n a m e s p a c e using 9P, It then calls m o u n t to attach the c o n n e c t i o n to the n a m e s p a c e a n d finally dies; the
+r e m o t e p r o c e s s c o n t i n u e s to s e r v e the files. O n e u s e is to a c c e s s d e v i c e s n o t a v a i l a b l e locally. F o r e x a m -
+ple, to w r i t e a f l o p p y o n e m a y s a y
+           import         lab.pc /a:            /n/dos
+           cp foo         /n/dos/bar
+T h e call to i m p o r t         connects the filetree from / a : on the m a c h i n e l a b .pc (which must support 9P) to
+the local d i r e c t o r y / n / d o s .    T h e n the file f o e c a n b e written to t h e f l o p p y j u s t b y c o p y i n g it across.
+         A n o t h e r application is r e m o t e d e b u g g i n g :
+           import         helix        /proo
+m a k e s the p r o c e s s file s y s t e m o n m a c h i n e h e l i x  available loczlly; c o m m a n d s such as p s                              then see
+h e X i x ' s p r o c e s s e s instead o f the local ones. T h e d e b u g g e r m a y then l o o k at a r e m o t e process:
+          db     /proc/Z7/text                /proc/27/mem
+
+a l l o w s b r e a k p o i n t d e b u g g i n g o f t h e r e m o t e process. S i n c e d b infers the C P U t y p e o f the p r o c e s s f r o m the
+e x e c u t a b l e h e a d e r o n the text file, it supports cross-architecture d e b u g g i n g , too. C a r e is taken within ~ to
+handle issues o f b y t e o r d e r and floating point; it is p o s s i b l e to b r e a k p o i n t d e b u g a b i g - e n d i a n M I P S p r o c e s s
+f r o m a little-endian i 3 8 6 .
+             N e t w o r k interfaces are a l s o i m p l e m e n t e d as file systems. [Presotto] F o r e x a m p l e , / n e t / t o p       isa
+d i r e c t o r y s o m e w h a t like / p r o c :     it contains a set o f n u m b e r e d directories, o n e p e r connection, each o f
+w h i c h c o n t a i n s files to c o n t r o l a n d Communicate o n t h e connection. A p r o c e s s a l l o c a t e s a n e w c o n n e c t i o n
+by accessing /net/tcp/cXone,                             which e v a l u a t e s to the directory o f an u n u s e d connection. T o m a k e a
+
+
+                                                                                         75
+ call, the p r o c e s s writes a textual m e s s a g e such as • c o n n e c t 1 3 5 . 1 0 4 . 5 3 . 2 ! 5 1 2 " tO the c t l f'fle and
+ then reads a n d w r i t e s the d a t a file. A n r l o g i n     service can b e i m p l e m e n t e d in a f e w o f lines o f shell
+ code.
+          This structure m a k e s n e t w o r k g a t e w a y i n g e a s y to provide. W e h a v e m a c h i n e s with D a t a k i t interfaces
+ b u t n o D O D Internet interface. O n such a m a c h i n e o n e m a y t y p e
+           import         helix       /net
+           t elraet       t c p !a i . m i t . e d u
+
+ T h e i m p o r t uses Datakit to pull in the T C P interface from h e l i x , which can then be used directly; the
+ t c p ~ notation is necessary because w e routinely use muldple networks a n d protocols on Plan 9 it identi-
+ fies the network in w h i c h a i . m i t . e d u is a valid name.
+        In practice w e do not use r l o g i n or t e l n e t between Plan 9 machines. Instead a c o m m a n d called
+ c p u in effect replaces the C P U in a w i n d o w with that on another machine, typically a fast multiprocessor
+ C P U server. T h e i m p l e m e n t a t i o n is to recreate the n a m e s p a c e o n the r e m o t e m a c h i n e , using the e q u i v a l e n t
+ o f i m p o r t to c o n n e c t p i e c e s o f the t e r m i n a l ' s n a m e s p a c e to that o f the p r o c e s s (shell) o n the C P U server,
+ m a k i n g t h e terminal a file s e r v e r f o r the C P U . C P U - l o c a l d e v i c e s such as fast file s y s t e m c o n n e c t i o n s are
+ still local; o n l y terminal-resident d e v i c e s are imported. T h e result is unlike U N I X = l o g i n ,                           which moves
+ into a distinct n a m e s p a c e on t h e r e m o t e m a c h i n e , or file sharing with N F S , w h i c h k e e p s the n a m e s p a c e the
+ s a m e b u t f o r c e s p r o c e s s e s to e x e c u t e locally. B i n d i n g s in / b i n m a y c h a n g e b e c a u s e o f a c h a n g e in C P U
+ architecture, a n d the n e t w o r k s i n v o l v e d m a y b e different b e c a u s e o f differing h a r d w a r e , b u t the e f f e c t feels
+ like s i m p l y s p e e d i n g up the p r o c e s s o r in the c u r r e n t n a m e space.
+
+ Position
+            T h e s e e x a m p l e s illustrate h o w the: ideas o f representing r e s o u r c e s as file s y s t e m s a n d p e r - p r o c e s s
+n a m e spaces c a n b e u s e d t o s o l v e p r o b l e m s o f t e n left to m o r e e x o t i c m e c h a n i s m s . N o n e t h e l e s s there axe
+s o m e o p e r a t i o n s in Plan 9 that are not m a p p e d into file I/O. An e x a m p l e is p r o c e s s creation. W e c o u l d
+i m a g i n e a m e s s a g e to a control file i n / p r o c   that creates a process, b u t t h e details o f constructing the e n v i -
+r o n m e n t o f the n e w p r o c e s s - - its o p e n files, n a m e space, m e m o r y image, etc. - - are t o o intricate to b e
+d e s c r i b e d easily in a s i m p l e U O operation. T h e r e f o r e n e w p r o c e s s e s on P l a n 9 a r e created b y fairly c o n v e n -
+tional r f o r k a n d e x e c s y s t e m calls; / p r o c is used o n l y to r e p r e s e n t a n d control e x i s t i n g p r o c e s s e s .
+       Plan 9 d o e s n o t a t t e m p t to m a p n e t w o r k n a m e s p a c e s into the file s y s t e m n a m e space, for s e v e r a l rea-
+sons. T h e d i f f e r e n t a d d r e s s i n g rules for various n e t w o r k s and p r o t o c o l s c a n n o t b e m a p p e d u n i f o r m l y into a
+hierarchical file n a m e space. E v e n if t h e y c o u l d be, the v a r i o u s m e c h a n i s m s to authenticate, s e l e c t a ser-
+vice, and control the c o n n e c t i o n w o u l d n o t m a p c o n s i s t e n t l y into o p e r a t i o n s on a file.
+       S h a r e d m e m o r y is a n o t h e r r e s o u r c e not a d e q u a t e l y r e p r e s e n t e d b y a file n a m e space. P l a n 9 t a k e s
+care to p r o v i d e m e c h a n i s m s to a l l o w g r o u p s o f local p r o c e s s e s to share a n d m a p m e m o r y . M e m o r y is c o n -
+trolled b y s y s t e m calls rather than special files, h o w e v e r , since a representation in the file s y s t e m w o u l d
+imply that m e m o r y can be i m p o r t e d from r e m o t e m a c h i n e s .
+            Dest-ite t h e s e limitations, f d e s y s t e m s and n a m e s p a c e s o f f e r an e f f e c t i v e m o d e l a r o u n d w h i c h to
+build a distributed s y s t e m . U s e d well, t h e y c a n p r o v i d e a uniform, familiar, transparent i n t e r f a c e to a
+d i v e r s e set o f d i s t r i b u t e d resources. T h e y carry w e l l - u n d e r s t o o d p r o p e r t i e s o f a c c e s s , protection, a n d n a m -
+ing. T h e integration o f d e v i c e s into the hierarchical file s y s t e m w a s the b e s t i d e a in U N I X . Plan 9 p u s h e s
+the c o n c e p t s m u c h further a n d s h o w s that file s y s t e m s , w h e n u s e d inventively, h a v e p l e n t y o f s c o p e for p r o -
+ductive research.
+
+References
+[Killian] T. Killian, " P r o c e s s e s as F i l e s " , U S E N I X S u m m e r C o n f . Prec., Salt L a k e City, 1984
+[ N e e d h a m ] R. N e e d h a m , " N a m e s " , in Distributed systems, S. M u l l e n d e r , ed., A d d i s o n W e s l e y , 1 9 8 9
+[Pike90] R. P i k e , D. Presotto, K. T h o m p s o n , H. T r i c k e y , " P l a n 9 from Bell L a b s " , U K U U G P r e c . o f the
+S u m m e r 1990 C o n f . , L o n d o n , E n g l a n d , 1990
+[Presotto] D . P r e s o t t o , " M u l t i p r o c e s s o r S t r e a m s for Plan 9 " , U K U U G P r e c . o f the S u m m e r 1990 Conf.,
+London, England, 1990
+[Pike91] Pike, R., "'8.5, T h e P l a n 9 W i n d o w S y s t e m " , U S E N I X S u m m e r Conf. P r e c . , N a s h v i l l e , 1991
+
+                                                                                         76
+

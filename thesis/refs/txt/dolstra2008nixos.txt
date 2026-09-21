@@ -1,0 +1,849 @@
+                         NixOS: A Purely Functional Linux Distribution
+                                     Eelco Dolstra                                                                  Andres Löh
+                Delft University of Technology, The Netherlands                                          Utrecht University, The Netherlands
+                              e.dolstra@tudelft.nl                                                                andres@cs.uu.nl
+
+
+
+
+Abstract                                                                                    change after they have been built; rather, the system is updated to
+Existing package and system configuration management tools suf-                             a new configuration by changing the specification and rebuilding
+fer from an imperative model, where system administration actions                           the system from it. This allows a system to be built determinis-
+such as upgrading packages or changes to system configuration                               tically, and therefore reproducibly. It allows the user to roll back
+files are stateful: they destructively update the state of the sys-                         the system to previous configurations, since previous configura-
+tem. This leads to many problems, such as the inability to roll back                        tions are not overwritten. Perhaps most importantly, statelessness
+changes easily, to run multiple versions of a package side-by-side,                         makes configuration actions predictable: they do not mysteriously
+to reproduce a configuration deterministically on another machine,                          fail because of some unknown aspect of the state of the system.
+or to reliably upgrade a system. In this paper we show that we can                              We have previously shown how package management — the
+overcome these problems by moving to a purely functional system                             installation and management of software packages — can be done
+configuration model. This means that all static parts of a system                           in a purely functional way, in contrast to the imperative models
+(such as software packages, configuration files and system startup                          of conventional tools such as RPM (Foster-Johnson 2003). This
+scripts) are built by pure functions and are immutable, stored in a                         concept was implemented in the Nix package manager (Dolstra
+way analogously to a heap in a purely function language. We have                            et al. 2004; Dolstra 2006), summarised in Section 3. In this paper
+implemented this model in NixOS, a non-trivial Linux distribution                           we extend this approach from package management to system
+that uses the Nix package manager to build the entire system con-                           configuration management. That is, not just software packages are
+figuration from a purely functional specification.                                          built from purely functional specifications, but also all other static
+                                                                                            parts of a system, such as the configuration files that typically live
+Categories and Subject Descriptors D.2.9 [Software Engineer-                                in /etc under Unix.
+ing]: Management—Software configuration management; D.3.2                                       We demonstrate the feasibility of this approach by means of
+[Programming Languages]: Language Classifications—Applicative                               NixOS, a Linux distribution that uses Nix to construct and update
+(functional) programming                                                                    the whole system from a declarative specification. Every artifact is
+                                                                                            stored under an immutable path such as /nix/store/cj22mw17...-
+General Terms Experimentation, Languages, Reliability.
+                                                                                            linux-2.6.23.17 that includes a cryptographic hash of all inputs
+                                                                                            involved in building it. There is no /usr, /lib or /opt, and only
+1.     Introduction                                                                         a very minimal /bin and /etc.
+Current operating systems are managed in an imperative way. With                                NixOS’s purely functional approach to configuration manage-
+this we mean that configuration management actions such as up-                              ment gives several advantages to users and administrators. Upgrad-
+grading software packages, making changes to system options,                                ing a system is much more deterministic: it does not unexpectedly
+or adding additional system services are done in a stateful way:                            fail depending on the previous state of the system. Thus, upgrad-
+by performing destructive updates to files. This model leads to                             ing is as reliable as installing from scratch, which is generally not
+many problems: the “DLL hell” (where upgrading an application                               the case with other operating systems. This also makes it easy to
+may suddenly break another because of changes to shared compo-                              reproduce a configuration on a different machine. The entire sys-
+nents (Anderson 2000)), the inability to roll back changes easily or                        tem configuration can be trivially rolled back. The system is not
+to reproduce a configuration reliably, difficulty in running multiple                       in an inconsistent state during upgrades; upgrades are atomic. Un-
+versions of a package side-by-side, the system being in an incon-                           privileged users can securely install different versions of software
+sistent state during updates, and so on.                                                    packages without interfering with each other.
+    In this paper we show that it is possible to manage systems in                              The contributions of this paper are as follows:
+a radically different way by moving to a purely functional model.                            • We show how a full-featured Linux distribution (NixOS) can
+In this model, the static artifacts of a running system — software                               be built and configured in a declarative way using principles
+packages, configuration files, system startup scripts, etc. — are gen-                           borrowed from purely functional languages (Section 5).
+erated by functions in a purely functional specification language.
+Just like values in a purely functional language, these artifacts never                      • We discuss in detail the lazy purely functional Nix expression
+                                                                                                 language that describes how to build system configurations, and
+                                                                                                 why purity and laziness are essential (Section 4).
+                                                                                             • We measure the extent to which NixOS and Nix build actions
+Permission to make digital or hard copies of all or part of this work for personal or            are pure (Section 6).
+classroom use is granted without fee provided that copies are not made or distributed
+for profit or commercial advantage and that copies bear this notice and the full citation
+on the first page. To copy otherwise, to republish, to post on servers or to redistribute
+to lists, requires prior specific permission and/or a fee.
+                                                                                            2.    Imperative package management
+ICFP’08, September 22–24, 2008, Victoria, BC, Canada.                                       Most package management tools can be viewed as having an im-
+Copyright c 2008 ACM 978-1-59593-919-7/08/09. . . $5.00                                     perative model. That is, deployment actions performed by these
+tools are stateful; they destructively update files on the system.             Even worse, configuration changes are typically not under the
+For instance, most Unix package managers, such as the Red Hat              control of a system configuration management tool like RPM at
+Package Manager (RPM) (Foster-Johnson 2003), Debian’s apt and              all. Users might manually edit configuration files in /etc or change
+Gentoo’s Portage, store the files belonging to each package in the         some registry settings, or run tools that make such changes for them
+conventional Unix file system hierarchy, e.g. directories such as          — but either way there is no trace of such actions. The fact that a
+/bin. Packages are upgraded to newer versions by overwriting the           running system is thus the result of many ad hoc stateful actions
+old versions. If shared components are not completely backwards-           makes it hard to reproduce (part of) a configuration on another
+compatible, then upgrading a package can break other packages.             machine, and to roll back configuration changes.
+Upgrade actions or uninstallations cannot easily be rolled back. The           Of course, configuration files could be placed under revision
+Windows registry is similarly stateful: it is often impossible to have     control, but that does not solve everything. For instance, configura-
+two versions of a Windows application installed on the same sys-           tion data such as files in /etc are typically related to the software
+tem because they would overwrite each other’s registry entries.            packages installed on the system. Thus, rolling back the Apache
+    Thus, the filesystem (e.g., /bin and /etc on Unix, or C:\              configuration file may also require rolling back the Apache package
+Windows\System32 on Windows) and the registry are used like                (for instance, if we upgraded Apache, made some related changes
+mutable global variables in a programming language. This means             to the configuration, and now wish to undo that change). Further-
+that there is no referential transparency. For instance, a pack-           more, changes to configuration files are often actualised in very
+age may have a filesystem reference to some other package, e.g.            different ways: a change to the Unix filesystem table /etc/fstab
+/usr/bin/perl. But this reference does not point to a fixed value;         might be actualised by running mount -a to mount any new filesys-
+the referent can be updated at any point, making it hard to give any       tems added to that file, while a change to the Apache web server
+assurances about the behaviour of the packages that refer to it. For       configuration file httpd.conf requires running a command like
+instance, upgrading some application might trigger an upgrade of           /etc/init.d/apache reload. Thus any change to a configuration
+/usr/bin/perl, which might cause other applications to break. This         file, including a rollback, may require specific knowledge about
+is known as the “DLL hell” or “dependency hell”.                           additional commands that need to be performed.
+    Statefulness also makes it hard to support multiple versions               In summary, all this statefulness comes at a high price to users:
+of a package. If two packages depend on conflicting versions of
+                                                                            • It is difficult to allow multiple versions of a package on the
+/usr/bin/perl, we cannot satisfy both at the same time. Instead, we
+would have to arrange for the versions to be placed under different             system at the same time, or to run multiple instantiations of a
+filenames, which requires explicit actions from the packager or the             service (such as a web server).
+administrator (e.g., install a Perl version under /usr/local/perl-          • There is no traceability: the configuration of the system is a
+5.8). This also applies to configuration files. For instance, running           result of a sequence of stateful transformations that are not
+two instances of an Apache web server might require cloning and                 under the control of a configuration management system. This
+tweaking configuration files, control scripts, and so on.                       makes it hard to reproduce a configuration elsewhere. The lack
+    Likewise, building a package is a stateful operation. In RPM,               of traceability specifically makes rollbacks much harder.
+the building of a binary package is described by a spec file that           • Since configurations are the result of stateful transformations,
+lists the build actions that must be performed to construct the                 there is little predictability. For instance, upgrading a Linux
+package, along with metadata such as its dependencies. However,                 or Windows installation, as opposed to doing a clean reinstall,
+the dependency specification has two problems.                                  tends to be much more error-prone, precisely because the up-
+    First, it is hard to guarantee that the dependency specification            grade depends on the previous state of the system, while a clean
+is complete. If, for instance, the package calls the python program,            reinstall has no such dependency.
+it will build and run fine on the build machine if it has the python
+package installed, even if that package is not listed as a dependency.        These problems are similar to those caused by the lack of refer-
+However, on the end user machine python may be missing, and the            ential transparency in imperative programming languages, such as
+package will fail unexpectedly.                                            the difficulty in reasoning about the behaviour of functions in the
+    Second, RPM dependency specifications are nominal, that is,            presence of mutable global variables or I/O. Indeed, the absence of
+they specify just the name (and possibly some version constraints)         such problems is a principal feature of purely functional languages
+of each dependency, e.g. Requires: python >= 2.4. A package                such as Haskell (Hudak 1989). In such languages, the result of a
+with this dependency will build on any system where python with a          function depends only on its inputs, and variables are immutable.
+sufficiently high version is registered in RPM’s database; however,        This suggests that the deployment problems above go away if we
+the resulting binary RPM has no record of precisely what instance          can somehow move to a purely functional way to store software
+of python was used at build time, and therefore there is no way to         packages and configuration data.
+deterministically reproduce it. Indeed, it is not clear how to boot-
+strap a set of source RPMs: one quickly runs into circular build-
+time dependencies and incomplete dependency specifications.
+                                                                           3.    Purely functional package management
+    Package managers like RPM are even more stateful when it               Nix (Dolstra et al. 2004; Dolstra 2006), the package manager un-
+comes to non-software artifacts such as configuration files in /etc.       derlying NixOS, has such a purely functional model. This means
+When a configuration file is installed for the first time, it is treated   that packages are built by functions whose outputs in principle de-
+as a normal package file. On upgrades, however, it cannot be sim-          pend only on their function arguments, and that packages never
+ply overwritten with the new version, since the user may have made         change after they have been built.
+modifications to it. There are many ad hoc (package-specific) so-
+lutions to this problem: the file can be ignored, hoping that the old      Nix expressions Packages are built from Nix expressions, a dy-
+one still works; it can be overwritten (making a backup of the old         namically typed, lazy, purely functional language. The goal of Nix
+version), hoping that the user’s changes are inessential; or a post-       expressions is to describe graphs of build actions called deriva-
+install script (delivered as part of the package’s meta-data) can          tions. A derivation consists of a build script, a set of environment
+attempt to merge the changes. Indeed, post-install scripts are fre-        variables, and a set of dependencies (other derivations). A package
+quently used to perform arbitrary, strongly stateful, actions.             is built by recursively building the dependencies, then invoking the
+                                                                           build script with the given environment variables.
+{stdenv, fetchurl, ghc, X11, xmessage}: 1                                 {stdenv, fetchurl, pkgconfig, libXaw, libXt}:
+
+let version = "0.5"; in                                                   stdenv.mkDerivation {
+                                                                             name = "xmessage-1.0.2";
+stdenv.mkDerivation 2 (rec {                                                 src = fetchurl {
+                                                                                url = http://.../X11R7.3//xmessage-1.0.2.tar.bz2;
+     name = "xmonad-${version}";                                                sha256 = "1hy3n227iyrm323hnrdld8knj9h82fz6...";
+                                                                             };
+     src = fetchurl {                                                        buildInputs = [pkgconfig libXaw libXt];
+        url = "http://hackage.haskell.org/.../${name}.tar.gz";            };
+        sha256 = "cfcc4501b000fa740ed35a5be87dc012...";
+     };
+                                                                                Figure 2. xmessage.nix: Nix expression for xmessage
+     buildInputs = [ghc X11]; 3
+
+     configurePhase = ’’ 4
+       substituteInPlace XMonad/Core.hs --replace \
+         ’"xmessage"’ ’"${xmessage}/bin/xmessage"’ 5
+                                                                          ing xmonad’s source follows the convention, so it is not necessary
+       ghc --make Setup.lhs                                               to specify an unpackPhase — the default functionality provided
+       ./Setup configure --prefix="$out" 6                                by mkDerivation suffices. We emphasise that mkDerivation is just
+     ’’;                                                                  a function that abstracts over a common build pattern, not a lan-
+                                                                          guage construct: functions that abstract over other build patterns
+     buildPhase = ’’                                                      can easily be written. For instance, the xmonad package makes
+       ./Setup build                                                      use of Haskell’s Cabal build system (http://haskell.org/cabal/).
+     ’’;                                                                  It therefore makes sense to extract the Cabal build commands (all
+                                                                          the invocations of ./Setup) into a Cabal-specific wrapper around
+     installPhase = ’’
+       ./Setup copy
+                                                                          mkDerivation, thereby allowing the expression specific to xmonad
+       ./Setup register --gen-script                                      to be reduced to the same conciseness as the xmessage example.
+     ’’;                                                                  Due to the functional nature of the Nix expression language, nearly
+                                                                          all recurring patterns can be captured in functions in this way.
+     meta = { 7                                                               All attributes in the call to mkDerivation are passed as envi-
+        description = "A tiling window manager for X";                    ronment variables to the build script (except the meta attribute 7 ,
+     };                                                                   which is filtered out by the mkDerivation function). For instance,
+})                                                                        the environment variable name will be set to xmonad-0.5. For at-
+                                                                          tributes that specify other derivations, the paths of the packages
+         Figure 1. xmonad.nix: Nix expression for xmonad                  they build are substituted. For instance, the buildInputs environ-
+                                                                          ment variable (which is used by stdenv to generically set up other
+                                                                          environment variables such as the C include file search path and
+    Figure 1 shows the Nix expression for the xmonad package, a           the linker search path) will contain the paths to the ghc and X11
+tiling X11 window manager written in Haskell. This expression is          dependencies 3 . Likewise, the function fetchurl returns a deriva-
+a function that takes a set of arguments (declared at point 1 ) and       tion that downloads the specified file and verifies its content against
+returns a derivation (at 2 ). The most important data type in the         the given cryptographic hash; thus, the environment variable src
+Nix expression language is the attribute set, a set of name/value         will hold the location of the xmonad source distribution, which
+pairs, written as { name1 = value1 ; ...; namen = valuen ; }.             the stdenv build script will unpack. (fetchurl may seem an impure
+The keyword rec defines a recursive attribute set, i.e., the attributes   function, but because the output is guaranteed to have a specific
+can refer to each other. The syntax {arg1 , ..., argn }: body defines     content by the cryptographic hash, which Nix verifies, it is pure as
+an anonymous function that must be called with an attribute set           far as the purely functional deployment model is concerned.)
+containing the specified named attributes.                                    When invoking a build script to perform a derivation, Nix will
+    The arguments of the xmonad function denote dependencies              set the special environment variable out to the intended location in
+(stdenv, ghc, X11, and xmessage), as well as a helper function            the filesystem where the package is to be stored. Thus, xmonad is
+(fetchurl). stdenv is a package that provides a standard Unix build       configured with a build prefix equal to the path given in out 6 .
+environment, containing tools such as a C compiler and basic Unix             Since the expression that builds xmonad is a function, it must
+shell tools. X11 is a package providing the most essential X11            be called with concrete values for its arguments to obtain an actual
+client libraries.                                                         derivation. This is the essence of the purely functional package
+    The function stdenv.mkDerivation is a helper function that            management paradigm: the function can be called any number
+makes writing build actions easier. Build actions generally have          of times with different arguments to obtain different instances of
+a great deal of “boiler plate” actions. For instance, most Unix           xmonad. Just as multiple calls to a function in a purely functional
+packages are built by a standard sequence of commands: tar xf             language cannot “interfere” with each other, these instances are
+sources to unpack the sources, ./configure --prefix=prefix to de-         independent: for instance, they will not overwrite each other.
+tect system characteristics and generate makefiles, make to com-              Figure 3 shows an attribute set containing several concrete
+pile, and make install to install the package in the directory pre-       derivations resulting from calls to package build functions. The
+fix. mkDerivation is a function that captures this commonality, al-       attribute xmonad is bound to the result of a call to the function in
+lowing packages to be written succinctly. For instance, Figure 2          Figure 1 8 . Thus, xmonad is a concrete derivation that can be built.
+shows the function that builds the xmessage package. The xmonad           Likewise, the arguments are concrete derivations, e.g. xmessage is
+package, being Haskell-based, does not build in this standard way,        the result of a call to the function in Figure 2.
+so mkDerivation allows the various phases of the package build                The end user can now install xmonad by doing
+sequence to be overridden, e.g. configurePhase 4 specifies shell
+commands that configure the package. On the other hand, unpack-           $ nix-env -f all-packages.nix -i -A xmonad
+rec {                                                                      /nix/var/nix/profiles
+  xmonad = import .../xmonad.nix { 8
+     inherit stdenv fetchurl ghc X11 xmessage;                                alice 9
+  };                                                                          alice-14
+                                                                              alice-15 10
+    xmessage = import .../xmessage.nix { ... };
+                                                                           /nix/store
+    ghc = ghc68;                                                              ias2837rija0...-user-env 11
+                                                                                  bin
+    ghc68 = import ../development/compilers/ghc-6.8 {                                 firefox
+       inherit fetchurl stdenv readline perl gmp ncurses m4;
+       ghc = ghcboot;
+                                                                                      ghc
+    };                                                                                xmonad
+                                                                              8dpf3wcgkv1i...-xmonad-0.5
+    ghcboot = ...;                                                                bin
+    stdenv = ...;
+    ...                                                                               xmonad
+}                                                                             d71fzifksc23...-xmessage-1.0.2
+                                                                                  bin
+Figure 3. all-packages.nix: Function calls to instantiate packages                    xmessage
+                                                                              zahfcxzylmad...-glibc-2.7
+                                                                                  lib
+which builds the xmonad derivation and all its dependencies, and
+ensures that the xmonad binary appears in the user’s PATH in a                        libc.so.6
+way described below. Derivations that have been built previously           Figure 4. The Nix store, containing xmonad and some of its de-
+are not built again. Other nix-env operations include -e to uninstall      pendencies, and profiles
+a package, and --rollback to undo the previous nix-env action.
+   Nix is available at http://nixos.org/, along with the Nix Pack-
+ages collection (Nixpkgs), a large collection of Nix expressions for
+around 1350 packages.                                                      nally the symlink /nix/var/nix/profiles/user 9 is atomically up-
+                                                                           dated to point at the former symlink. This makes the new set
+The Nix store Build scripts only need to know that they should             of packages appear in an atomic action in the user’s PATH. A
+install the package in the location specified by the environment           rollback is trivially done by flipping the symlink back (e.g. to
+variable out, which Nix computes before invoking each package’s            /nix/var/nix/profiles/alice-14).
+build script. So how does Nix store packages? It must store them
+in a purely functional way: different instances of a package should        Advantages The purely functional approach has several advan-
+not interfere, i.e., should not overwrite each other.                      tages for package management:
+    Nix accomplishes this by storing packages as immutable chil-
+dren of the Nix store, the directory /nix/store, with a filename con-       • Nix prevents undeclared build time dependencies through the
+taining a cryptographic hash of all inputs used to build the package.         use of the store: since store paths are not in any default search
+For instance, a particular instance of xmonad might be stored under           paths, they will not be found.
+    /nix/store/8dpf3wcgkv1ixghzjhljj9xbcd9k6z9r-xmonad-0.5/                 • Nix detects runtime dependencies automatically by scanning
+where 8dpf3wcgkv1ixghzjhljj9xbcd9k6z9r is a base-32 represen-                 for references, i.e., the hash parts of filenames. E.g., if the
+tation of a 160-bit hash. The inputs used to compute the hash are             output of a build that had the path /nix/store/8dpf3wcg...-
+all attributes of the derivation (e.g., the attributes at 2 in Figure 1,      xmonad-0.5 as a build-time dependency contains the string
+plus some default attributes added by the mkDerivation function).             8dpf3wcg..., then we know that it has a potential runtime de-
+These typically include the sources, the build commands, the com-             pendency on this instance of xmonad. This is analogous to
+pilers used by the build, library dependencies, and so on. This is            how the mark phase of a conservative garbage collector detects
+recursive: for instance, the sources of the compiler also affect the          pointers in languages that do not have a formally defined pointer
+hash. Nix computes this path and passes it through the environment            graph structure (Boehm 1993). Since the full dependency graph
+variable out to the build script.                                             is known, we can reliably deploy a package to another machine
+    Figure 4 shows a part of a Nix store containing xmonad and                by copying its closure under the references relation.
+some of its build time and runtime dependencies. The solid arrows           • Since packages are immutable, there is no DLL hell. For in-
+denote the existence of references between files, i.e., the fact that         stance, if xmonad uses glibc-2.7, and the installation of some
+a file in the store contains the path of another store object. For in-        other package causes glibc-2.8 to be installed, it will not break
+stance, as is required for dynamically linked ELF executables (TIS            xmonad: it will continue to link against glibc-2.7.
+Committee 1995), the xmonad executable contains the full path to
+                                                                            • Knowledge of the runtime dependency graph allows unused
+the dynamic linker ld-linux.so.2 in the Glibc package.
+    Figure 4 also shows the notion of profiles, which enable                  packages to be garbage collected automatically. The roots of
+atomic upgrades and rollbacks and allow per-user package man-                 the collector are the profile symlinks in Figure 4.
+agement. Names that are slanted denote symlinks, with dot-                  • Since actions such as upgrading or downgrading to a dif-
+ted arrows denoting symlink targets. The user has the directory               ferent version are non-destructive, the previous versions are
+/nix/var/nix/profiles/user /bin in her path. When a package is in-            not touched. Therefore, it is possible to roll back to previous
+stalled through nix-env -i, a pseudo-package called a user environ-           versions (unless the garbage collector has explicitly been in-
+ment is automatically built that consists of symlinks to all installed        voked in the meantime). Also, since upgrades and rollbacks are
+packages for that user 11 . A symlink /nix/var/nix/profiles/user -            atomic, the user never sees a half-updated package; the system
+number 10 is created to point to that user environment, and fi-               is never in an inconsistent state at any point during the upgrade.
+                                                                               There are a few base types: Booleans, natural numbers, strings,
+        expressions
+                                                                           and paths. More complex types can be built using lists, attribute
+        e ::= x                                      identifier
+                                                                           sets, and functions.
+            | nat | str | uri | path                 literal
+            | [e∗ ]                                  list                  String literals String literals can be enclosed in double quotes
+            | rec? {b∗ }                             attribute set         ("string") or two single quotes (’’string’’). Both forms of
+            | let b∗ in e                                                  strings can span multiple lines and allow interpolation: arbitrary
+            | e.x                                    selection             expressions can be inserted into the middle of strings by writing
+            | x : e | {fs? } : e                     function              ${expr} (such as at 5 in Figure 1). Interpolations are desugared to
+            | ee                                     application           string concatenations.
+            | if e then e else e                     conditional               The second form, surrounded by two single quotes, is known as
+            | with e; e                              inclusion             an indented string: Indentation is removed from an indented string
+            | (e)                                    group                 in a clever way. Indented strings are very convenient for includ-
+            | e • e                                  operator              ing shell scripts in a Nix expression. Shell language itself makes
+            | !e                                     negation              frequent use of quoting (with both single and double quotes) and
+                                                                           escaping via \, but rarely contains the ’’ combination. Therefore,
+        bindings                                                           large chunks of shell scripts can be included in a Nix expression
+        b ::= x = e;                                                       almost literally using indented strings.
+            | inherit x∗ | inherit (e) x∗                                      As a third form of string literals, the Nix language supports URI
+                                                                           literals. URIs according to RFC 2396 can be specified directly,
+        formls                                                             without using quotes, as a convenience feature: the programmer
+        fs ::= x, fs | x, | x                                              gets free syntax checking of URIs.
+                                                                           Paths Next to strings and URIs, Nix also handles path literals
+        operators
+                                                                           that are absolute or relative Unix paths and are given without
+        • ::= == | != | && | || | -> | // | ~ | +
+                                                                           surrounding quotes. Paths are treated slightly different from strings
+                                                                           during evaluation.
+           Figure 5. Syntax of the Nix expression language
+                                                                           Lists Lists can be specified by enclosing a space-separated se-
+                                                                           quence of elements within square brackets. No special elimination
+ • While the Nix model is in essence a source deployment model             constructs are part of the language, but there are built-in functions
+      (since Nix expressions describe how to build software from           for accessing the head and tail of a list. Lists can be heterogeneous,
+      source), purity allows transparent binary deployment as an op-       e.g., [1 true [./file "endo lives"]] is a valid list.
+      timisation. One can register with Nix that store paths are avail-
+      able for download at a remote machine (such as the Nixpkgs           Attribute sets The central type of the Nix language is attribute
+      distribution site). Then, when Nix needs to build some path p, it    sets. Attribute sets essentially are records. They are introduced by
+      checks whether p is available remotely. If so, it is downloaded      listing a number of bindings. Bindings either associate an attribute
+      in lieu of building. Otherwise, it is built normally. Thus, binary   name with an expression, or introduce names from the surrounding
+      deployment is a simple optimisation of source deployment.            scope by means of inherit. By specifying a source, inherit can
+                                                                           also introduce names from another attribute set. An attribute x can
+ • A purely functional build language allows build-time variabil-          be selected from an attribute set a by writing a.x.
+      ity in packages to be expressed in a natural way, and allows             Local, recursive bindings can be made by means of a let-
+      abstracting over common build patterns.                              in construct. An expression of the form with e1 ; e2 where e1
+ • Having a declarative specification of the system pays off partic-       describes an attribute set adds the attributes of e1 to the scope while
+      ularly when performing upgrades that invalidate a large number       evaluating e2 . This is often used in the form with import path; e2
+      of packages. For instance, an upgrade of GCC or the core C li-       where path refers to a file containing an attribute set – the construct
+      braries might essentially require nearly the entire system to be     then simulates opening and importing a module.
+      rebuilt. On a smaller, but not less annoying scale, every upgrade    Functions Anonymous functions are introduced using a colon
+      of GHC requires all Haskell libraries to be rebuilt. These rela-     to separate the argument from the body. The identity function
+      tions can not only easily be expressed in Nix – the upgrade path     can be written as x : x, the constant function in curried form
+      is also extremely painless, as the old versions remain usable in     as x : y : x. For functions taking attribute sets as arguments,
+      parallel for as long as desired. The system will always be con-      there is a special syntax that allows to pattern match on specific
+      sistent and the different versions do not interfere.                 attributes by name (for instance used in the xmonad expression in
+                                                                           Figure 1). Like in ML or Haskell, function application is denoted
+4.     The Nix expression language                                         by juxtaposing two expressions.
+In this section, we formalise the syntax and semantics of the Nix          Derivations The most important built-in function is derivation.
+expression language, and motivate why certain language features            Usually, a Nix expression will not directly invoke derivation,
+are essential to the language.                                             but rather call a wrapper function such as stdenv.mkDerivation
+                                                                           that fills in boilerplate code. The function takes an attribute set and
+4.1     Syntax                                                             interprets it as a build action for a package. It returns the origi-
+The Nix expression language is a fairly simple, dynamically typed,         nal attribute set, extended with a few additional attributes. One of
+purely functional language. Its syntax is shown in Figure 5. Next          the new attributes is outPath, the path in the Nix store where the
+to the constructs shown, the language has a considerable number of         complete output of the build action is stored.
+built-in functions that syntactically are normal identifiers. We focus         The attribute set passed to the derivation function must define
+our description on the features that make the language special and         the attributes system, name, and builder. The attribute builder
+well-suited for its task of describing packages.                           is interpreted as the invocation of a program that produces the
+                                                                              For recursive attribute sets, we have to be careful, because
+               e →∗ {~b} x = e0 ∈ ~b                                      desugaring x : rec { inherit x; y = x; } to x : rec { x = x; y
+                                               (select)
+                       e.x → e0                                           = x; } would incorrectly introduce infinite recursion. Therefore,
+  ~bs ≡ {x = (rec {~b1 / ~b2 }).x | x ∈ dom (~b1 ∪ ~b2 )}                 recursive attribute sets internally separate recursive attributes from
+                                                              (rec)       non-recursive (i.e., inherited) attributes (we write this rec {~b1 /
+             rec {~b1 / ~b2 } → {~b1 [~bs ]; ~b2 }
+                                                                         ~b2 }, and the above expression is desugared to x : rec { y = x; / x
+                     x∈/ dom (~b1 ∪ ~b2 )                                 = x; } where the x in the first binding points to the attribute bound
+                                                         (let)
+       let b1 / b2 in e → (rec {~b1 ; x = e / ~b2 }).x
+           ~    ~                                                         in the second binding, but the x on the right hand side of the second
+                                                                          binding points to the lambda-bound x. For the evaluation rules, we
+                        e1 →∗ {~b}                                        therefore assume that non-recursive attribute sets can be written in
+                                            (with)
+                   with e1 ; e2 → e2 [~b]                                 the form {~b} where each b is of the form x = e, and that recursive
+                      e1 →∗ x : e3                                        attribute sets are of the form rec {~b1 / ~b2 }.
+                                          (apply1)
+                   e1 e2 → e3 [x = e2 ]                                  Operations on attribute sets The rule (select) describes how at-
+       e1 →∗ {~x} : e3 e2 →∗ {~b} ~b ∼ ~x → ~b0                          tribute selection is reduced: the expression e must evaluate to an
+                                                     (apply2)            attribute set containing bindings ~b. If there is a binding for the se-
+                     e1 e2 → e3 [~b0 ]
+                                                                         lected attribute x, the corresponding expression e0 is returned.
+                                                                             The rule (rec) deals with unfolding a recursive attribute set. As
+      Figure 6. Evaluation rules of the Nix expression language
+                                                                         explained above, only the bindings ~b1 are actually considered to
+                                                                         be recursive. In these bindings, all references x to names from the
+                                                                         attribute set (written dom (~b1 ∪ ~b2 )) are substituted with their un-
+            x = e ∈ ~b ~b ∼ ~x → ~b0                                     folding, i.e., a selection of the appropriate attribute x from the re-
+                                       (matchnonempty)
+             ~b ∼ x,~x → x = e; ~b0                                      cursive set rec {~b1 / ~b2 } itself. We use a postfixed [~b] here to
+                                  (matchempty)                           denote the simultaneous substitution where all free occurrences of
+                    ~b ∼ ε → ε                                           the attributes bound in ~b are replaced by their associated expres-
+                                                                         sions. Note that the result of unfolding a recursive attribute set is
+                        Figure 7. Matching                               always a non-recursive attribute set.
+                                                                             In rule (let), a let-statement can be reduced to a recursive at-
+                                                                         tribute set where the body of the let is added as a fresh attribute.
+package. The program is run in a very restricted build environment,
+                                                                         The body is then selected from that attribute set.
+but that environment is influenced by the other attributes in the
+                                                                             For a with-statement (with), we first reduce e1 into an attribute
+attribute set passed to derivation: each attribute is converted into
+an environment variable of the same name. What exactly is passed         set with bindings ~b. We then add the attributes defined in ~b to the
+depends on the type of the attribute:                                    scope for evaluating e2 by simply substituting these attributes in e2 .
+    Strings, URIs and natural numbers are passed verbatim. A path        Function application On encountering a function application,
+causes the referenced file to be copied to the store, and the cor-       the function e1 is reduced. There are two rules for function ap-
+responding store path is passed in the environment variable. That        plication, corresponding to the two forms of lambda abstraction in
+way, sources, configuration files, patches and other inputs to the       the syntax. If the function is of the form x : e3 , then rule (apply1)
+build will all be part of the Nix store. Another derivation makes        applies, and we substitute the argument e2 for x in e3 .
+that derivation a dependency of the current derivation – the depen-          If the function is defined via pattern matching on an attribute set
+dency is built first, and its output path is passed in the environment   (apply2), we also evaluate the argument e2 to an attribute set with
+variable. Lists are flattened into space-separated strings. Finally,     bindings ~b. We then match the bindings ~b against the formals ~x.
+Booleans are passed as the empty string or 1.
+                                                                         The matching results in another set of bindings ~b0 which we then
+4.2    Semantics                                                         use as a substitution for the body of the function e3 .
+                                                                             Rules for matching are shown in Figure 7. The rules (match-
+We give an operational semantics for the Nix expression language         nonempty) and (matchempty) traverse the set of formals ~x. Every
+by providing evaluation rules. The rules have the form e → e0 , re-      formal x is individually matched against the bindings. Matching
+ducing one expression to another. They always apply to the com-
+                                                                         thus succeeds if ~x is a subset of dom ~b and computes the restric-
+plete Nix expression under consideration. In other words, reduction
+proceeds as long as the full Nix expression constitutes a redex. We      tion ~b to the attributes in ~x.
+write e →∗ e0 to denote that we can go from e to e0 in many steps.
+                                                                         4.3   Design decisions
+    Next to syntactic transformation on Nix expressions, evaluation
+in Nix causes build actions to take place, such as described for the     After having described the Nix expression language and its opera-
+built-in function derivation above. Note that we see the build           tional semantics, let us now point out three concepts that we believe
+action as part of the evaluation, not a side-effect, as the Nix store    are really essential to the language: purity, laziness, and the use of
+can be seen as an on-disk extension of the “heap” of our language.       attribute sets as a prominent type.
+    Listing all the reduction rules, especially for all the built-in         While many aspects of the language (for instance, the fact
+functions and operators, would go beyond the space we have in            that it is dynamically and not statically typed) could certainly
+this paper. We therefore give a few representative evaluation rules      be changed, the idea of functional package management crucially
+in Figure 6 that deal with functions and attribute sets.                 requires the language to be pure. Laziness and attribute sets both
+                                                                         help significantly in making the system convenient to use.
+Desugaring of inheritance For non-recursive attribute sets, the
+binding inherit x is syntactic sugar for a binding x = x. If a           Purity NixOS relies on the fact that a specific Nix expression has
+source is specified, for instance inherit (e) x, the desugaring is       one associated value that does not depend on the state of the system.
+x = e.x. Multiple attributes can be inherited in a single statement.     The Nix expression language is different from typical programming
+This is transformed into multiple bindings.                              languages in that some of the values associated with expressions
+are actually directory trees with files in it, but that does not change   pkgs.writeText "ssh_config" ’’
+                                                                             SendEnv LANG LC_ALL ...
+the fact that one (and only one) value is associated with a Nix
+                                                                             ${if config.services.sshd.forwardX11 then ’’
+expression describing a derivation.                                            ForwardX11 yes
+    This referential transparency gives us the possibility to identify         XAuthLocation ${pkgs.xorg.xauth}/bin/xauth
+a package with the Nix expression that builds it. When we evaluate           ’’ else ’’
+the same Nix expression multiple times – whether in a single com-              ForwardX11 no
+putation or in different ones – we can reuse the previous result be-         ’’}
+cause it cannot have changed. We can even download precomputed            ’’
+results (i.e., precompiled binary packages) from other systems if
+desired. Purity also implies that different build actions performed                  Figure 8. Nix expression to build ssh config
+at the same time do not influence each other, thus the Nix evaluator
+can easily schedule builds to run in parallel. Parallel builds are en-
+abled by default, for instance, to distribute Nixpkgs builds on our       instance, Sloane (2002) embedded a similar build language (based
+compile farm among available machines and cores. By contrast, in          on Odin (Clemm 1986)) in Haskell. This is certainly possible, but
+Make (Feldman 1979), enabling parallel builds is not safe in gen-         it would be painful to use: for instance, features such as string
+eral because build actions often interfere with each other.               interpolation or functions over attribute sets would not be available.
+    Another aspect of purity is the integrity of the Nix store. Nix
+maintains full control over the references that packages in the Nix
+store have to other packages. All such references are fixed, i.e.,
+                                                                          5.   NixOS
+they cannot be modified, and also the contents of the Nix store           In Section 3 we saw that the purely functional approach of the Nix
+are immutable. This allows us to keep packages from randomly              package manager solves many problems that plague “imperative”
+picking up untracked dependencies that might lead to unpredictable        package management systems. We have previously used Nix as a
+system failures. It also ensures that we can use garbage collection       package manager under existing Linux distributions and other op-
+to identify unused packages and safely remove them.                       erating systems, such as Mac OS X, FreeBSD and Windows to de-
+    Because purity is so central to NixOS, we discuss in Section 6.2      ploy software alongside the “native” package managers of those
+how we ensure that build actions are pure.                                systems. In this section we describe NixOS, a Linux distribution
+                                                                          entirely built on Nix. It uses Nix not just for package management
+Laziness Evaluation of a derivation means performing a build              but also to build all other static parts of the system. This exten-
+action, and build actions can be quite expensive: some packages           sion follows naturally: while Nix derivations typically build whole
+require a significant amount of sources to be downloaded from             packages in an atomic action, they can build any file or directory
+the internet, others take several hours to compile. It is therefore       tree so long as it can be built in a pure way. For instance, most
+of utmost importance that a package is only built if it is necessary.     configuration files in /etc in a typical Unix system do not change
+    Only this allows us to write Nix expressions in a convenient          dynamically at runtime and can therefore be built by a derivation.
+style: Packages are described by Nix expressions and these Nix                For example, the expression in Figure 8 generates a simple
+expressions can freely be passed around in a Nix program – as             configuration file (ssh config) for the SSH client program in the
+long as we do not access the contents of the package, no evaluation       Nix store (i.e., /nix/store/hash-ssh config). The helper function
+and thus no build will occur. For instance, the whole of the Nix          pkgs.writeText returns a derivation that builds a single file in the
+packagages collection is essentially one attribute set where each         Nix store with the specified name and contents. The contents in
+attribute maps to one package contained in the collection. It would       this case is a string containing an interpolation that return different
+be unthinkable to require the entire collection of packages to be         file fragments depending on configuration options set by the user
+built if only one attribute was selected.                                 (discussed below). Namely, if the option services.sshd.forwardX11
+    Moreover, Nix expressions typically contain more than just the        is enabled, the SSH option ForwardX11 should be set to yes, and
+plain build descriptions – they store meta-information about the          furthermore SSH must be able to find the xauth program (to for-
+packages as well, such as their version number, their homepage,           ward X11 authentication credentials to the remote machine). This
+or a description of the package. If we could not access that infor-       means that this configuration file has an optional dependency on
+mation without first building the package, the system would not be        the xauth package: depending on a user configuration option, the
+practicable to use.                                                       configuration file either does or doesn’t reference xauth. This kind
+Attribute sets Attribute sets are very convenient because they are        of dependency between a configuration file and a software package
+so versatile. Most importantly, they give us named arguments. For         is generally not handled by conventional package managers, since
+a language such as Nix, where most of the functions are first-order       they don’t deal with configuration files in the same formalism as
+functions taking a possibly very large number of dependencies, it         packages: packages can have dependencies, but configuration files
+would be extremely inconvenient if all the arguments had to be            cannot. In Nix, they are all derivations and therefore treated in the
+specified in a specific order. Package dependencies do not usually        same way. As a concrete consequence, the xauth package won’t
+have a natural total order, and as a Nix expression evolves, the          be garbage-collected if ssh config refers to it — an important con-
+number of dependencies often changes. Being able to refer to              straint on the integrity of the system.
+dependencies by name is therefore nearly a must.                              When we build this expression, a possible result might be
+    Furthermore, attribute sets can be used to simulate a whole           SendEnv LANG LC_ALL ...
+number of other powerful language concepts easily: for example,           ForwardX11 yes
+they can be used as both modules and objects, without having to           XAuthLocation /nix/store/j1gcgw...-xauth-1.0.2/bin/xauth
+add a huge number of additional language concepts.
+                                                                              It is worth noting that due to laziness, xauth will be built if
+    Attribute sets also give us a form of subtyping. We can, for
+                                                                          and only if config.services.sshd.forwardX11 is true. Thus, the lazi-
+instance, bundle together a number of packages in a set and pass
+                                                                          ness of the Nix expression language directly translates to laziness
+it to a function that expects only a subset of those packages.
+                                                                          in building packages. This is a crucial feature: while xauth is a tiny
+   The reader may wonder if the Nix expression language could             package, many NixOS configuration options trigger huge depen-
+have been implemented as an embedded DSL (e.g., in Haskell). For          dencies. For instance, the option services.xserver.enable = true
+will cause a dependency on the X11 server (large), while ser-             {ntp, modprobe, glibc, writeText, servers}: 12
+vices.xserver.sessionType = ”kde” will bring in the K Desktop
+Environment (very large).                                                 let
+                                                                             stateDir = "/var/lib/ntp";
+                                                                             ntpUser = "ntp";
+Building a system, declaratively NixOS thus consists of a set                config = writeText "ntp.conf" ’’ 13
+of Nix expressions that return derivations that build the various              driftfile ${stateDir}/ntp.drift
+                                                                               ${toString (map (srv: "server $srv\n") servers)}
+parts that constitute a Linux system: static configuration files, boot       ’’;
+scripts, and so on. These build upon the software packages already        in
+provided by Nixpkgs. Figure 9 shows a graph of a small subset of
+the derivations that build NixOS. Each arrow a → b means that the         { 14
+output of derivation a is an input to derivation b. Italic nodes denote     name = "ntpd";
+derivations that build configuration files; bold nodes build Upstart
+service descriptions (see below); dotted nodes are scripts; dashed            users = [ 15
+nodes are various helper derivations that compose logical parts of               { name = ntpUser;
+the system; and all other nodes are software packages. However,                    uid = (import ../system/ids.nix).uids.ntp;
+                                                                                   description = "NTP daemon user";
+this distinction is entirely conceptual. As far as Nix is concerned,             }
+they are all derivations: pure, atomic build actions.                         ];
+    Among the points of interest in the graph are the following:
+                                                                              job = ’’ 16
+ • The Linux kernel (kernel), along with external kernel modules                description "NTP daemon"
+   (drivers and other kernel extensions in the Linux model) such
+   as the NVIDIA graphics drivers (nvidiaDrivers) and the Intel                  start on ip-up
+   Wireless drivers (iwlwifi) that depend on it. These are part of               stop on ip-down
+   Nixpkgs. A very nice consequence of the purely functional
+                                                                                 start script 17
+   approach is that an upgrade of the kernel (i.e., a change to the                  mkdir -m 0755 -p ${stateDir}
+   Nix expression that builds the kernel) will trigger a rebuild of all              chown ${ntpUser} ${stateDir}
+   dependent external kernel modules. This is in contrast to many                    # Needed to run ntpd as an unprivileged user.
+   other Linux distributions, where a common scenario is that one                    ${modprobe}/sbin/modprobe capability || true
+   upgrades the kernel and then discovers that the X server will                 end script
+   not start anymore because the NVIDIA drivers were not rebuilt.
+   This is not possible here. (Of course the external modules might             respawn ${ntp}/bin/ntpd -n -c ${config} 18 \
+   not be compatible with the new kernel, but such a problem                        -u ${ntpUser}:nogroup -i ${stateDir}
+   usually manifests itself at build time; and one cannot activate            ’’;
+                                                                          }
+   a new configuration unless all of it builds successfully.)
+   A small wrapper component (modulesTree) combines (through
+   symlinks) the kernel modules from the kernel package with              Figure 10. ntp.nix: Nix expression generating the NTP Upstart job
+   those from the external module packages in a single directory
+   tree. This is necessary because the kernel module loading com-
+   mand modprobe expects all modules to live in a single direc-
+   tory tree. This is an example of how we circumvent the impure              • A running system consists primarily of a set of services, such
+   models of various tools and applications: modprobe espouses                  as the X server, the DHCP client, the SSH daemon, and many
+   an impure model where modules from various packages are                      more. On NixOS, these are started and monitored by Upstart
+   statefully installed in an existing directory. modulesTree turns             (http://upstart.ubuntu.com/), which provides the init pro-
+   this into a purely functional discipline.                                    cess that starts all other processes. Upstart reads specifications
+ • The derivation initrd builds the initial ramdisk necessary for               of system services from /etc/event.d and runs the commands
+   booting the system. NixOS, as most modern Linux distribu-                    for each service when appropriate. Services can have dependen-
+   tions, has the following boot process. The machine’s BIOS                    cies on eath other, e.g., the SSH daemon should be started when
+   loads the boot loader Grub (http://www.gnu.org/software/                     networking comes up.
+   grub/). Grub then lets the user choose the operating system to               The Upstart service descriptions in /etc/event.d are built by
+   boot, and in the case of Linux, loads the kernel and the initial             Nix expressions. Figure 10 shows the expression that builds
+   ramdisk. The latter contains a small root filesystem containing              the service that runs the Network Time Protocol (NTP) client,
+   everything necessary to allow the real filesystem to be mounted.             which synchronises the clock against those of a set of NTP
+   Notably, it must contain any kernel modules for the hardware                 servers. It is a function 12 that takes as inputs the software
+   containing the filesystem (e.g. drivers for SCSI or USB), the                dependencies (such as the ntp package) and a configuration
+   filesystem itself (e.g. ext3) and perhaps other modules such                 option servers specifying the hostnames or IP addresses of
+   as network drivers for remote booting. The initrd thus is not                the NTP servers to use. It returns an attribute set containing
+   fixed, but depends on the hardware configuration of the user. It             various properties of the service, such as its name, a set of
+   therefore contains a copy of the closure under the module de-                user accounts 15 that must be created for this service (by the
+   pendency relation of the set of modules needed (e.g. [”ext3”                 activation script, discussed below), and the text of the Upstart
+   ”ata piix” ”sd mod”] for a Dell Latitude D630).                              service in the format expected by Upstart 16 .
+   Furthermore, the initial ramdisk contains a boot script called               There are two points of interest in the NTP service that are
+   stage1Init, which loads the kernel modules, runs the filesystem              representative of NixOS in general. First, it is self-initialising
+   checker fsck if needed, mounts the root filesystem, and passes               and idempotent: at startup 17 , it creates the environment needed
+   control to the final boot script stage2Init.                                 by the ntpd daemon, such as the directory /var/lib/ntp. This
+                                     kernel                                                                                                                             libX11
+
+
+
+                                iwlwifi             nvidiaDriver                                                                                            xauth
+
+
+
+                                      modulesTree                    modprobe     ntp          ntp.conf         openssh           xorg.conf   sshd_config        xorgserver                 dhcp
+
+
+
+    e2fsprogs   stage1Init   modulesClosure          klibc         hardwareScan         udev       mingetty           ntpd          sshd       xserver          dhcpd            dhclient
+
+
+
+                                  initrd                                                                   upstartJobs          ssh_config    profile.sh      iputils        pwdutils       perl   bash
+
+
+
+                                                                                                                          etc                                              systemPath
+
+
+
+                                                                   upstart                                activateConfiguration
+
+
+
+                                                               stage2Init          grubMenuBuilder
+
+
+
+                                                                   system
+
+
+
+
+                              Figure 9. A small part of the dependency graph of the derivations that build NixOS
+
+
+      /nix/var/nix/profiles                                                                               • By contrast to ntp.conf, some files are still needed in /etc,
+         system                                                                                              mostly because they are “cross-cutting” configuration files
+         system-41                                                                                           that cannot be feasibly passed as build-time dependencies to
+                                                                                                             every derivation. Some constitute mutable state that aren’t
+         system-42                                                                                           dealt with in the functional model at all, such as the sys-
+      /nix/store                                                                                             tem password file /etc/passwd or the DNS configuration file
+         n38vx2n5l8q5...-system                                                                              /etc/resolv.conf, which must be modified at runtime. How-
+            activate                                                                                         ever, others are static (only change as a result of explicit recon-
+            etc                                                                                              figurations) but still crosscutting, such as the static host name
+         2bc239mvs617...-etc                                                                                 resolution list /etc/hosts. These are built by Nix expressions
+            etc/event.d/ntp                                                                                  and stored in the Nix store. The etc derivation in Figure 9 takes
+                                                                                                             as inputs the files that are needed in /etc and combines them
+         indmbdpplf5p...-upstart-ntpd                                                                        into a tree of symlinks. Later, the activation script (described
+            etc/event.d                                                                                      below) copies these symlinks into /etc.
+                ntp (Upstart job)
+                                                                                                          • systemPath is a set of symlinks to selected packages and is
+         q967djq45dwf...-ntp.conf                                                                            placed in the users’ PATH environment variable. Since it is
+         zd7r6kj7rxw7...-ntp-4.2.4p4                                                                         constructed by a Nix expression, it enables declarative pack-
+            bin                                                                                              age management. By contrast, manual package management
+                ntpd                                                                                         actions like nix-env -i (Section 3) are stateful and don’t use a
+         im276akmsrhv...-glibc-2.5                                                                           declarative specification to define the set of installed packages.
+            lib                                                                                           • Building a NixOS configuration is entirely pure; it only com-
+                libc.so.6                                                                                    putes values (files and directories) in the Nix store. But to ac-
+                                                                                                             tivate a configuration requires actions to be performed; system
+Figure 11. Outputs of derivations related to the NTP service, as                                             services must be started or stopped, user accounts for system
+well as the system profile                                                                                   services must be created, symlinks in /etc must be created (see
+                                                                                                             above), and so on. This is done by the activation script (built by
+                                                                                                             derivation activateConfiguration).
+   obviates the need for post-install scripts used in other package
+                                                                                                          • The stage 2 initialisation script (stage2Init) performs boot-time
+   managers and allows switching between configurations.
+                                                                                                             initialisation and runs the activation script.
+   Second, the configuration file for the daemon is not stored in
+   /etc/ntp.conf, but in the Nix store, built by the writeText                                            • Finally, the system derivation itself simply creates symlinks to
+   helper function 13 . The path of the generated ntp.conf in the                                            its inputs, e.g. $out/kernel links to the kernel image.
+   store is directly substituted in the generated Upstart service file
+                                                                                                        Thus, given the top-level Nix expression for NixOS (installed in
+   through the string interpolation at 18 . While this is not a big
+                                                                                                     /etc/nixos/nixos/default.nix), the commands
+   deal for the NTP service, it is very important for other services:
+   for instance, it makes it trivial to run multiple web servers side-                               $ nix-build /etc/nixos/nixos -A system
+   by-side, such as production and test instances, simply by instan-                                 $ ./result/activate
+   tiating the appropriate function multiple times with different ar-
+   guments. The use of “global variables” such as /etc/ntp.conf                                      build the entire configuration, including all software dependencies,
+   would preclude this. Figure 11 shows the outputs of the deriva-                                   configuration files, Upstart jobs, etc., leaving a symlink result in the
+   tions for the NTP service.                                                                        current directory; and then run the activation script. When switch-
+{
+    boot = {
+       grubDevice = "/dev/sda";
+       kernelModules = ["fuse" "kvm-intel"];
+    };
+    fileSystems = [
+       { mountPoint = "/";
+          device = "/dev/sda1";
+       }
+    ];
+    services = {
+       sshd = {
+          enable = true;
+          forwardX11 = true;
+       };
+       xserver = {
+          enable = true;
+          videoDriver = "nvidia";
+          sessionType = "kde";
+       };
+    };
+}
+                                                                                Figure 13. The Grub boot menu for a NixOS machine
+Figure 12. configuration.nix: NixOS configuration specification
+                                                                          6.    Evaluation
+ing to the new configuration, the activation script stops any Upstart     In this section, we reflect upon the extent to which the purely
+services that have disappeared in the new configuration, starts new       functional model “works”, i.e., can be used to implement a useful
+services, restarts services that have changed, and leaves all other       system, to what extent Nix derivations are pure, and to what extent
+services untouched. It can determine precisely which services have        we need to compromise on purity.
+changed by comparing the store paths of the Upstart service files: if
+they are different, then by definition some input in the dependency       6.1   Status
+graph of the service changed, and a restart may be needed.                NixOS is not a proof-of-concept: it is in production use on a
+Using NixOS Of course, we cannot expect the average user to               number of desktop and server machines. Sources and ISO im-
+reconfigure her system by editing the various Nix expressions in          ages of NixOS for i686 and x86 64 platforms are available at
+Figure 9, then rebuilding the configuration. Instead, NixOS has a         http://nixos.org/. As of March 2008, the Nix Packages collec-
+single configuration file, /etc/nixos/configuration.nix, that con-        tion (on which NixOS builds) contains Nix expressions for some
+tains a nested attribute set specifying all configuration pertaining to   1350 packages. These range from basic components such as the
+the user’s system. An example of this configuration file is shown         C library Glibc and the C compiler GCC to end-user applications
+in Figure 12. This expression is passed as an argument to the             such as Firefox and OpenOffice.org. NixOS has system services
+top-level NixOS expression, /etc/nixos/nixos/default.nix, which           for running X11 (including the 3D window manager Compiz, KDE
+distributes its attributes to the appropriate subexpressions. For in-     and parts of Gnome), Apache, PostgreSQL and many more. NixOS
+stance, the attribute services.sshd.forwardX11, seen above, is dis-       is fairly unique among Linux distributions in that it allows non-
+tributed to the function that builds the file ssh config.                 root users to install software, thanks in part to the purely functional
+    The configuration of the system is updated by editing configu-        approach, which enables some strong security guarantees (Dolstra
+ration.nix and then running                                               2005, Section 3).
+                                                                              To provide some sense of the size of a typical configura-
+$ nixos-rebuild switch                                                    tion (a laptop running X11, KDE and Apache, among other
+which builds the system attribute of the top-level NixOS expres-          things1 ): the build graph rooted at the top-level system attribute
+sion, installs it in the profile /nix/var/nix/profiles/system, and        in /etc/nixos/nixos/default.nix consists of 707 derivations (408
+then runs its activation script. The profile (see Section 3) is used      excluding fetchurl derivations) and 196 miscellaneous source files.
+to enable rollbacks to previous configurations. Figure 11 shows the       The closure of the output of the system derivation (i.e., its run-
+symlinks from the profile to the configuration in the Nix store.          time dependencies) consists of 340 store paths with a total size of
+    Alternatively, one can run the command nixos-rebuild test. This       1053 MiB. Thus 367 of the 707 derivations are build-time-only
+will build and activate the configuration without installing it in        dependencies, such as source distributions, compilers and parser
+the profile. Thus, rebooting the system will automatically cause a        generators. The evaluation of system imports 290 Nix expression
+rollback to the current configuration in the system profile.              files in the NixOS and Nixpkgs trees, and takes 2.4 seconds of CPU
+    The system profile is used to generate the boot menu of the           time on a Core 2 Duo 7700.
+Grub boot loader. Each non-garbage-collected configuration is
+                                                                          6.2   Purity
+made available as a menu entry (see Figure 13). This allows the user
+to recover trivially from bad upgrades (such as those that render the     The goal of NixOS was to create a Linux distribution built and
+system unbootable). A system can be rolled back without rebooting         configured in a purely functional way. Thus build actions should
+by doing nix-env --rollback -p /nix/var/nix/profiles/system and           be deterministic and therefore reproducible, and there should be no
+running the activation script.                                            “global variables” like /bin that prevent multiple versions of pack-
+    NixOS itself is currently upgraded simply by updating the Nix
+expressions in /etc/nixos from the Nix Subversion repository, i.e.        1 Revision 11437 of the configuration at https://svn.nixos.org/repos/
+by doing svn up /etc/nixos/*.                                             nix/configurations/trunk/misc/eelco-dutibo.nix.
+ages and services to exist side-by-side. There are several aspects to         However, there is one case in NixOS and Nixpkgs of a library
+evaluating the extent to which we reached those goals.                    dependency that must be overridable at runtime and cannot be fixed
+Software packages Nix has no /bin, /usr, /lib, /opt or other              statically: the implementation of OpenGL to be used at runtime
+“stateful” directories containing software packages, with a sin-          (libGL.so), which is hardware-specific. We build applications that
+gle exception: there is a symlink /bin/sh to an instance of the           need OpenGL against Mesa, but add the impure (stateful) path
+Bash shell in the Nix store. This symlink is created by the acti-         /var/run/opengl-driver to the RPATH. The activation script sym-
+vation script. /bin/sh is needed because very many shell scripts          links that path to the actual OpenGL implementation selected by
+and commands refer directly to it; indeed, the C library function         the configuration (e.g., nvidiaDriver) to allow programs to use it.
+system() has a hard-coded reference to /bin/sh. To our surprise,          Build actions The Nix model is that derivations are pure, that is,
+/bin/sh is the only such compromise that we need in NixOS.                two builds of an identical derivation should produce the same result
+Other hard-coded paths in packages (e.g., references to /bin/rm or        in the Nix store. However, in contemporary operating systems,
+/usr/bin/perl) are much less common and can easily be patched             there is no way to actually enforce that model. Builders can use
+on a per-package basis. Such paths are uncommon in widely used            any impure source of information to produce the output, such as
+software because they are not portable in any case (e.g., Perl is typi-   the system time, data downloaded from the network, or the current
+cally, but not always installed in /usr/bin/perl). They are relatively    number of processes in the system as seen in /proc. It is trivial
+more common in Linux-specific packages that we needed to add to           to construct a contrived builder that does such things. But build
+Nixpkgs to build NixOS.                                                   processes generally do not, and instead are fairly deterministic;
+    An interesting class of packages to support are binary-only           impure influences such as the system time generally do not affect
+packages, such as Adobe Reader and many games. While Nix                  the runtime behaviour of the package in question.
+is primarily a source-based deployment system (with sharing of                There are however frequent exceptions. First, many build pro-
+pre-built binaries as a transparent optimisation, as discussed in         cesses are greatly affected by environment variables, such as PATH
+Section 3), binary packages can be supported easily: they just have       or CFLAGS. Therefore we clear the environment before starting
+a trivial build action that unpacks the binary distribution to $out.      a build (except for the attributes declared by the derivation, of
+However, such binaries won’t work as-is under NixOS, because              course). We set the HOME environment variable to a non-existent
+ELF binaries (which Linux uses) contain a hard-coded path to the          directory, because some derivations (such as Qt) try to read settings
+dynamic linker used to load the binary (usually /lib/ld-linux.so.2        from the user’s home directory.
+on the i386 platform), and expect to find dependencies in /lib and            Second, almost all packages look for dependencies in impure lo-
+/usr/lib. None of these exist on NixOS for purity reasons. To             cations such as /usr/bin and /usr/include. Indeed, the undeclared
+support these programs, we developed a small utility, patchelf, that      dependencies caused by this behaviour are what motivated Nix in
+can change the dynamic linker and RPATH (runtime library search           the first place: by storing packages in isolation from each other,
+path) fields embedded in executables. Thus, the derivation that           we prevent undeclared build-time dependencies. In five years we
+builds Adobe Reader uses patchelf to set the acroread program’s           haven’t had a single instance of a package having an undeclared
+dynamic linker to /nix/store/...-glibc-.../lib/ld-linux.so.2 and its      build-time dependency on another package in the Nix store, or hav-
+RPATH to the store paths of GTK and other needed libraries passed         ing a runtime dependency on another package in the Nix store not
+as function arguments to the derivation.                                  detected by the reference scanner. However, with Nix under other
+Configuration data NixOS has many fewer configuration files in            Linux distributions or operating systems, there have been numerous
+/etc than other Linux distributions. This is because most config-         instances of packages affected by paths outside the Nix store. We
+uration files concern only a single daemon, which almost always           prevent most of those impurities through a wrapper script around
+has an option to specify the full path to the configuration file in the   GCC and ld that ignores or fails on paths outside of the store. How-
+Nix store directly (such as ntpd -c ${config} in Figure 10). What         ever, this cannot prevent undeclared dependencies such as direct
+remains is cross-cutting configuration files, which, as discussed in      calls to other programs, e.g., a Makefile running /usr/bin/yacc.
+Section 5, are built purely but then symlinked in /etc by the con-            Since NixOS has no /bin, /usr and /lib, the effect of such impu-
+figuration’s activation script. The configuration above has just 39       rities is greatly reduced. However, even in NixOS such impurities
+such symlinks.                                                            can occur. For instance, we recently encountered a problem with
+                                                                          the build of the dbus package, which failed when /var/run/dbus
+Mutable state NixOS does not have any mechanism to deal di-
+                                                                          didn’t exist.
+rectly with mutable state, such as the contents of /var. These are
+                                                                              As a final example of impurity, some packages try to install files
+managed by the activation script and the system services in a stan-
+                                                                          under a different location than $out. Nix causes such packages
+dard, stateful way. Of course, this is to be expected: the running of
+                                                                          to fail deterministically by executing builders under unprivileged
+a system (as opposed to the configuration) is inherently stateful.
+                                                                          UIDs that do not have write permission to other store paths than
+Runtime dependencies In Nix, we generally try to fix runtime              $out, let alone paths such as /bin. These packages must then be
+dependencies at build time. This means that while a program may           patched to make them well-behaved.
+execute other programs or load dynamic libraries at runtime, the              To ascertain how well these measures work in preventing im-
+paths to those dependencies are hard-coded into the program at            purities in NixOS, we performed two builds of the Nixpkgs collec-
+build time. For instance, for ELF executables, we set the RPATH           tion2 on two different NixOS machines. This consisted of building
+in the executable such that it will find a statically determined set of   485 non-fetchurl derivations. The output consisted of 165927 files
+library dependencies at runtime, rather than using a dynamic mech-        and directories. Of these, there was only one file name that dif-
+anism such as the LD LIBRARY PATH environment variable to                 fered between the two builds, namely in mono-1.1.4: a directory
+look up libraries. This is important, because the use of such dy-         gac/IBM.Data.DB2/1.0.3008.37160 7c307b91aa13d208 ver-
+namic mechanisms makes it harder to run applications with con-            sus 1.0.3008.40191 7c307b91aa13d208. The differing number
+flicting dependencies at the same time (e.g., we might need Fire-         is likely derived from the system time.
+fox linked against GTK 2.8 and Thunderbird linked against GTK
+2.10). It also enhances determinism: a program will not suddenly          2 To be precise, the i686-linux derivations from build-for-release.nix in
+behave differently on another system or under another user account        revision 11312 of https://svn.nixos.org/repos/nix/nixpkgs/branches/
+because environment variables happen to be different.                     purity-test.
+    We then compared the contents of each file. There were differ-       Furthermore, not all machines need to be physical machines: given
+ences in 5059 files, or 3.4% of all regular files. We inspected the      a declarative specification, it is possible to automatically instantiate
+nature of the differences: almost all were caused by timestamps be-      virtual machines that implement the specification. Apart from eas-
+ing encoded in files, such as in Unix object file archives or compiled   ing the deployment of virtual machines, this will enable simulation
+Python code. 1048 compiled Emacs Lisp files differed because the         and debugging of distributed deployments.
+hostname of the build machines were stored in the output. Filtering          Finally, as noted in Section 6.2, our model assumes that builds
+out these and other file types that are known to contain timestamps,     are pure, but current operating systems cannot enforce this. An
+we were left with 644 files, or 0.4%. However, most of these dif-        interesting idea would be to add support for truly pure builds, e.g.,
+ferences (mostly in executables and libraries) are likely to be due      kernel modifications to support the notion of a “pure process”: one
+to timestamps as well (such as a build process inserting the build       that is guaranteed to give the same output for some set of inputs.
+time in a C string). This hypothesis is strongly supported by the fact   This would mean, for instance, that the time() system call must
+that of those, only 42 (or 0.03%) had different file sizes. None of      return a fake value, network access is blocked, files outside of a
+these content differences have ever caused an observable difference      specified set are invisible, and so on.
+in behaviour.                                                            Acknowledgments This research was supported in part by NWO/-
+                                                                         JACQUARD project 638.001.201, TraCE: Transparent Configura-
+7.   Related work                                                        tion Environments. We wish to thank all contributors to Nixpkgs
+This paper is about purely functional configuration management           and NixOS, and the anonymous reviewers for their comments.
+of operating systems. It is not about implementing an operating
+system in a (purely) functional language. Hallgren et al. (2005) did     References
+the latter in Haskell in their operating system House, and a number      Rick Anderson. The end of DLL hell. MSDN, http://msdn2.microsoft.
+of systems have been implemented in impure functional languages.            com/en-us/library/ms811694.aspx, January 2000.
+    DeTreville (2005) proposed making system configuration declar-       Clifford Beshers, David Fox, and Jeremy Shaw. Experience report: using
+ative. NixOS is a concrete, large-scale realisation of that notion.         functional programming to manage a Linux distribution. In ICFP’07:
+Tucker and Krishnamurthi (2001) proposed modelling packages                 Proc. 2007 ACM SIGPLAN Intl. Conf. on Functional Programming,
+and system configurations using the unit system of MzScheme,                pages 213–218, New York, NY, USA, 2007. ACM.
+allowing functional abstraction, explicit composition and multi-         Hans-Juergen Boehm. Space efficient conservative garbage collection. In
+ple instantiations of packages and system services. Beshers et al.          Proceedings of the ACM SIGPLAN ’93 Conference on Programming
+(2007) discuss a Linux distribution that not only uses functional           Language Design and Implementation, number 28/6 in SIGPLAN No-
+programming to implement various system administration tools,               tices, pages 197–206, June 1993.
+but applies a functional mindset to those tasks. Notably, the auto-      Mark Burgess. Cfengine: a site configuration engine. Computing Systems,
+builder tool builds binary packages for the Linspire Linux distri-          8(3), 1995.
+bution in a purely functional way: from a set of source packages         Geoffrey Clemm. The Odin System — An Object Manager for Extensible
+it builds immutable binary packages. However, this is not used for          Software Environments. PhD thesis, University of Colorado at Boulder,
+the actual package management on end-user systems, nor does it              February 1986.
+extend to building complete system configurations.                       John DeTreville. Making system configuration more declarative. In HotOS
+    Cfengine (Burgess 1995) is a well-known system configuration            X: 10th Workshop on Hot Topics in Operating Systems. USENIX, 2005.
+management tool. Cfengine updates machines on the basis of a             Eelco Dolstra. Secure sharing between untrusted users in a transparent
+declarative specification of actions (such as “a machine of class           source/binary deployment model. In 20th IEEE/ACM Intl. Conf. on
+X must have the following line in /etc/hosts”). However, these              Automated Software Engineering (ASE 2005), pages 154–163, Long
+actions transform a possibly unknown state of the system, and can           Beach, California, USA, November 2005.
+therefore have all the problems of statefulness.                         Eelco Dolstra. The Purely Functional Software Deployment Model. PhD
+                                                                            thesis, Faculty of Science, Utrecht University, The Netherlands, 2006.
+8.   Conclusion                                                          Eelco Dolstra, Eelco Visser, and Merijn de Jonge. Imposing a memory
+                                                                            management discipline on software deployment. In Proc. 26th Intl. Conf.
+We demonstrated that a realistic operating system can be built and          on Software Engineering (ICSE 2004), pages 583–592. IEEE Computer
+configured in a declarative, purely functional way with very few            Society, May 2004.
+compromises to purity.                                                   Stuart I. Feldman. Make—a program for maintaining computer programs.
+Future work We are investigating how to extend the Nix expres-              Software—Practice and Experience, 9(4):255–65, 1979.
+sion language with a type system. In the long term, we do not just       Eric Foster-Johnson. Red Hat RPM Guide. John Wiley & Sons, 2003. Also
+want to check as much as possible of the current structural type sys-       at http://fedora.redhat.com/docs/drafts/rpm-guide-en/.
+tem statically, but also introduce user-defined datatypes, such that     Thomas Hallgren, Mark P. Jones, Rebekah Leslie, and Andrew Tolmach.
+for instance all variants of a single package such as GHC have the          A principled approach to operating system construction in Haskell. In
+same type, and one cannot inadvertently pass a different package as         ICFP ’05: Tenth ACM SIGPLAN Intl. Conf. on Functional Program-
+a parameter where really GHC is expected. Currently, such a pack-           ming, pages 116–128. ACM Press, 2005.
+age fails at evaluation time, which is not much of a problem in the      Paul Hudak. Conception, evolution, and application of functional program-
+case of important dependencies, because the error will most likely          ming languages. ACM Computing Surveys, 21(3):359–411, 1989.
+occur prior to distribution. However, since Nix encourages to write      Anthony M. Sloane. Post-design domain-specific language embedding:
+descriptions with many parameters such as optional dependencies,            A case study in the software engineering domain. In Proceedings of
+it is impossible to test all possible configurations in advance.            the 35th Annual Hawaii International Conference on System Sciences
+     Given that we can specify and build configurations for single          (HICSS’02), Washington, DC, USA, 2002. IEEE Computer Society.
+machines declaratively, the logical next step is to extend our ap-       TIS Committee. Tool Interface Specification (TIS) Executable and Linking
+proach to sets of machines, so that the configuration of a network of       Format (ELF) Specification, Version 1.2, May 1995.
+machines can be specified centrally. This will allow interdependen-      David B. Tucker and Shriram Krishnamurthi. Applying module system
+cies between machines (such as a database server on one machine             research to package management. In Tenth International Workshop on
+and a front-end webserver on another) to be expressed elegantly.            Software Configuration Management (SCM-10), 2001.
+

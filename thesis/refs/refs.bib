@@ -1,0 +1,567 @@
+% ===========================================================================
+% refs.bib  --  modfs thesis
+%
+% VERIFY BEFORE SUBMITTING. Every entry below was assembled from search
+% results and dblp records, not from the papers themselves. Rellermeyer's
+% rule is explicit: no invented citations, every reference must really exist.
+% Check author lists, page numbers and venues against the actual PDF.
+%
+% Software versions are jammy defaults. Confirm against your own machine:
+%     dpkg -l dpkg apt systemd squashfs-tools debootstrap adduser \
+%            passwd debconf base-passwd init-system-helpers libc-bin
+%     uname -r
+% Debian Policy section numbers move between releases -- cite the version
+% you actually consulted, and keep urldate accurate.
+% ===========================================================================
+
+
+% ---------------------------------------------------------------------------
+% PAPERS -- supervisor's list
+% ---------------------------------------------------------------------------
+
+@article{satyanarayanan1990coda,
+  author  = {Satyanarayanan, Mahadev and Kistler, James J. and Kumar, Puneet and
+             Okasaki, Maria E. and Siegel, Ellen H. and Steere, David C.},
+  title   = {Coda: A Highly Available File System for a Distributed
+             Workstation Environment},
+  journal = {IEEE Transactions on Computers},
+  volume  = {39},
+  number  = {4},
+  pages   = {447--459},
+  year    = {1990},
+  doi     = {10.1109/12.54838}
+}
+
+@article{kistler1992disconnected,
+  author  = {Kistler, James J. and Satyanarayanan, Mahadev},
+  title   = {Disconnected Operation in the {Coda} File System},
+  journal = {ACM Transactions on Computer Systems},
+  volume  = {10},
+  number  = {1},
+  pages   = {3--25},
+  year    = {1992},
+  doi     = {10.1145/146941.146942}
+}
+
+% VERIFIED from the PDF: report number on the title page is CMU-ITC-88-062.
+@techreport{howard1988afs,
+  author      = {Howard, John H.},
+  title       = {An Overview of the {Andrew} File System},
+  institution = {Carnegie Mellon University, Information Technology Center},
+  number      = {CMU-ITC-88-062},
+  year        = {1988},
+  url         = {http://reports-archive.adm.cs.cmu.edu/anon/anon/home/ftp/itc/CMU-ITC-062.pdf},
+  urldate     = {2026-09-20}
+}
+
+% The second CMU report downloaded is NOT "Scale and Performance" -- it is
+% Kazar on synchronisation and caching. Kept because AFS cache consistency is
+% relevant to Related Work; drop it if the chapter does not use it.
+@techreport{kazar1988synchronization,
+  author      = {Kazar, Michael Leon},
+  title       = {Synchronization and Caching Issues in the {Andrew} File System},
+  institution = {Carnegie Mellon University, Information Technology Center},
+  number      = {CMU-ITC-88-063},
+  year        = {1988},
+  url         = {http://reports-archive.adm.cs.cmu.edu/anon/anon/home/ftp/itc/CMU-ITC-063.pdf},
+  urldate     = {2026-09-20}
+}
+
+% VERIFIED against the PDF title page: author list and 31 pages (51--81).
+@article{howard1988scale,
+  author  = {Howard, John H. and Kazar, Michael L. and Menees, Sherri G. and
+             Nichols, David A. and Satyanarayanan, M. and
+             Sidebotham, Robert N. and West, Michael J.},
+  title   = {Scale and Performance in a Distributed File System},
+  journal = {ACM Transactions on Computer Systems},
+  volume  = {6},
+  number  = {1},
+  pages   = {51--81},
+  month   = feb,
+  year    = {1988},
+  doi     = {10.1145/35037.35059},
+  url     = {https://www.cs.cmu.edu/~satya/docdir/howard-tocs-afs-1988.pdf},
+  urldate = {2026-09-21}
+}
+
+@article{pike1995plan9,
+  author  = {Pike, Rob and Presotto, Dave and Dorward, Sean and
+             Flandrena, Bob and Thompson, Ken and Trickey, Howard and
+             Winterbottom, Phil},
+  title   = {Plan 9 from {Bell Labs}},
+  journal = {Computing Systems},
+  volume  = {8},
+  number  = {3},
+  pages   = {221--254},
+  year    = {1995},
+  url     = {https://9p.io/sys/doc/9.html},
+  urldate = {2026-09-20}
+}
+
+% The union-directory paper. Not the same as the general Plan 9 paper above,
+% and it is the one that matters for Related Work.
+@article{pike1993namespaces,
+  author  = {Pike, Rob and Presotto, Dave and Thompson, Ken and
+             Trickey, Howard and Winterbottom, Phil},
+  title   = {The Use of Name Spaces in {Plan} 9},
+  journal = {ACM SIGOPS Operating Systems Review},
+  volume  = {27},
+  number  = {2},
+  pages   = {72--76},
+  year    = {1993},
+  doi     = {10.1145/155848.155861},
+  url     = {https://9p.io/sys/doc/names.html},
+  urldate = {2026-09-20}
+}
+
+% Replaces the Wikipedia UnionFS link, which is not citable.
+@article{wright2006namespace,
+  author  = {Wright, Charles P. and Dave, Jay and Gupta, Puja and
+             Krishnan, Harikesavan and Quigley, David P. and Zadok, Erez and
+             Zubair, Mohammad Nayyer},
+  title   = {Versatility and {Unix} Semantics in Namespace Unification},
+  journal = {ACM Transactions on Storage},
+  volume  = {2},
+  number  = {1},
+  pages   = {74--105},
+  year    = {2006},
+  doi     = {10.1145/1138041.1138045}
+}
+
+
+% ---------------------------------------------------------------------------
+% PAPERS -- package semantics.
+% Load-bearing: the NP-completeness argument currently has no citation.
+% ---------------------------------------------------------------------------
+
+@inproceedings{mancinelli2006managing,
+  author    = {Mancinelli, Fabio and Boender, Jaap and Di Cosmo, Roberto and
+               Vouillon, J{\'e}r{\^o}me and Durak, Berke and Leroy, Xavier and
+               Treinen, Ralf},
+  title     = {Managing the Complexity of Large Free and Open Source
+               Package-Based Software Distributions},
+  booktitle = {21st IEEE/ACM International Conference on Automated Software
+               Engineering (ASE'06)},
+  pages     = {199--208},
+  year      = {2006},
+  publisher = {IEEE Computer Society},
+  doi       = {10.1109/ASE.2006.49}
+}
+
+% Corrected from the downloaded PDF's own metadata: TOSEM 2013, not 2011,
+% and Vouillon is first author. (An earlier ESEC/FSE 2011 version of the same
+% title exists -- this entry is the journal version actually downloaded.)
+@article{vouillon2013coinstallability,
+  author  = {Vouillon, J{\'e}r{\^o}me and Di Cosmo, Roberto},
+  title   = {On Software Component Co-Installability},
+  journal = {ACM Transactions on Software Engineering and Methodology},
+  volume  = {22},
+  number  = {4},
+  year    = {2013},
+  doi     = {10.1145/2522920.2522927}
+}
+
+% AUTHORS CORRECTED from the PDF title page: Treinen and Zacchiroli.
+% (An earlier draft of this file credited Di Cosmo and Treinen. Wrong.)
+@misc{treinen2008solving,
+  author  = {Treinen, Ralf and Zacchiroli, Stefano},
+  title   = {Solving Package Dependencies: From {EDOS} to {Mancoosi}},
+  year    = {2008},
+  url     = {https://arxiv.org/abs/0811.3620},
+  urldate = {2026-09-20},
+  note    = {arXiv:0811.3620}
+}
+
+
+% ---------------------------------------------------------------------------
+% PAPERS -- immutable and functional deployment.
+% The closest living relatives; an examiner will ask why not these.
+% ---------------------------------------------------------------------------
+
+@inproceedings{dolstra2004nix,
+  author    = {Dolstra, Eelco and de Jonge, Merijn and Visser, Eelco},
+  title     = {{Nix}: A Safe and Policy-Free System for Software Deployment},
+  booktitle = {18th Large Installation System Administration Conference (LISA '04)},
+  pages     = {79--92},
+  year      = {2004},
+  publisher = {USENIX}
+}
+
+@inproceedings{dolstra2008nixos,
+  author    = {Dolstra, Eelco and L{\"o}h, Andres},
+  title     = {{NixOS}: A Purely Functional {Linux} Distribution},
+  booktitle = {13th ACM SIGPLAN International Conference on Functional
+               Programming (ICFP '08)},
+  pages     = {367--378},
+  year      = {2008},
+  doi       = {10.1145/1411204.1411255}
+}
+
+
+% ---------------------------------------------------------------------------
+% PAPERS -- reproducibility, union mounts, experimental method
+% ---------------------------------------------------------------------------
+
+@article{lamb2022reproducible,
+  author  = {Lamb, Chris and Zacchiroli, Stefano},
+  title   = {Reproducible Builds: Increasing the Integrity of
+             Software Supply Chains},
+  journal = {IEEE Software},
+  volume  = {39},
+  number  = {2},
+  pages   = {62--70},
+  year    = {2022},
+  doi     = {10.1109/MS.2021.3073045}
+}
+
+% VERIFIED from the PDF: Pendry (Sequent UK), McKusick (author and consultant).
+% The abstract is where "whiteout" is introduced -- the mechanism OverlayFS
+% inherited, and the one class 9 turns on.
+% PAGE RANGE STILL MISSING: the proceedings paginate, the PDF does not show it.
+@inproceedings{pendry1995union,
+  author    = {Pendry, Jan-Simon and McKusick, Marshall Kirk},
+  title     = {Union Mounts in {4.4BSD-Lite}},
+  booktitle = {USENIX 1995 Technical Conference},
+  year      = {1995},
+  publisher = {USENIX},
+  url       = {https://www.usenix.org/conference/usenix-1995-technical-conference/union-mounts-44bsd-lite},
+  urldate   = {2026-09-21}
+}
+
+% Rellermeyer is a co-author and built his experiments lecture around this.
+@inproceedings{uta2020reproducible,
+  author    = {Uta, Alexandru and Custura, Alexandru and Duplyakin, Dmitry and
+               Jimenez, Ivo and Rellermeyer, Jan and Maltzahn, Carlos and
+               Ricci, Robert and Iosup, Alexandru},
+  title     = {Is Big Data Performance Reproducible in Modern Cloud Networks?},
+  booktitle = {17th USENIX Symposium on Networked Systems Design and
+               Implementation (NSDI '20)},
+  pages     = {513--527},
+  year      = {2020},
+  publisher = {USENIX},
+  url       = {https://www.usenix.org/conference/nsdi20/presentation/uta},
+  urldate   = {2026-09-20}
+}
+
+
+% ===========================================================================
+% SPECIFICATIONS AND STANDARDS
+% ===========================================================================
+
+@misc{oci-image-spec,
+  author  = {{Open Container Initiative}},
+  title   = {{OCI} Image Format Specification},
+  year    = {2026},
+  note    = {Version 1.1.0},
+  url     = {https://github.com/opencontainers/image-spec},
+  urldate = {2026-09-20}
+}
+
+% Cite this alongside SOURCE_EPOCH: your fix implements an existing standard.
+@misc{source-date-epoch,
+  author  = {{Reproducible Builds Project}},
+  title   = {{SOURCE\_DATE\_EPOCH} Specification},
+  url     = {https://reproducible-builds.org/specs/source-date-epoch/},
+  urldate = {2026-09-20}
+}
+
+@misc{boot-loader-spec,
+  author  = {{UAPI Group}},
+  title   = {The Boot Loader Specification},
+  url     = {https://uapi-group.org/specifications/specs/boot_loader_specification/},
+  urldate = {2026-09-20}
+}
+
+@misc{fhs,
+  author  = {{Linux Foundation}},
+  title   = {Filesystem Hierarchy Standard},
+  year    = {2015},
+  note    = {Version 3.0},
+  url     = {https://refspecs.linuxfoundation.org/FHS_3.0/fhs/index.html},
+  urldate = {2026-09-20}
+}
+
+@misc{uefi-spec,
+  author  = {{UEFI Forum}},
+  title   = {Unified Extensible Firmware Interface Specification},
+  note    = {Check the version you consulted},
+  url     = {https://uefi.org/specifications},
+  urldate = {2026-09-20}
+}
+
+
+% ===========================================================================
+% KERNEL DOCUMENTATION
+% ===========================================================================
+
+% THE authority for class 9. Whiteouts, opaque, redirect, origin, precedence.
+@misc{overlayfs-kernel,
+  author  = {{Linux Kernel Documentation}},
+  title   = {Overlay Filesystem},
+  note    = {Linux 5.15},
+  url     = {https://www.kernel.org/doc/html/latest/filesystems/overlayfs.html},
+  urldate = {2026-09-20}
+}
+
+@misc{squashfs-kernel,
+  author  = {{Linux Kernel Documentation}},
+  title   = {{SquashFS} 4.0 Filesystem},
+  note    = {Linux 5.15},
+  url     = {https://www.kernel.org/doc/html/latest/filesystems/squashfs.html},
+  urldate = {2026-09-20}
+}
+
+
+% ===========================================================================
+% DEBIAN POLICY
+% ch. 7 section 7.5 is where an unversioned Provides satisfies only an
+% unversioned relation -- the rule behind the nc-openbsd/nc-traditional result.
+% ===========================================================================
+
+@manual{debian-policy-relationships,
+  title        = {Debian Policy Manual, Chapter 7: Declaring Relationships
+                  Between Packages},
+  organization = {Debian Project},
+  note         = {Version 4.6.2},
+  url          = {https://www.debian.org/doc/debian-policy/ch-relationships.html},
+  urldate      = {2026-09-20}
+}
+
+@manual{debian-policy-alternatives,
+  title        = {Debian Policy Manual, Section 11.6: Alternative Versions of
+                  an Interface},
+  organization = {Debian Project},
+  note         = {Version 4.6.2},
+  url          = {https://www.debian.org/doc/debian-policy/ch-customized-programs.html},
+  urldate      = {2026-09-20}
+}
+
+@manual{debian-policy-diversions,
+  title        = {Debian Policy Manual, Section 3.9: Diversions},
+  organization = {Debian Project},
+  note         = {Version 4.6.2},
+  url          = {https://www.debian.org/doc/debian-policy/ch-binary.html},
+  urldate      = {2026-09-20}
+}
+
+@manual{debian-policy-users,
+  title        = {Debian Policy Manual, Section 9.2: Users and Groups},
+  organization = {Debian Project},
+  note         = {Version 4.6.2},
+  url          = {https://www.debian.org/doc/debian-policy/ch-opersys.html},
+  urldate      = {2026-09-20}
+}
+
+% The statically allocated UID/GID list. Authority for the class-7
+% static-versus-dynamic distinction.
+@manual{base-passwd-users,
+  title        = {Users and Groups},
+  organization = {Debian {\tt base-passwd} package},
+  note         = {base-passwd 3.5.52,
+                  {\tt /usr/share/doc/base-passwd/users-and-groups.txt.gz}},
+  year         = {2026}
+}
+
+
+% ===========================================================================
+% MANUAL PAGES -- the authority for each mechanism.
+% CONFIRM every version with dpkg -l before submitting.
+% ===========================================================================
+
+% -- dpkg ------------------------------------------------------------------
+@manual{man-dpkg,
+  title = {dpkg(1) -- package manager for {Debian}},
+  organization = {Debian}, note = {dpkg 1.21.1, Ubuntu 22.04}, year = {2026}
+}
+
+@manual{man-deb-control,
+  title = {deb-control(5) -- {Debian} binary package control file format},
+  organization = {Debian}, note = {dpkg 1.21.1, Ubuntu 22.04}, year = {2026}
+}
+
+@manual{man-deb-triggers,
+  title = {deb-triggers(5) -- package triggers},
+  organization = {Debian}, note = {dpkg 1.21.1, Ubuntu 22.04}, year = {2026}
+}
+
+@manual{man-dpkg-divert,
+  title = {dpkg-divert(1) -- override a package's version of a file},
+  organization = {Debian}, note = {dpkg 1.21.1, Ubuntu 22.04}, year = {2026}
+}
+
+@manual{man-update-alternatives,
+  title = {update-alternatives(1) -- maintain symbolic links determining
+           default commands},
+  organization = {Debian}, note = {dpkg 1.21.1, Ubuntu 22.04}, year = {2026}
+}
+
+% -- APT -------------------------------------------------------------------
+@manual{man-apt-mark,
+  title = {apt-mark(8) -- show, set and unset various settings for a package},
+  organization = {Debian},
+  note = {apt 2.4.14, Ubuntu 22.04. The Auto-Installed flag}, year = {2026}
+}
+
+@manual{man-apt-preferences,
+  title = {apt\_preferences(5) -- preference control file for {APT}},
+  organization = {Debian}, note = {apt 2.4.14, Ubuntu 22.04}, year = {2026}
+}
+
+@manual{man-sources-list,
+  title = {sources.list(5) -- list of configured {APT} data sources},
+  organization = {Debian}, note = {apt 2.4.14, Ubuntu 22.04}, year = {2026}
+}
+
+% -- debconf ---------------------------------------------------------------
+@manual{man-debconf,
+  title = {debconf(7) -- {Debian} configuration management system},
+  organization = {Debian}, note = {debconf 1.5.79, Ubuntu 22.04}, year = {2026}
+}
+
+@manual{man-debconf-devel,
+  title = {debconf-devel(7) -- developer's guide to {debconf}},
+  organization = {Debian}, note = {debconf 1.5.79, Ubuntu 22.04}, year = {2026}
+}
+
+% -- accounts: the mechanism the UID range partitioning writes to ----------
+@manual{man-adduser-conf,
+  title = {adduser.conf(5) -- configuration file for adduser and addgroup},
+  organization = {Debian},
+  note = {adduser 3.118ubuntu5, Ubuntu 22.04.
+          FIRST\_SYSTEM\_UID / LAST\_SYSTEM\_UID}, year = {2026}
+}
+
+@manual{man-login-defs,
+  title = {login.defs(5) -- shadow password suite configuration},
+  organization = {Debian},
+  note = {shadow 4.8.1, Ubuntu 22.04. SYS\_UID\_MIN / SYS\_UID\_MAX},
+  year = {2026}
+}
+
+% -- filesystem and attributes --------------------------------------------
+% Why non-root testing kept hitting a wall: trusted.* needs CAP_SYS_ADMIN.
+@manual{man-xattr,
+  title = {xattr(7) -- extended attributes},
+  organization = {{Linux} man-pages project},
+  note = {The trusted.* namespace requires CAP\_SYS\_ADMIN}, year = {2026}
+}
+
+@manual{man-mksquashfs,
+  title = {mksquashfs(1) -- tool to create and append to {SquashFS} filesystems},
+  organization = {squashfs-tools},
+  note = {squashfs-tools 4.5.1, Ubuntu 22.04.
+          -xattrs-exclude, -mkfs-time, -all-time}, year = {2026}
+}
+
+@manual{man-ldconfig,
+  title = {ldconfig(8) -- configure dynamic linker run-time bindings},
+  organization = {{GNU} C Library},
+  note = {glibc 2.35, Ubuntu 22.04}, year = {2026}
+}
+
+% -- build and boot --------------------------------------------------------
+@manual{man-debootstrap,
+  title = {debootstrap(8) -- bootstrap a basic {Debian} system},
+  organization = {Debian},
+  note = {debootstrap 1.0.126, Ubuntu 22.04. --variant=minbase}, year = {2026}
+}
+
+% The actual specification for blocking daemon start in a chroot.
+@manual{policy-rc-d,
+  title = {{\tt policy-rc.d} Interface},
+  organization = {Debian {\tt init-system-helpers} package},
+  note = {init-system-helpers 1.60,
+          {\tt /usr/share/doc/init-system-helpers/README.policy-rc.d.gz}},
+  year = {2026}
+}
+
+% Documents that an EMPTY file requests generation at first boot.
+@manual{man-machine-id,
+  title = {machine-id(5) -- local machine {ID} configuration file},
+  organization = {systemd},
+  note = {systemd 249, Ubuntu 22.04}, year = {2026}
+}
+
+@manual{man-systemd-unit,
+  title = {systemd.unit(5) -- unit configuration},
+  organization = {systemd}, note = {systemd 249, Ubuntu 22.04}, year = {2026}
+}
+
+% The %i specifier that made the class-7 checker reject every set with base.
+@manual{man-systemd-exec,
+  title = {systemd.exec(5) -- execution environment configuration},
+  organization = {systemd},
+  note = {systemd 249, Ubuntu 22.04. User=, Group=, specifiers}, year = {2026}
+}
+
+@manual{man-systemd-socket,
+  title = {systemd.socket(5) -- socket unit configuration},
+  organization = {systemd},
+  note = {systemd 249, Ubuntu 22.04. ListenStream=}, year = {2026}
+}
+
+
+% ===========================================================================
+% PROJECT AND PLATFORM DOCUMENTATION
+% ===========================================================================
+
+@misc{ubuntu-snapshot,
+  author  = {{Canonical}},
+  title   = {{Ubuntu} Archive Snapshot Service},
+  note    = {Snapshots available from 1 March 2023},
+  url     = {https://snapshot.ubuntu.com/},
+  urldate = {2026-09-20}
+}
+
+@misc{ostree,
+  author  = {{OSTree Project}},
+  title   = {{libostree}: Operating System and Container Binary Deployment
+             and Upgrades},
+  url     = {https://ostreedev.github.io/ostree/},
+  urldate = {2026-09-20}
+}
+
+@misc{baas,
+  author       = {{BAAS Project}},
+  title        = {{BAAS}: Bare Metal as a Service},
+  organization = {Delft University of Technology},
+  url          = {https://github.com/baas-project/baas},
+  urldate      = {2026-09-20}
+}
+
+@misc{ironic,
+  author  = {{OpenStack Foundation}},
+  title   = {{Ironic}: Bare Metal Provisioning Service},
+  url     = {https://docs.openstack.org/ironic/latest/},
+  urldate = {2026-09-20}
+}
+
+@misc{maas,
+  author  = {{Canonical}},
+  title   = {{MAAS}: Metal as a Service},
+  url     = {https://maas.io/docs},
+  urldate = {2026-09-20}
+}
+
+@misc{tinkerbell,
+  author  = {{Tinkerbell Project}},
+  title   = {{Tinkerbell}: Bare Metal Provisioning Engine},
+  url     = {https://tinkerbell.org/},
+  urldate = {2026-09-20}
+}
+
+
+% ---------------------------------------------------------------------------
+% OUT OF SCOPE, but cite when explaining why.
+% ---------------------------------------------------------------------------
+
+% pip RECORD and .dist-info: the reason "structurally invisible" was an
+% overstatement. Classes 1, 2 and 4 could extend to pip content; 3, 5 and 7
+% cannot, and PyPI has no snapshot service.
+@misc{pypa-recording,
+  author  = {{Python Packaging Authority}},
+  title   = {Recording Installed Projects},
+  note    = {RECORD, METADATA, INSTALLER, direct\_url.json},
+  url     = {https://packaging.python.org/en/latest/specifications/recording-installed-packages/},
+  urldate = {2026-09-20}
+}

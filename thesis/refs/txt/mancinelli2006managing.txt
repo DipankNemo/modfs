@@ -1,0 +1,622 @@
+    ASE ’06: Proceedings of the 21st IEEE/ACM International Conference on Automated Software Engineering, pp 199–208.
+     c 2006 IEEE. Personal use of this material is permitted. However, permission to reprint/republish this material for advertising
+    or promotional purposes or for creating new collective works for resale or redistribution to servers or lists, or to reuse any
+    copyrighted component of this work in other works must be obtained from the IEEE.
+
+
+
+      Managing the Complexity of Large Free and Open Source Package-Based
+                             Software Distributions∗
+
+                       Fabio Mancinelli, Jaap Boender, Roberto di Cosmo, Jérôme Vouillon
+                                       PPS - Université Paris VII, France
+                                   FirstName.LastName@pps.jussieu.fr†
+                 Berke Durak, Xavier Leroy                                        Ralf Treinen
+                   INRIA Rocquencourt                                 LSV, ENS de Cachan, CNRS UMR 8643
+                          France                                             & INRIA Futurs, France
+              FirstName.LastName@inria.fr‡                               treinen@lsv.ens-cachan.fr
+
+
+                                                                          for a long time. Assembling complex systems by inte-
+                           Abstract                                       grating independently developed components has become
+                                                                          a common practice nowadays. Components are either de-
+    The widespread adoption of Free and Open Source Soft-                 veloped in-house or collected from a common marketplace
+ware (FOSS) in many strategic contexts of the information                 where third-party organizations offer their products (e.g,
+technology society has drawn the attention on the issues re-              commercial-off-the-shelf, COTS, components)
+garding how to handle the complexity of assembling and                       Maintaining a component based system and handling its
+managing a huge number of (packaged) components in a                      evolution have always been a difficult task. The main dif-
+consistent and effective way. FOSS distributions (and in                  ficulty resides in the fact that a complex system has many
+particular GNU/Linux-based ones) have always provided                     relationships, implicit or explicit, among components (i.e.
+tools for managing the tasks of installing, removing and                  dependencies). These relationships could be easily broken
+upgrading the (packaged) components they were made of.                    when performing standard life cycle management opera-
+While these tools provide a (not always effective) way to                 tions on components (i.e., component installation, removal
+handle these tasks on the client side, there is still a lack of           and upgrading), leading to unusable and corrupted systems.
+tools that could help the distribution editors to maintain, on
+the server side, large and high-quality distributions. In this                The widespread adoption of Free and Open Source Soft-
+paper we present our research whose main goal is to fill this             ware (FOSS), in some way, has emphasized these problems.
+gap: we show our approach, the tools we have developed                    The traditional, centralized and closed way in which soft-
+and their application with experimental results. Our contri-              ware components were developed has changed radically.
+bution provides an effective and automatic way to support                 Now they are developed by heterogeneous entities or in-
+distribution editors in handling those issues that were, un-              dividuals, not belonging to any company, who are sharing
+til now, mostly addressed using ad-hoc tools and manual                   their work thanks to fast Internet connections and communi-
+techniques.                                                               cation services. These components, that are licensed under
+                                                                          all sorts of FOSS licenses [15], can be reused and redis-
+                                                                          tributed without any formal agreements between companies
+                                                                          and can be adapted to different contexts more easily, be-
+1    Introduction                                                         cause of the fact that their source-code is available. The re-
+                                                                          sult is a more free and agile marketplace (i.e., the so-called
+   Component based software development [21] has been a                   Bazaar [16]) where there is a higher number of usable com-
+very discussed topic in the Software Engineering domain                   ponents that can be used to build systems in many original
+                                                                          and often unforeseen ways.
+   ∗ This work was supported by the EDOS Specific Targeted Research
+                                                                             The most manifest examples of complex systems built
+Project of the 6th European Union Framework Programme.
+   † {Fabio.Mancinelli,Jaap.Boender, Roberto.Dicosmo,                     with FOSS components are GNU/Linux-based distributions.
+Jerome.Vouillon}@pps.jusseiu.fr                                           They provide complete UNIX-like operating systems by se-
+   ‡ {Berke.Durak, Xavier.Leroy}@inria.fr                                 lecting and assembling a limited set of suitable components,
+
+
+                                                                      1
+retrieved from the FOSS bazaar. Currently, there are more             niques we have used to reason on it. In Section 4 we de-
+than 100 such distributions [3], each one targeted for a par-         scribe our framework and its tools, and in Section 5 we
+ticular audience (e.g. end-users, server administrators, de-          show the results we have gathered from the analysis of
+velopers) or tailored in order to meet a given set of require-        some very popular GNU/Linux-based distributions. Finally
+ments (e.g., user-friendliness, smallest footprint, server-side       in Section 6 we discuss related work and in Section 7 we
+optimizations)                                                        draw conclusions and we sketch a road-map for the future
+   GNU/Linux-based distributions are created and managed              work.
+by a novel figure, whose role has no comparable counterpart
+in the traditional software development model: the distri-            2    Package Metadata Overview
+bution editor. She is an entity that takes care of collect-
+ing available FOSS components and builds from them a co-
+herent and usable system. Typically, she monitors compo-                  In this section we briefly introduce some package for-
+nents at their original source (upstream tracking), recom-            mats. In particular we focus on the ones that have been rec-
+piles and tests them against the distribution (integration),          ognized as the “de facto” standard with respect to package-
+resolves and keeps track of all the needed relationships (de-         based GNU/Linux distributions: the DEB [23] and the RPM
+pendency management)                                                  [6] formats. Though the actual (binary) formats of DEB and
+                                                                      RPM packages are different, they have a lot of commonal-
+   Despite the heterogeneity of the large number of avail-
+                                                                      ities. In the following we describe the features that are rel-
+able distributions, many of them share the same basic foun-
+                                                                      evant with respect to topic of this paper, i.e., dependency
+dations: they are package-based. They use a basic deploy-
+                                                                      specification. Where not explicitly stated, these features are
+ment unit for component distribution (i.e., the package) and
+                                                                      to be intended the same in both DEB and RPM package
+a tool, the package manager, that is able to handle these
+                                                                      systems.
+packages and to correctly manage their life cycle (i.e., in-
+                                                                          A package is a binary bundle that contains a component1 ,
+stallation, removal and upgrade).
+                                                                      all the data needed to its correct functioning and some meta-
+   While package managers provide a (not always effec-
+                                                                      data which describe its attributes and its requirements with
+tive) way to handle these tasks on the user side, and could
+                                                                      respect to the environment in which it will be deployed.
+be used to help the distribution editors in tracking prob-
+                                                                          Both DEB and RPM packages are actually compressed
+lems when assembling their products, there is still a lack
+                                                                      archives. However, while RPM is actually an ad-hoc format
+of specific tools that could help them in maintaining large
+                                                                      explicitly conceived for this purpose, DEB packages can be
+and high-quality distributions.
+                                                                      produced using standard tools (i.e., ar and tar), so they
+   This is a big issue because a typical GNU/Linux-based              can be easily managed. Nevertheless, the most relevant dif-
+distribution is made of several thousands of packages that            ference between DEB and RPM package format concerns
+have even more dependency relationships among them [12].              their metadata specification. While RPM packages encode
+   Until now, the maintenance and the evolution of the                it in a binary form as a part of its ad-hoc archive format,
+package repository underlying a distribution (i.e., the col-          DEB packages use a textual representation for it. This fact
+lection of all the packages that are available and can be             makes its processing easier. Figure 1 shows an excerpt of
+“used” with a given distribution) have been done by ad-hoc            the metadata taken from the firefox2 DEB package.
+techniques, relying on semi-automatic tools and, above all,               Every package has a version that is used to give a tem-
+bug reports filed by distribution users. Of course, this is           poral order to the packaged component release. Though the
+clearly insufficient when dealing with huge package bases.            version structure of RPM and DEB packages is the same
+   In this paper we present some of the results of our on-            (i.e., epoch number, version id and revision id), the
+going research that aims at providing a set of tools for the          comparison algorithm is slightly different. Version informa-
+distribution editor that helps him in maintaining huge pack-          tion is central when specifying relationships between pack-
+age bases and improving the quality of software distribu-             ages.
+tions built on them, by detecting errors and inconsistencies              The kinds of relationships that can be expressed in
+in an effective, fast and automatic way.                              RPM and DEB package metadata are almost the same,
+   The paper is structured as follows: in Section 2 we                except some very specialized ones that are seldom used
+present and detail some package formats and their associ-             or processed (e.g., obsoletes, replaces, suggests,
+ated metadata that, for historical reasons, have become a             enhances)
+“de facto” standard and are the basis of many GNU/Linux-
+                                                                         1 Packages not always contain “executable” components. Often docu-
+based distributions. In particular we detail the information
+                                                                      mentation and non-executable artifacts are packaged as well. However, to
+relevant to this paper explaining the relationships that can          our purposes, this distinction is not relevant because the package format is
+be specified among packages. In Section 3 we present the              agnostic with respect to its actual content type
+formalization of our model for package bases and the tech-               2 firefox 1.5.dfsg+1.5.0.1-2 i386.deb
+
+
+
+
+                                                                  2
+Package: firefox                                                      that once the packaged component firefox is deployed, in
+Version: 1.5.dfsg+1.5.0.1-2 ...
+                                                                      order to correctly function, it will need the debianutils
+Depends: fontconfig, psmisc,
+ libatk1.0-0 (>= 1.9.0), libc6 (>= 2.3.5-1) ...
+                                                                      component with a version greater than or equal to 1.16 to
+Suggests: xprint, firefox-gnome-support                               be deployed as well. When no version constraint is speci-
+ (= 1.5.dfsg+1.5.0.1-2), latex-xft-fonts                              fied, then any packaged component version will do.
+Conflicts: mozilla-firefox (<< 1.5.dfsg-1)                               The allowed version constraints can be specified by us-
+Replaces: mozilla-firefox                                             ing only the standard comparison operators with their stan-
+Provides: www-browser...                                              dard semantics: <, <=, =, >= and =.
+                                                                      Depends: libc6 (>= 2.0),
+   Figure 1. Excerpt of a DEB package metadata                         xlibs (>= 4.0) | xlib6g (>= 3.3.3.1), ...
+
+
+                                                                          Figure 2. DEB disjunctive dependency re-
+   In this paper we have taken into account only the three                quirement
+main relationships that are used with the same semantics in
+both RPM and DEB packages:
+                                                                          Figure 2, on the other hand, shows an example of a
+  • Depends (DEB), Requires (RPM): used to establish                  disjunctive dependency requirement. In order to correctly
+    a requirement on the packages that must be present in             function, the current packaged component needs libc6
+    the system in order to make the current packaged com-             with a version >= 2.0 and either xlibs with a version >=
+    ponent fully functional.                                          4.0 or xlib6g with a version >= 3.3.3.1.
+  • Conflicts (DEB, RPM): used to establish a require-                    Another essential information is given by the Provides
+    ment on the packages that cannot be present at the                metadata. When specified it allows to declare an identifier
+    same time in the system with the current one. A suc-              that can be used to reference the package. Such an iden-
+    cessful installation can be performed only if no con-             tifier is often called either virtual package or feature. For
+    flicting packages are already present in the system.              instance, in Figure 1 the firefox package Provides the
+                                                                      identifier web-browser. It is important to point out that
+  • Pre-Depends (DEB), PreReq (RPM): similar to the                   this identifier can be used when specifying dependency re-
+    Depends relationships but used to establish a re-                 lationships. So, for example, another package could declare
+    quirement on the packages that must be already                    a dependency requirement by specifying web-browser. In
+    present in the system in order to successfully deploy             this case this requirement should be considered as a dis-
+    the packaged component. The difference between                    junctive requirement whose elements are all the packages
+    Pre-Depends and Depends is that while Depends                     that provide web-browser.
+    package might not be present in the system when de-                   In RPM metadata, these features are the only way of
+    ploying the packaged component (but only after, so                declaring a relationship between packages; it is not possible
+    they can be deployed together with the current com-               to declare a relationship directly between packages, only by
+    ponent), Pre-Depends packages must be already in-                 way of features. Also, it is worth noting that while RPM
+    stalled even before attempting to deploy the current              does not allow disjunctive dependencies per se, they can be
+    packaged component.                                               emulated by declaring a dependency on a feature that is pro-
+                                                                      vided by two or more packages.
+   Relationships are specified by using a list of package
+                                                                          DEB also allows virtual packages, but their usage is
+names, optionally with version constraints. Each element
+                                                                      strictly limited to a few cases (there is an explicitly main-
+in the list represents a requirement for the given relation-
+                                                                      tained list of virtual packages) and using direct relations be-
+ship, and all these requirements must be met (i.e., they are
+                                                                      tween packages is the standard practice.
+a conjunction) in order to satisfy the dependency relation-
+ship. Actually, the DEB package format allows an element
+of the list to be a disjunction of requirements. This is done         3    Formalization
+by using the | operator. In this case, in order to meet the
+(disjunctive) requirement it is sufficient that at least one of          In this section we formalize the definitions we have de-
+the constituting requirements is met.                                 scribed in Section 2 and we introduce the notion of pack-
+   Figure 1 shows that the package firefox version                    age installation that identify the central property we want
+1.5.dfsg+1.5.0.1-2 has, among the others, a Depends                   to guarantee for each package present in a package reposi-
+requirement on the package fontconfig and on a pack-                  tory.
+age debianutils with a version >= 1.16. This means
+
+
+                                                                  3
+Definition 1 (Package, unit) A package is a pair (u, v)                        Definition 2 (Repository) A repository is a tuple R =
+where u is a unit and v is a version. Units are arbitrary                      (P, D, C) where P is a set of packages, D : P →
+strings, and we assume that versions are non-negative inte-                    P(P(P )) is the dependency function4 , and C ⊆ P × P is
+gers.                                                                          the conflict relation. The repository must satisfy the follow-
+                                                                               ing conditions:
+    Now we have two choices: either we try to represent
+formally the version constraints used in the different pack-                      • The relation C is symmetric, i.e., (π1 , π2 ) ∈ C if and
+age formats, and then our model will need to take into ac-                          only if (π2 , π1 ) ∈ C for all π1 , π2 ∈ P .
+count relationships between versions like the >=, =, >>                           • Two packages with the same unit but different versions
+, <<, <= found in the Figure 1; or we keep our model sim-                           conflict5 , that is, if π1 = (u, v1 ) and π2 = (u, v2 ) with
+ple and eliminate all version constraints but one, equality                         v1 6= v2 , then (π1 , π2 ) ∈ C.
+(==), by replacing all the other version constraints with the
+explicitly listing of all packages versions that satisfy the ver-                  In a repository R = (P, D, C), the dependencies of each
+sion constraints (we call such replacement an expansion).                      package p are given by D(p) = {d1 , . . . , dk } which is a
+This second choice has the additional advantage that the                       set of sets of packages, interpreted as follows. If p is to be
+model becomes independent on the specific version com-                         installed, then all its k dependency requirements must be
+parison operators, present and future, of any given package                    satisfied. For di to be satisfied, at least one of the packages
+format, but of course such expansions are relative to a given                  of di must be available. In particular, if one of the di is the
+repository, so any change to the repository will make it nec-                  empty set, it will never be satisfied, and the package p is not
+essary to perform the expansion phase again.                                   installable.
+    As an example, consider a repository containing versions                       The attentive reader might have noticed that we do
+0.9, 1.0 and 1.1 of mozilla-firefox. Then the conflict re-                     not have a separate dependency function for modeling
+lationship in Figure 1 would expand as shown in Figure 3.                      Pre-Depends relationships. In fact, we consider them as
+                                                                               if they were normal Depends relationships. This is reason-
+Package: firefox
+                                                                               able because we put ourselves on the distribution editor-
+Version: 1.5.dfsg+1.5.0.1-2
+Conflicts: mozilla-firefox (==0.9),
+                                                                               side where we have a package repository (and not an in-
+ mozilla-firefox (== 1.0),                                                     stalled system). At this level, the two kinds of relationships
+ mozilla-firefox (== 1.1)...                                                   can be considered equivalent.
+
+                                                                               Example 1 Let R = (P, D, C) be the repository given by
+           Figure 3. Dependencies expansion
+                                                                                P = {a, b, c, d, e, f, g, h, i, j}
+                                                                                D(a) =  {b}, {c, d}, {d, e},   {d, f }
+   Once this expansion has been performed, we are left only                                                                          
+                                                                                D(b) = {g}          D(c)   =     {g, h, i}    D(d) = {h, i}
+with direct dependency or conflict relationships among ac-                                          
+                                                                                D(e) = D(f ) = {j}
+tual packages, i.e. (unit, version) pairs, and we can then
+                                                                                C = {(c, e), (e, c), (e, i), (i, e), (g, h), (h, g)}
+straightfowardly encode them it into a graph.
+   In the following we will hence assume that the distribu-                    where a = (ua , 0), b = (ub , 0), c = (uc , 0) and so on. The
+tion is fixed, and that the version comparison operators have                  repository R is represented in Figure 4. For the package a
+been expanded. Notice that, due to this assumption, we can                     to be installed, the following packages must be installed: b,
+also get rid of all the details concerning the particular order-               either c or d, either d or e, and either d or f . Packages c
+ing over version strings used in common FOSS packages:                         and e, e and i, and g and h cannot be installed at the same
+we use the specific version comparison algorithm only to                       time.
+expand the dependencies, and then we can use any set of
+unique identifiers for representing each version3 .                               As described in Section 2, dependencies are usually con-
+   For instance, if the repository of our Debian distribution                  junctive, that is they are of the form
+contains the versions 2.15-6, 2.16.1cvs20051117-1
+                                                                                                     a → b1 ∧ b2 ∧ · · · ∧ bs
+and 2.16.1cvs20051206-1 of the unit binutils, we
+may encode these versions respectively as 0,1 and 2,                           where a is the target and b1 , b2 , . . . are its requirements.
+giving the packages (binutils, 0), (binutils, 1), and                          However, more complex dependencies can be specified,
+(binutils, 2).
+                                                                                  4 We write P(X) for the set of subsets of X.
+   3 Notice, for example, that the version numbering schemas used in DEB          5 This requirement is present in some package management systems,
+
+and RPM packages are not discrete (i.e., for any two version strings v1        notably Debian’s, but not all. For instance, RPM-based distributions allow
+and v2 such that v1 < v2 , there exists v3 such that v1 < v3 < v2 ), and       simultaneous installation of several versions of the same unit, at least in
+representing such property explicitly would be cumbersome.                     principle(if, for example, they do not install files in the same location).
+
+
+                                                                           4
+                                                                                   Definition 4 (Installability and co-installability) A pack-
+                                                                                   age π of a repository R is installable if there exists a healthy
+                                                                                   installation I such that π ∈ I. Similarly, a set of packages
+                                                                                   Π of R is co-installable if there exists a healthy installation
+                                                                                   I such that Π ⊆ I.
+                                                                                      Note that because of conflicts, every member of a set
+                                                                                   X ⊆ P may be installable without the set X being co-
+                                                                                   installable.
+                                                                                   Example 2 Assume a depends on c, b depends on d, and
+                                                                                   c and d conflict. Then, the set {a, b} is not co-installable,
+                                                                                   despite each of a and b being installable and not conflicting
+                                                                                   directly.
+       Figure 4. The repository of Example 1.
+                                                                                   Definition 5 (Dependency closure) The dependency clo-
+                                                                                   sure ∆(Π) of a set of packages Π of a repository R is
+with name disjunctive requirements. So the general form                            the smallest set of packages included in R that contains
+for a dependency specification is a conjunction of disjunc-                        Π and is closed under the immediate dependency function
+tions:                                                                             D : P(P ) → P(P ) defined as
+                                                                                                                  [
+                                                                                                       D(Π) =         d.
+       a → (b11 ∨ · · · ∨ br11 ) ∧ · · · ∧ (b1s ∨ · · · ∨ brss ).        (1)                                        π∈Π
+                                                                                                                   d∈D(π)
+
+For a to be installed, each term of the right-hand side of the                        In simpler words, ∆(Π) contains Π, then all packages
+implication 1 must be satisfied. In turn, the term b1i ∨· · ·∨bri i                that appear as immediate dependencies of Π, then all pack-
+when 1 ≤ i ≤ s is satisfied when at least one of the bji with                      ages that appear as immediate dependencies of immediate
+1 ≤ j ≤ ri is satisfied. If a is a package in our repository,                      dependencies of Π, and so on. Since the domain of D is a
+we therefore have                                                                  complete lattice, and D is clearly a continuous function, we
+                                                                                   immediately get (by Tarski’s theorem) that such a smallest
+        D(a) = {{b11 , . . . , br11 }, · · · , {b1s , . . . , brss }}.             set exists and can be actually computed as follows:
+                                                                                             The dependency closure ∆(Π) of Π is:
+In particular, if one of the terms is empty (if ∅ ∈ D(a)),
+                                                                                                              [ n
+then a cannot be satisfied. This side-effect is useful for                                           ∆(Π) =      D (Π).
+modeling repositories containing packages mentioning an-                                                         n≥0
+other package b that is not in that repository. Such a situa-
+tion may occur because of an error in the metadata, because                           The notion of dependency closure is useful to extract the
+the package b has been removed, or b is in another reposi-                         part of a repository that pertains to a package or to a set of
+tory, maybe for licensing reasons.                                                 packages.
+    Concerning the relation C, two packages π1 =                                   Definition 6 (Generated subrepository) Let R          =
+(u1 , v1 ), π2 = (u2 , v2 ) ∈ P conflict when (π1 , π2 ) ∈ C.                      (P, D, C) be a repository and Π ⊆ P be a set of
+Since conflicts are a function of presence and not of instal-                      packages. The subrepository generated by Π is the
+lation order, the relation C is symmetric.                                         repository R|Π = (P ′ , D′ , C ′ ) whose set of packages
+                                                                                   is the dependency closure of Π and whose dependency
+Definition 3 (Installation) An installation of a repository                        and conflict relations are those of R restricted to that
+R = (P, D, C) is a subset I of P , giving the set of packages                      set of packages. More formally we have P ′ = ∆(Π),
+installed on a system. An installation is healthy when the                         D′ : P ′ → P(P(P ′ )), π 7→ {d ∩ P ′ | d ∈ D(π)} and
+following conditions hold:                                                         C ′ = C ∩ (P ′ × P ′ ).
+
+  • Abundance: Every package has what it needs. For-                                  Figure 5 shows the subrepository generated by the pack-
+    mally, for every π ∈ I, and for every dependency                               age c of example 1. The dependency closure of c is the set
+    d ∈ D(π) we have I ∩ d 6= ∅.                                                   of package nodes of that subrepository.
+                                                                                      We then have the following property, which allows to
+  • Peace: No two packages conflict. Formally, (I × I) ∩                           consider only the relevant subrepositories when answering
+    C = ∅.                                                                         questions of installability.
+
+
+                                                                               5
+                                                                     repository before expanding the version relationships.
+
+                                                                         To simplify the problem by getting rid of the inessen-
+                                                                     tial details related to version comparison algorithms in DEB
+                                                                     or RPM formats, we first preprocess the repository and re-
+                                                                     place version strings by integer as follows: for each unit
+                                                                     u, collect all of its mentioned version strings v, and order
+                                                                     them accordingly to the appropriate, format specific, com-
+                                                                     parison algorithm; then replace each occurrence of u op v
+   Figure 5. The subrepository generated by                          by u opnv , where nv is the position of v in the increasingly
+   package c.    The dependency closure is                           ordered sequence of versions of u. In other terms, we sim-
+   {c, g, h, i}.                                                     ply project over an initial segment of the integers starting at
+                                                                     1 the order structure of the versions of each package. This
+                                                                     does not change the nature of the constaint problem, but re-
+Proposition 1 (Completeness of subrepositories) A                    duces it to a problem over the Integer domain, for which
+package π is installable w.r.t. R if and only if it is               solvers are more easily available.
+installable w.r.t. R|π .                                                 We then build a constraint satisfaction problem over a
+                                                                     finite domain by constructing a set of constraints Rc out of
+   The desirable property that we want to ensure over a              R as follows:
+repository R is the following:
+                                                                     Variables and domains: For each unit u in the repository
+Definition 7 (Trimmed repository) A repository R is                      R, we introduce a finite domain variable, with domain
+trimmed if every package π ∈ R is installable with respect               equal to the set of available versions of the unit present
+to R itself.                                                             in the repository, plus one special value 0 denoting the
+                                                                         fact that no version of the unit is installed. We add the
+    The intuition is that if a repository is not trimmed, then           constraint Xu ∈ {0, v1 , . . . , vk } to Rc .
+it contains packages that cannot be installed in any config-
+uration: these packages behave as if they were not part of           Constraints We add constraints to Rc that encode the de-
+the repository. This means that either they should not be                pendency information associated to each package π =
+actually there or there is some a problem in their metadata              (u, v) ∈ R as follows. If R contains a dependency for
+specification that should be corrected.                                  π = (u, v) of the form
+    In the following sections we show how we have formal-
+                                                                               Depends : (u11 op11 v11 ∨ · · · ∨ ur11 opr11 v1r1 )
+ized the Installability problem using two approaches: Con-
+                                                                               ∧ · · · ∧ (u1s op1s vs1 ∨ · · · ∨ urss oprss vsrs ).
+straint Programming and SAT.
+                                                                          we introduce the constraint
+3.1    Encoding the Installability problem as                               (Xu = v) ⇒ (Xu11 op11 v11 ∨ · · · ∨ Xur11 opr11 v1r1 )
+       a SAT problem
+                                                                            ∧ · · · ∧ (Xu1s op1s vs1 ∨ · · · ∨ Xurss oprss vsrs )
+   The formalization of installability provided above leads               If R contains a conflict for π = (u, v) of the form
+quite naturally to an encoding as a boolean satisfiability
+problem. Each package becomes directly a boolean variable                     Conf licts : (u11 op11 v11 ∨ · · · ∨ ur11 opr11 v1r1 )
+whose value indicates whether that particular version of a                    ∧ · · · ∧ (u1s op1s vs1 ∨ · · · ∨ urss oprss vsrs ).
+unit is installed or not. The constraint relationships become             we introduce the constraint
+immediately boolean formulae over the package variables,
+using just the logical connectives →, ∧, ∨. A package is in-               (Xu = v) ⇒
+stallable if and only if the corresponding boolean formula is              (Xu11 compl(op11 ) v11 ∧ · · · ∧ Xur11 compl(opr11 ) v1r1 )
+satisfiable, as can be checked using any SAT solver.                       ∨ · · · ∧ (Xu1s compl(op1s ) vs1 ∧ · · · ∧ Xurss compl(oprss ) vsrs )
+                                                                          where compl(op) is the operation opposite to op (e.g.,
+3.2    Encoding the Installability problem as                             compl(>>) is <=, etc.)
+       a CP problem
+                                                                        Notice that, in the encoding above, if we encounter a
+   We can also formulate the installability problem for a            package name with no version constraint (so we find just u
+given package in a Debian repository R as a CP problem               instead of u >> 3, for example), we simply produce Xu >
+over finite domains, but in this case we must start from the         0 as the encoding. It is now possible to prove the following:
+
+
+                                                                 6
+Proposition 2 A package π = (u, v) is installable in the              in section 2. Ceve can resolve these indirect dependencies,
+repository R if and only if the constraint Xu == v is com-            so that if package A declares a dependency on feature F ,
+patible with Rc .                                                     and feature F is provided by packages B and C, in the out-
+                                                                      put package A will need either package B or package C.
+   Hence, to check installability of a package u, v in a              Also, packages that install different files in the same loca-
+repository R, we can pass the constraint set Rc to any CP             tion conflict with each other, but this is not explicitly de-
+solver and ask whether Xu = v is satisfiable. We can also             clared; Ceve can explicitly add these conflicts to the output.
+simply ask whether there exist a version of a unit that is
+installable, by asking whether Xu > 0 is satisfiable.                 4.2     The EGraph file format
+
+4     The framework                                                       The EGraph file format is a package-format agnostic
+                                                                      representation of the information that is encoded in the
+   We have developed a framework that can be used by a                packages stored in a package repository. It is based on the
+distribution editor to asses the quality of its distribution          XML [9] language and in particular it complies with the
+and to track problems concerning the underlying package               GraphML [8] specification. This intermediate format has
+repository (i.e., broken packages in non trimmed reposito-            been conceived in order to have a common and uniform rep-
+ries). Actually we have two distinct sets of tools (Figure            resentation of the metadata that can be used as input by all
+6): a set of independent elements (i.e.,the toolchain) that           the tools of our framework, without having to develop a fil-
+executes the analysis by incrementally processing the data            ter for each package format.
+collected from a repository; and A very specialized tool that             The GraphML format is well suited for this purpose be-
+does the analysis in one step.                                        cause the dependency relationships among packages are
+   The rationale for having these two sets of tools is that           easily represented by using graphs and, moreover, it can be
+we want to be able to use the data for other kind of analy-           extended in order to accommodate other significant meta-
+ses as well. Having a modularized toolchain enables us to             data.
+reuse part of it even for other purposes. On the other hand,              The EGraph format is an effort for proposing a new
+having a specialized, small and efficient tool that performs          metadata format that can complement and extend the ex-
+this particular kind of analysis is good for those distribution       isting metadata specified at the package level in order to
+editors that do not need other kind of features.                      perform more complicated and effective checking on pack-
+   Moreover, having plenty of independent tools that exe-             age repositories [10].
+cute the same kind of analysis allowed us to validate the
+whole approach by comparing the results obtained from                 4.3     EDOSLib
+these different sources.
+   In the following we describe each element of our frame-               EDOSLib is a library which provides the foundation of
+work.                                                                 some tools that are used in the framework. In particu-
+                                                                      lar EDOSLib implements: an object model for represent-
+4.1    Ceve                                                           ing package repositories information and their structure; a
+                                                                      set of functionalities to explore manage the package repos-
+   Ceve, the first element of the toolchain, is a generalized         itory struture (e.g., extracting subrepositories and depen-
+package parser. It can read several package formats (most             dency closures); EGraph input/output functionalities.
+importantly RPM and DEB packages and distributions), but
+also the XML rpm-metadata format [24]), and output their              4.3.1   ProblemGenerator
+metadata in several different formats, of which the most im-
+portant is the EGraph format described in the next section.           ProblemGenerator is an EDOSLib-based preprocessor that
+Ceve is written in OCaml, and it uses the CDuce [22] lan-             takes as input the EGraph format representing a package
+guage for XML input and output.                                       repository and gives an encoding of the installability prob-
+   The function of Ceve in the toolchain is that of parsing           lem in order to verify if the repository is trimmed or not. In
+package metadata from all sorts of formats into one com-              particular ProblemGenerator performs three steps: i) Ex-
+mon format (the EGraph format). Since there are many dif-             tract the package subrepository underlying the dependency
+ferences between the various package formats, Ceve can-               closure for each package that has to be analyzed. ii) Map
+not simply read metadata and output them; the data has to             the standard package version numbers to integers, as men-
+be manipulated. The most notable example of this is RPM               tioned in Section 3; iii) Expands all the reference to virtual
+dependencies; RPM cannot declare dependencies on other                packages by substituting them with actual package names
+packages directly, but only by way of features, as explained          and versions.
+
+
+                                                                  7
+                                                  Figure 6. The framework
+
+
+   The output is in the format suitable to be processed by            strategy programmed in Oz itself. While effective on small
+the solvers that will perform the actual verification.                to medium-sized installability problems, the solver tends to
+                                                                      exhibit exponential divergence on large problems.
+4.3.2   Explorer, Statistics and Visualizer
+                                                                      4.6     DEB/RPMCheck
+These are three complementary tools that can be useful for
+exploring the package repository, giving a help in navigat-               The debcheck and rpmcheck utilities are separate from
+ing through the intrinsic complexity of it. In particular Ex-         the toolchain. They take as input a package repository and
+plorer offers a command line interface to the functionali-            check whether one, several or all packages in the repository
+ties provided by EDOSLib (e.g., dependency closures ex-               are installable with respect to that repository. Both utili-
+traction, package metadata exploration, etc.). Statistics ex-         ties are based on the SAT encoding of section 3.1 and ex-
+tract some useful metric with respect to the complexity of            ploit a customized Davis-Putnam SAT solver [11]. Since
+the package repository (e.g., number of dependencies, aver-           all computations are performed in-memory and some of the
+age closure sizes, etc.). Finally, Visualizer is a graph visu-        encoding work is shared between all packages considered,
+alization tool that allows the distribution editor to visually        the debcheck and rpmcheck are significantly faster than
+navigate the package repository through its graphical repre-          the SAT/FGrasp tool for checking the installability of all
+sentation. Even though these tools are not really part of the         packages of a repository.
+analysis engine, they provide a useful aid when it comes to
+navigate the package repository in order to track down the
+problems discovered by the actual analysis.                           5     Experimental results
+
+4.4     SAT/FGrasp Solver                                                In this section we show some experimental results that
+                                                                      we have gathered by analyzing with our tools two of
+   The SAT/FGrasp solver takes as input the encoding of               the most famous GNU/Linux-based distributions: Debian
+an installability problem as produced by ProblemGenera-               GNU/Linux [2] and Mandriva Linux [4].
+tor and translates it to a boolean formula as outlined in                The reference package repositories are a snapshot of the
+section 3.1. After conversion to conjunctive normal form,             complete Debian pool located at http://ftp.debian.
+the formula is fed through the FGrasp SAT solver from                 org/pool and the packages distributed with the Mandriva
+T. U. Lisbon. This solver can return a minimal set of as-             2006 Edition.
+signments that satisfy the formula, which the SAT/FGrasp                 Out of the 4211 packages in the main part of
+tool translates back into minimal lists of packages that need         the Mandriva 2006 distribution, 42 are not instal-
+to be installed to enable the installation of the initial pack-       lable.    In 38 cases, this is due to a dependency
+age. The SAT solving is reasonably efficient, taking less             that is not available; in the case of four packages,
+than 1 second on the hardest installability problems.                 mozilla-thunderbird-enigmail-{de,es,fr,it}, the
+                                                                      problem is a simultaneous dependency and conflict with the
+4.5     CP/Mozart-Oz Solver                                           package mozilla-thunderbird-enigmail.
+                                                                         The Debian pool snapshot contains 34701 packages, de-
+   The CP/Mozart-Oz Solver translates the output of Prob-             scribed in a Debian Control File [23] of almost 30Mb
+lemGenerator to a CP problem as described in section 3.2,             of metadata defining, among other things, almost 200.000
+then solves it using a solver written in the Mozart-Oz lan-           package relationships (dependencies and conflicts). Insert-
+guage [5] . The solver uses a custom branch-and-bound                 ing new information that can possibly break the consistency
+
+
+                                                                  8
+of the pool and finding what is the source of the problem                     6    Related work
+that lead to that is a difficult task if not supported by auto-
+matic tools for the analysis.                                                     Our work is related to what has been called Software
+   Figure 7 shows an excerpt of the output generated by                       Release Management [25], i.e., the process through which
+our debcheck tool after the analysis of the previously de-                    software is made available and obtained by the final users.
+scribed Debian pool snapshot. The result of this analysis is                  While our goal was not to address the problem pertaining
+that for 123 packages there are no possible way to install                    to physical distribution7 our efforts have been directed in
+them. In particular, 111 of them are not installable because                  providing tools that can improve the quality of the Software
+of a missing dependency (i.e., there is no package available                  Release Management.
+in the pool that could satisfy a dependency relationship).                        There is a significant literature on the problem of man-
+The other 12 are more interesting: they are not installable                   aging dependencies between components: [20, 19] propose
+because the specified dependency relationships induce an                      techniques that are actually implemented in tools like [18].
+unavoidable conflict.                                                             But most of these approaches are targeted at designing
+   For example, the package cacti-cactid version                              component systems, with a clear top-down process typi-
+0.8.6e-2 depends on libsnmp5, version 5.2.1.2 or greater;                     cal of a software architecture viewpoint, while the compo-
+but the only appropriate version of libsnmp5 in the pool,                     nent systems we have to handle come from the huge pre-
+5.2.1.2-2, conflicts with all versions of cacti-cactid up                     existing infrastructures and legacy systems (e.g. well estab-
+to and including 0.8.6e-2. In this case either there is some                  lished GNU/Linux distributions) that have been conceived
+problem in the specification of the package relationships or                  without having such a kind of architectural specifications in
+there are some packages that have been removed from the                       mind.
+pool (e.g., other versions of libsnmp5) leaving it in an in-                      Our long term goal is to integrate these systems by
+consistent state.                                                             abstracting and enriching their features while maintaining
+   Such kind of information gives the distribution editor a                   backward compatibility. For example by proposing ex-
+better understanding of what is going on when performing                      tensions to the dependency specification that enables the
+operations on the package metadata or on the repositories.                    checking of more sophisticated properties as in [27, 28]
+                                                                                  On the algorithmic side, an interesting work is [7], that
+cacti-cactid (= 0.8.6e-2): FAILED                                             uses adjacency matrices to represent different kinds of de-
+The following constraints cannot be satisfied:                                pendency graphs. By performing operation on these matri-
+  cacti-cactid (= 0.8.6e-2)                                                   ces it is possible to verify some kinds of properties related to
+    conflicts with libsnmp5 (= 5.2.1.2-2)                                     the evolution of the system (e.g., the number of components
+  cacti-cactid (= 0.8.6e-2)                                                   that are required if a given component has to be reused).
+    depends on libsnmp5 (>= 5.2.1.2)                                              Notice though that in all the approaches just mentioned,
+                     {libsnmp5 (= 5.2.1.2-2)}                                 the notion of conflict is not taken into account, as we do in
+                                                                              ours. This makes all these approaches not suitable in a con-
+   Figure 7. Excerpt of the debcheck output on
+                                                                              text, like the one we have analyzed, where conflicts are an
+   the Debian pool packages
+                                                                              essential (and complex) part of the dependency requirement
+                                                                              specification.
+                                                                                  A more similar work is [26] that uses feature diagrams
+   The processing speed6 is very encouraging and this
+                                                                              to model dependencies and configurations, and BDD algo-
+makes the tools a valid and effective aid to the distribution
+                                                                              rithms to perform automated checking of model properties.
+editor. Checking the Mandriva package repository took 55
+                                                                                  Finally, there is a wealth of largely used tools in the
+seconds with the SAT solver and 8 seconds with the stan-
+                                                                              Free Software Community, known as meta-package man-
+dalone rpmcheck tool. Checking the Debian pool snapshot
+                                                                              agers [17, 14, 13] that are clearly the most similar in spirit
+took 18 minutes and 13 seconds with the SAT solver and
+                                                                              to what we have developed here, as they are able to explore
+43 seconds with the standalone debcheck tool. The tim-
+                                                                              the dependency requirements of a given package and per-
+ing difference is largely due to the fact the rpmcheck and
+                                                                              form all the steps needed to correctly install it by automat-
+debcheck tools parse the package metadata only once and
+                                                                              ically finding the missing dependent packages, download-
+produce the constraints associated to all the package satis-
+                                                                              ing and, finally, installing them, taking into acocunt depen-
+fiability problems in a single run, while the toolchain gen-
+                                                                              dencies and conflicts. The essential difference between our
+erate one distinct subproblem, and calls the generic SAT
+                                                                              tools and those meta-package manager is that meta-package
+solver, for each package.
+                                                                              manager try to optimize the installation of packages on a
+  6 The machine used for the tests is a single-processor Intel Xeon 3.4           7 Notice though that this is a problem addressed by other workpackages
+
+GHz machine running Mandriva Linux                                            of the EDOS Project.
+
+
+                                                                          9
+user machine, which is a task radically different, and in                [10] EDOS Project Workpackage 2 Team.              Deliverable 1,
+principle much more difficult than veryfying that a repos-                    2005.      http://www.edos-project.org/xwiki/bin/
+itory does not contain broken packages. As a consequence,                     Main/Deliverables.
+many of these tools contain specific heuristics that make                [11] N. Eén and N. Sörensson. An extensible SAT-solver. In
+them incomplete (some packages are actually reported bro-                     E. Giunchiglia and A. Tacchella, editors, Theory and Ap-
+                                                                              plications of Satisfiability Testing, 6th International Con-
+ken while they are installable), while those tools, like Smart,
+                                                                              ference, SAT 2003. Santa Margherita Ligure, Italy, May 5-
+that strive to be complete are unacceptably inefficient when                  8, 2003 Selected Revised Papers, volume 2919 of Lecture
+used to verify installability. And none of them has a formal                  Notes in Computer Science, pages 502–518. Springer, 2004.
+basis.                                                                   [12] N. LaBelle and E. Wallingford. Inter-package dependency
+                                                                              networks in open-source software. Submitted to Journal of
+7      Conclusions                                                            Theoretical Computer Science, 2005.
+                                                                         [13] Mandriva. URPMI. http://www.urpmi.org, 2005.
+                                                                         [14] G. Niemeyer. Smart package manager. http://labix.
+    In this paper we have presented our approach and the                      org/smart, 2005.
+framework we have developed for managing the complex-                    [15] Opensource.org. Opensource licenses. http://www.
+ity and improving the quality of large package based FOSS                     opensource.org/licenses.
+systems. The approach has been validated by implement-                   [16] E. S. Raymond. The cathedral and the bazaar. http://
+ing two different set of tools that report the same results.                  www.catb.org/~esr/writings/cathedral-bazaar.
+                                                                         [17] G. N. Silva. Apt-howto. http://www.debian.org/doc/
+By applying our automatic analysis on two of the most pop-
+                                                                              manuals/apt-howto, 2004.
+ular Linux-based distributions (i.e., Debian and Mandriva)               [18] J. Stafford, D. Richardson, and A. Wolf. Aladdin: A tool for
+we have been able to spot several problems in their pack-                     architecture-level dependence analysis of software systems.
+age repositories that, otherwise, could have been ignored                     Technical Report CU-CS-858-98, Department of Computer
+for longtime. Having this kind of (previously unavailable)                    Science, University of Colorado, 1997.
+tools is a great help for distribution editors that can use them         [19] J. Stafford, D. Richardson, and A. Wolf. Chaining: A soft-
+in order to track problems in their package bases and, hence,                 ware architecture dependence analysis technique. Technical
+improve the quality of their distributions.                                   Report CU-CS-845-97, Department of Computer Science,
+    Our tools are successfully used at Caixa Magica (an                       University of Colorado, 1997.
+                                                                         [20] J. A. Stafford and A. L. Wolf. Architecture-level dependence
+RPM-based distribution editor [1]) and Mandriva in paral-
+                                                                              analysis in support of software maintenance. In ISAW ’98:
+lel with their standard distribution life cycle phases. Future                Proceedings of the third international workshop on Software
+work concerns the integration of these tools into their pro-                  architecture, pages 129–132. ACM Press, 1998.
+duction chain, and in other distributions as well. Moreover,             [21] C. Szyperski.      Component Software: Beyond Object-
+some other work will concern the improvement of the cur-                      Oriented Programming. Addison Wesley Professional,
+rent framework, for example, by refactoring it in a more in-                  1997.
+tegrated and user friendly tool and by providing more com-               [22] The CDuce Team. Cduce. http://www.cduce.org.
+plex and active analysis.                                                [23] The Debian Project. Debian policy manual. http://www.
+                                                                              debian.org/doc/debian-policy/index.html.
+                                                                         [24] The RPM-Metadata Project. Xml package metadata. http:
+References                                                                    //linux.duke.edu/projects/metadata.
+                                                                         [25] A. van der Hoek, R. S. Hall, D. Heimbigner, and A. L. Wolf.
+    [1] Caixa Magica Linux. http://www.caixamagica.pt.                        Software release management. In ESEC ’97/FSE-5: Pro-
+    [2] Debian GNU/Linux. http://www.debian.org.                              ceedings of the 6th European conference held jointly with
+    [3] Distrowatch. http://www.distrowatch.com.                              the 5th ACM SIGSOFT international symposium on Foun-
+    [4] Mandriva Linux. http://www.mandriva.com.                              dations of software engineering, pages 159–175. Springer-
+    [5] The mozart programming system.             http://www.                Verlag New York, Inc., 1997.
+        mozart-oz.org.                                                   [26] T. van der Storm. Variability and component composition.
+    [6] E. C. Bailey. Maximum rpm. http://www.rpm.org/                        In ICSR, pages 157–166, 2004.
+        max-rpm.                                                         [27] M. Vieira and D. Richardson. Analyzing dependencies in
+    [7] L. Bixin. Managing dependencies in component-based sys-               large component-based systems. In ASE’02: Proceedings of
+        tems based on matrix model. In Proceedings of NETObject-              the International Conference of Automated Software Engi-
+        Days’03, 2003.                                                        neering, pages 241–244, 2002.
+    [8] U. Brandes, M. Eiglsperger, I. Herman, M. Himsolt, and           [28] M. Vieira and D. Richardson. The role of dependencies in
+        M. Marshall. Graphml specification, 2002. http://                     component-based systems evolution. In IWPSE ’02: Pro-
+        graphml.graphdrawing.org/specification.html.                          ceedings of the International Workshop on Principles of
+    [9] T. Bray, J. Paoli, C. M. Sperberg-McQueen, and E. M. F.               Software Evolution, pages 62–65. ACM Press, 2002.
+        Yergeau. Extensible markup language (xml) 1.0 (third edi-
+        tion), 2004. http://www.w3.org/TR/REC-xml.
+
+
+                                                                    10
+

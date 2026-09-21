@@ -6,6 +6,7 @@
 build/
 logs/
 out/
+docs/refs/pdf/
 
 # Editor / OS noise
 .vscode/

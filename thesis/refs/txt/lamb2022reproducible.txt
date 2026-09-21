@@ -1,0 +1,634 @@
+This article has been accepted for publication in a future issue of this journal, but has not been fully edited. Content may change prior to final publication. Citation information: DOI 10.1109/MS.2021.3073045, IEEE Software
+
+
+
+
+                 Reproducible Builds:
+                 Increasing the Integrity of
+                 Software Supply Chains
+                 Chris Lamb
+                 Reproducible Builds
+                 Stefano Zacchiroli
+                 Université de Paris and Inria, France
+
+
+
+
+                 Abstract—Although it is possible to increase confidence in Free and Open Source Software
+                 (FOSS) by reviewing its source code, trusting code is not the same as trusting its executable
+                 counterparts. These are typically built and distributed by third-party vendors, with severe
+                 security consequences if their supply chains are compromised. In this paper, we present
+                 reproducible builds, an approach that can determine whether generated binaries correspond
+                 with their original source code. We first define the problem, and then provide insight into the
+                 challenges of making real-world software build in a “reproducible” manner—this is, when every
+                 build generates bit-for-bit identical results. Through the experience of the Reproducible Builds
+                 project making the Debian Linux distribution reproducible, we also describe the affinity between
+                 reproducibility and quality assurance (QA).
+
+
+
+                         You can’t trust code that you did not                                         to use in order to confirm it does not contain
+                         totally create yourself. [. . . ] No amount                                   spyware or backdoors—indeed, one of the orig-
+                         of source-level verification or scrutiny                                      inal promises of FOSS was that distributed peer
+                         will protect you from using untrusted                                         review [2] would result in enhanced end-user
+                         code.                                                                         security. However, whilst users can inspect source
+                                               — Ken Thompson (1984)                                   code for malicious flaws, almost all software is
+                                                                                                       now distributed as pre-built binaries. This permits
+                                                                                                       nefarious actors to compromise end-user systems
+                     H OW CAN WE BE SURE that our software                                             by modifying ostensibly secure code during its
+                 is doing only what it is supposed to do? This                                         compilation or distribution.
+                 was the key takeaway from Ken Thompson’s
+                 1984 Turing Lecture, “Reflections on Trusting                                             For example, a Linux distribution might com-
+                 Trust” [1]. But with people today executing far                                       pile “safe” software on compromised servers and
+                 more software than they compile, the number of                                        unwittingly spread malicious executables onto
+                 users who “totally create” software they run has                                      countless systems. Other vectors include engi-
+                 dropped dramatically since then.                                                      neers being explicitly coerced into incorporating
+                     Let us narrow the issue to Free and Open                                          vulnerabilities, as well as the covert compromise
+                 Source Software (FOSS), where all source code                                         of developers’ computers (remotely or through
+                 is freely available. Hypothetically, users can ex-                                    “evil maid” attacks [3]) so they unwittingly dis-
+                 amine the source of all the software they wish                                        tribute tainted binaries via app stores and other
+
+
+                 IEEE Software                                                  Published by the IEEE Computer Society                                                    © 2021 IEEE
+                                                                                                                                                                                              1
+    0740-7459 (c) 2021 IEEE. Personal use is permitted, but republication/redistribution requires IEEE permission. See http://www.ieee.org/publications_standards/publications/rights/index.html for more information.
+                        Authorized licensed use limited to: Cornell University Library. Downloaded on May 24,2021 at 07:27:15 UTC from IEEE Xplore. Restrictions apply.
+This article has been accepted for publication in a future issue of this journal, but has not been fully edited. Content may change prior to final publication. Citation information: DOI 10.1109/MS.2021.3073045, IEEE Software
+
+
+
+
+                                        channels.                                                                             in which the build is performed.
+                                            Software supply-chain attacks are no longer
+                                                                                                                                  In other words, once we reach an agreement
+                                        hypothetical scenarios. In December 2020, news
+                                                                                                                              on the exact software version(s) we wish to build,
+                                        broke that attackers subverted the SolarWinds
+                                                                                                                              anyone who builds that software should always
+                                        Orion software to inject malicious code into
+                                                                                                                              generate precisely the same artifacts.
+                                        executables at build time, resulting in a se-
+                                        vere data breach across several US government                                             Figure 1 shows how users can leverage this
+                                        branches [4]. 174 similar attacks have been de-                                       property to establish trust in FOSS executables.
+                                        tailed in the literature too [5]. Due to their poten-                                 Software development happens upstream as usual
+                                        tial impact, software supply chains have become                                       (e.g. on platforms such as GitHub and GitLab)
+                                        a high-value target in recent years, and this trend                                   and, from there, source code reaches downstream
+                                        appears to be accelerating.                                                           vendors such as Linux distributions and app
+                                                                                                                              stores. These vendors then build binaries from
+                                            Practical and scalable solutions to these at-
+                                                                                                                              these sources, which are subsequently distributed
+                                        tacks are therefore urgently needed, and an ap-
+                                                                                                                              to end-users. Note that neither the distribution nor
+                                        proach known as reproducible builds is one such
+                                                                                                                              the build process are completely trusted in this
+                                        countermeasure. However, it is only applicable
+                                                                                                                              scenario, reflecting the hostile environment of the
+                                        if the software sources are widely available—
+                                                                                                                              real world.
+                                        although malware can be detected directly in
+                                        binaries [6], [7], doing so is inefficient when                                           When software builds reproducibly, however,
+                                        source code is available for audit.                                                   we can still establish trust in these executables.
+                                            The key idea behind the reproducible builds                                       This is because users can corroborate whether
+                                        (R-B) approach is that, if we can guarantee that                                      their newly-downloaded binaries are identical to
+                                        building a given source tree always generates bit-                                    those that others have built themselves.
+                                        for-bit identical results, we can establish trust                                         How this works is as follows: At the top of
+                                        in these artifacts by comparing outputs acquired                                      the supply chain, trust in a specific version of a
+                                        from multiple, independent builders.                                                  piece of software is established through auditing
+                                            In this paper, we present the R-B approach                                        the source code or, more likely, by implicitly
+                                        from the perspective of software professionals.                                       trusting its developers (e.g. trusting version 5.11.5
+                                        We show how software users can benefit from                                           of the Linux kernel as it is signed by Linus
+                                        the increased trust in executables they run as well                                   Torvalds). Later, but before executing any binaries
+                                        as how developers and build engineers can help                                        they have downloaded, users can compare the
+                                        make software reproducible. We also describe                                          checksums of these files with the expected values
+                                        the quality assurance (QA) tools available to                                         for that specific version, crucially aborting on any
+                                        improve build reproducibility, highlighting how                                       mismatch.
+                                        they further mutually-beneficial goals such as                                            These expected checksums could originate
+                                        reducing build and test “flakiness” [8], [9]. This                                    from a limited set of trusted parties who publish
+                                        paper is informed in large part by the experience                                     statements that building some specific source
+                                        of the Reproducible Builds project (reproducible-                                     code release results in a particular set of ex-
+                                        builds.org), a non-profit initiative that popularized                                 ecutables. However, another alternative is dis-
+                                        the R-B approach.                                                                     tributed consensus, where a loose-knit commu-
+                                                                                                                              nity of semi-trusted builders independently an-
+                                        REPRODUCIBLE BUILDS                                                                   nounce their checksums. Normally, participants
+                                                                                                                              in this scheme report identical checksums for
+                                          The core element of the reproducible builds
+                                                                                                                              a given source code release, but in case of a
+                                        model is the following property:
+                                                                                                                              discrepancy (i.e. if some builders have been com-
+                                        Definition 1. The build process of a software                                         promised), the checksum reported by ≥ 50% of
+                                        product is reproducible if, after designating a                                       the builders may be the one to trust. Under this
+                                        specific version of its source code and all of its                                    verification scheme, the takeover at least 50% of
+                                        build dependencies, every build produces bit-for-                                     the builder community would be required to co-
+                                        bit identical artifacts, no matter the environment                                    erce users into running malicious binaries.
+
+
+
+                              2                                                                                                                                                             IEEE Software
+
+
+
+    0740-7459 (c) 2021 IEEE. Personal use is permitted, but republication/redistribution requires IEEE permission. See http://www.ieee.org/publications_standards/publications/rights/index.html for more information.
+                        Authorized licensed use limited to: Cornell University Library. Downloaded on May 24,2021 at 07:27:15 UTC from IEEE Xplore. Restrictions apply.
+This article has been accepted for publication in a future issue of this journal, but has not been fully edited. Content may change prior to final publication. Citation information: DOI 10.1109/MS.2021.3073045, IEEE Software
+
+
+
+
+                                                                                                                                                             checksum
+                                                                                                                                                              0xBAAD
+                                                                                                 build
+                                                                 source                         process                              build
+                                                                                                                                                                         binary
+                                                                  code                                                              artifacts
+                                                                                        build                  build                                                  distribution
+                                                                                       inputs                 outputs                                                  (untrusted)
+
+
+
+
+                                                                                                                            Software vendor                                               build
+                                                                  build                        build                    e.g. Linux distribution, app store                               artifacts
+                            source                            dependencies                   toolchain                        (untrusted process)
+                             code
+
+                                                                                                                                                               compare                 checksum
+                       Upstream software                                                                                                     0x1337                                     0xBAAD
+                          developers
+                                                                      source               build                     build
+                          eg. on GitHub                                                                                                                                              End-user system
+                                                                       code                                         artifacts                          0x1337
+
+                                                                                     Independent build
+                                                                                                                                                             0x1337
+                                                                                          Independent build
+
+                                                                                                Independent build
+
+
+
+                 Figure 1. The reproducible builds approach to increasing trust in executables built by untrusted third parties.
+                 The end-user should reject the binary artifact from their software vendor, as its checksum (0xBAAD) does not
+                 match the one built by multiple, independent third-parties (0x1337).
+
+
+                 REPRODUCIBILITY IN THE SMALL                                                              in any way from the state of a pseudorandom
+                     How hard is it to ensure that independent                                             number generator or the arbitrary order of process
+                 builds always result in bit-for-bit identical ex-                                         scheduling.
+                 ecutables? First, let us consider the software                                                To address uncontrolled build inputs, it is
+                 vendor in Figure 1. Each build takes as its input                                         tempting to “jail” builds into sanitized environ-
+                 the source to be built, all of its build-time depen-                                      ments that always present a canonical interface to
+                 dencies, and the entire build toolchain including                                         the underlying build system. Indeed, this was the
+                 the compiler, linker and build system. The build                                          approach taken by early projects such as Bitcoin
+                 produces a set of artifacts (executables, data,                                           and Tor (rbm.torproject.org). However, jails result
+                 documentation, etc.) as its output. Any change                                            in slower build times and impose technical and
+                 in these inputs may legitimately affect its output.                                       social restrictions on developers who may be
+                     However, even once all inputs have                                                    accustomed to choosing their tooling. Most jails
+                 been controlled for, the build may still be                                               cannot address non-determinism issues either.
+                                                                                                               The ultimate and preferred solution is to en-
+                 unreproducible—that is, producing different
+                                                                                                           sure that any code run during the build only
+                 artifacts when the build is repeated. This results
+                                                                                                           depends on the legitimate build inputs (the source
+                 from two main classes of problem: uncontrolled
+                                                                                                           being built, the build dependencies and the
+                 build inputs and build non-determinism.
+                                                                                                           toolchain), and that any non-deterministic behav-
+                     Uncontrolled build inputs occur when
+                                                                                                           ior does not affect the resulting artifacts.
+                 toolchains allow the build process to be affected
+                 by the surrounding environment. Common                                                       We will now review some individual causes of
+                 examples include system time, environment                                                 unreproducible builds and show how to address
+                 variables and the arbitrary build location on the                                         them.
+                 filesystem. Uncontrolled inputs can be seen as                                            Build timestamps
+                 analogous to breaking encapsulation in software                                               Timestamps are, by far, the biggest source
+                 design; a tight coupling between a high-level                                             of unreproducibility. It is a common practice
+                 process and the low-level implementation details.                                         to explicitly embed dates into binaries via C’s
+                     Build non-determinism occurs when aspects of                                          __DATE__ macro (see Listing 1), but many
+                 the build behave non-deterministically and these                                          tools record dates into build artifacts as well. For
+                 “random” behaviours are encoded in the final                                              example, help2man generates UNIX manual
+                 artifacts. For example, if the output is derived                                          pages directly from the output of --help, and
+
+
+                 May/June 2021
+                                                                                                                                                                                                       3
+    0740-7459 (c) 2021 IEEE. Personal use is permitted, but republication/redistribution requires IEEE permission. See http://www.ieee.org/publications_standards/publications/rights/index.html for more information.
+                        Authorized licensed use limited to: Cornell University Library. Downloaded on May 24,2021 at 07:27:15 UTC from IEEE Xplore. Restrictions apply.
+This article has been accepted for publication in a future issue of this journal, but has not been fully edited. Content may change prior to final publication. Citation information: DOI 10.1109/MS.2021.3073045, IEEE Software
+
+
+
+
+                                        Listing 1. The __DATE__ C preprocessor macro                                          Listing 2. The __FILE__ C preprocessor macro
+                                        “expands to a string constant that describes the date                                 “expands to the name of the current input file”. This
+                                        on which the preprocessor is being run.”                                              results in non reproducibility when the program is built
+                                                                                                                              from different directories, e.g. /home/lamby/tmp
+                                        void usage() {
+                                            fprintf (stderr,                                                                  vs. /home/zack/tmp.
+                                                     "foo-utils version "
+                                                     "3.141 (built %s)\n",                                                    fprintf (stderr,
+                                                       __DATE__);                                                                      "DEBUG: boop (%s:%s\n",
+                                        }                                                                                              __FILE__, __LINE__);
+
+
+
+                                                                                                                              Filesystem ordering
+                                        in its default configuration, it embeds the current                                   Contrary to the output of ls(1), the POSIX
+                                        date into generated files. As this value changes                                      Unix standard does not specify an ordering for
+                                        from day-to-day, this results in an unreproducible                                    results returned by the underlying readdir(3)
+                                        build. TEX’s \date macro also embeds the cur-                                         system call. As a result, directories accessed
+                                        rent date, with similar implications for generated                                    in naive “readdir order” may be processed
+                                        documentation.                                                                        in a non-deterministic manner. If this arbitrary
+                                                                                                                              ordering influences any build artifacts, the build
+                                             The value of these timestamps is extremely
+                                                                                                                              will not be reproducible.
+                                        limited, particularly as they don’t convey which
+                                                                                                                                  For example, the build system of the PikePDF
+                                        version of the software was actually built; after
+                                                                                                                              library located its own source files using Python’s
+                                        all, older software can always be built later. Em-
+                                                                                                                              glob routine. But as glob’s result value in-
+                                        bedded timestamps should therefore be avoided
+                                                                                                                              herits the non-determinism of readdir(3),
+                                        entirely, but for cases where that is not possible
+                                                                                                                              PikePDF’s source files were linked in an arbitrary
+                                        (e.g. in file formats that mandate their presence),
+                                                                                                                              order.
+                                        the Reproducible Builds project proposed the
+                                                                                                                                  This is a particularly pernicious problem as
+                                        SOURCE_DATE_EPOCH environment variable as
+                                                                                                                              some filesystem implementations return different
+                                        a way to communicate an acceptable timestamp
+                                                                                                                              orderings “more often” than others. To avoid
+                                        to build systems [10]. This typically represents
+                                                                                                                              these issues, build systems should impose a deter-
+                                        the last modification time of the source tree as
+                                                                                                                              ministic order on any directory iteration encoded
+                                        extracted from the software’s changelog file.
+                                                                                                                              in its artifacts, e.g. via an explicit sort().
+                                                                                                                              Archive metadata
+                                        Build paths
+                                                                                                                              .zip and .tar archives store timestamps and
+                                        The filesystem path where the build took place                                        user ownership information in addition to the
+                                        is often embedded in generated binaries too,                                          files themselves. However, if this metadata is
+                                        usually via the __FILE__ preprocessor macro                                           inherited from the surrounding build environment,
+                                        (see Listing 2) or by assertion statements that                                       it will not be replicated when building elsewhere.
+                                        reference their corresponding line of code. Other                                     For example, if a .tar archive stores files as
+                                        sources of build paths include logging messages,                                      belonging to the build user (e.g. lamby), another
+                                        locations of detached debug symbols, RPATH                                            user (e.g. zack) building the same software will
+                                        entries in ELF binaries, and many other instances                                     obtain a different result.
+                                        that are intended, ironically, to assist the software                                     This can be avoided by instructing tools to
+                                        development process.                                                                  ignore on-disk values in favour of metadata cho-
+                                           To help address this issue, the Reproducible                                       sen by the build system (e.g. using tar(1)
+                                        Builds project worked with the GNU GCC devel-                                         with --owner=0 and --clamp-mtime=T),
+                                        opers to introduce the -ffile-prefix-map                                              or by normalizing metadata before archiv-
+                                        and -fdebug-prefix-map options which                                                  ing begins (e.g. by using touch(1) with
+                                        support embedding relative (rather than absolute)                                     SOURCE_DATE_EPOCH as a reference times-
+                                        paths.                                                                                tamp).
+
+
+
+                              4                                                                                                                                                             IEEE Software
+
+
+
+    0740-7459 (c) 2021 IEEE. Personal use is permitted, but republication/redistribution requires IEEE permission. See http://www.ieee.org/publications_standards/publications/rights/index.html for more information.
+                        Authorized licensed use limited to: Cornell University Library. Downloaded on May 24,2021 at 07:27:15 UTC from IEEE Xplore. Restrictions apply.
+This article has been accepted for publication in a future issue of this journal, but has not been fully edited. Content may change prior to final publication. Citation information: DOI 10.1109/MS.2021.3073045, IEEE Software
+
+
+
+
+                 Listing 3. Perl’s hash type does not define an order-                                 Listing 4. A patch for GNU mtools ensuring that
+                 ing of its keys, so a call to sort should be inserted                                 a direntry_t struct does not contain uninitialized
+                 before keys %h to make it deterministic.                                              memory.
+
+                 my %h = ( a => 1, b => 2, c => 3);                                                    --- a/direntry.c
+                 foreach my $k (keys %h) {                                                             +++ b/direntry.c
+                     print "$k\n";                                                                     @@ -24,6 +24,7 @@
+                 }
+                                                                                                        void initializeDirentry(
+                                                                                                          direntry_t *entry, Stream_t *Dir) {
+                                                                                                       + memset(entry, 0, sizeof(direntry_t));
+                 Randomness                                                                               entry->entry = -1;
+                     Even when the entire environment is con-                                             entry->Dir = Dir;
+                 trolled for, many builds remain inherently non-
+                 determinstic. For example, builds that iterate over
+                 hash tables (such as Perl’s “hash” or the dict                                        collections reproducible.
+                 type in Python < 3.7) exhibit arbitrary behaviour                                         The Reproducible Builds project started in
+                 as their respective elements are returned in an un-                                   2014 with the aim of making the Debian oper-
+                 defined order—the code in Listing 3, for example,                                     ating system (www.debian.org) completely repro-
+                 may print any combination of abc, bac, bca,                                           ducible. This is a formidable goal, as not only is
+                 etc. This affects reproducibility if these results                                    Debian a extremely mature Linux distribution, it
+                 form any part of the build’s artifacts.                                               is one of the largest curated collections of FOSS
+                     Parallelism (such as via processes or threads)                                    software in general.
+                 can also prevent reproducibility if the arbitrary                                         Seven years later, over 95% of the 30 000+
+                 completion order is encoded into build results                                        packages in Debian’s development branch can
+                 too. Similar to filesystem ordering, these issues                                     now be built reproducibly, and as the Linux
+                 can be resolved by imposing determinism in key                                        distribution with the largest total number of repro-
+                 locations, seeding any sources of randomness                                          ducible packages, it serves as an extremely rele-
+                 to fixed values or sorting the results of hash                                        vant case study. The evolution of this effort can
+                 iterations and parallelized tasks before generating                                   be found at wiki.debian.org/ReproducibleBuilds.
+                 output.                                                                               Adversarial rebuilding
+                 Uninitialized memory                                                                  Given its scale, Debian developers realized they
+                 Many data structures have undefined areas that                                        would need a programmatic way to test for re-
+                 do not affect their operation. The FAT filesystem,                                    producibility. To this end, they developed a con-
+                 for example, contains unused regions that may                                         tinuous integration (CI) [11] system which builds
+                 be filled with arbitrary data. In addition, modern                                    each package in the Debian archive twice in a
+                 CPU architectures perform more efficiently when                                       row, using two independent build environments
+                 data is naturally aligned, and the padding added to                                   that are deliberately configured to differ as much
+                 ensure alignment can result in similarly undefined                                    as possible. For instance, the clock on the second
+                 areas. These regions containing “random” data                                         build is set 18 months in the future, and the
+                 affect reproducibility when stored in build results.                                  hostname, language, system kernel, etc., are all
+                     One solution is to explicitly zero-out memory                                     varied so that if any environmental differences are
+                 regions that may persist in artifacts. For example,                                   used as a build input, the two builds will differ as
+                 Listing 4 shows a patch for GNU mtools that                                           a result. The large number of variations applied
+                 ensures generated FAT directory entries do not                                        (30+) can validate build reproducibility to a high
+                 embed uninitialized memory.                                                           degree of accuracy.
+                                                                                                           To identify any reliance on non-deterministic
+                 REPRODUCIBILITY IN THE LARGE                                                          filesystem ordering, the R-B project also de-
+                     Now that we know how to address some                                              veloped a FUSE-based [12] virtual filesystem
+                 individual reproducibility issues, we turn to the                                     called disorderfs (salsa.debian.org/reproducible-
+                 problems that arise when making large software                                        builds/disorderfs) which can provide a view of
+
+
+                 May/June 2021
+                                                                                                                                                                                              5
+    0740-7459 (c) 2021 IEEE. Personal use is permitted, but republication/redistribution requires IEEE permission. See http://www.ieee.org/publications_standards/publications/rights/index.html for more information.
+                        Authorized licensed use limited to: Cornell University Library. Downloaded on May 24,2021 at 07:27:15 UTC from IEEE Xplore. Restrictions apply.
+This article has been accepted for publication in a future issue of this journal, but has not been fully edited. Content may change prior to final publication. Citation information: DOI 10.1109/MS.2021.3073045, IEEE Software
+
+
+
+
+                                        Listing 5. An example .buildinfo file, recording both the environment and results of building Debian’s
+                                        black package. (Excerpt: see buildinfo.debian.net/sources/black/20.8b1-1 for the full version.)
+
+                                        Source: black
+                                        Version: 20.8b1-1
+                                        Checksums-Sha1:
+                                          9915459ae7a1a5c3efb984d7e5472f7976e996b1 2584 black_20.8b1-1.dsc
+                                          14bfd3011b795f85edbc8cc4dc034a91cfaa9bcd 111096 black_20.8b1-1_all.deb
+                                          69c3d4ae7115c51e7b00befe8b4afd5963601d66 285684 python-black-doc_20.8b1-1_all.deb
+                                        Checksums-Sha256: [...]
+                                        Build-Architecture: amd64
+                                        Installed-Build-Depends: autoconf (= 2.69-11.1), automake (= 1:1.16.2-4), [...],
+                                          gcc (= 4:10.2.0-1), [...], python3 (= 3.8.2-3), [...]
+                                          xz-utils (= 5.2.4-1+b1), zlib1g (= 1:1.2.11.dfsg-2)
+
+
+
+                                        a filesystem with configurable orderings. The R-                                      and environment Y, have built a package with
+                                        B CI system reverses the filesystem ordering                                          checksum K.” Bob would verify that Alice really
+                                        between the builds, revealing any dependency on                                       made this claim, and then compare Alice’s K
+                                        non-deterministic filesystem ordering.                                                against his downloaded file, potentially trusting
+                                                                                                                              Alice’s K over any divergent (and likely mali-
+                                        Recording build information                                                           cious) claim from Eve.
+                                        As per Definition 1, a reproducible build must                                            Debian currently hosts over 20 million
+                                        always use the same original source, toolchain                                        .buildinfo files in a number of experimen-
+                                        and build dependencies, and to ensure these in-                                       tal services. However, centralized distribution
+                                        puts can be replicated correctly, Debian devised                                      schemes inherit many of the issues of the SSL
+                                        the .buildinfo file format.                                                           certificate authority ecosystem, particularly in
+                                             Once a Debian package is built, the precise                                      representing an obvious target to attack [13].
+                                        source version and the versions of all its build                                      Decentralized alternatives remain a future chal-
+                                        dependencies are recorded in a .buildinfo                                             lenge at this point, as does a practical consensus
+                                        file. This file also contain checksums of any                                         mechanism to determine the “valid” checksum for
+                                        generated .deb artifacts, the Debian binary pack-                                     any given package.
+                                        age format. (An example file may be found in
+                                        Listing 5.)                                                                           Root cause analysis
+                                             .buildinfo files are a crucial building                                          As we have outlined, it is trivial to detect mis-
+                                        block for any process wishing to validate repro-                                      matches between builds simply by comparing the
+                                        ducibility. A .buildinfo is produced during                                           checksums of their artifacts. However, it can be
+                                        an initial build and is then used to reconstruct a                                    extremely difficult to understand the root cause
+                                        second build environment. The build is repeated                                       of this difference.
+                                        within this second environment and the check-                                             Therefore, the R-B project developed diffo-
+                                        sums from this latter build are compared with the                                     scope (diffoscope.org), a visual “diff” tool that
+                                        ones in the original .buildinfo—if they do                                            recursively unpacks a large number of archive
+                                        not match, the build is unreproducible or a build                                     formats and translate tens of binary formats into
+                                        host has been tampered with.                                                          human-readable forms. As a result, it can display
+                                             Users can employ .buildinfo files to                                             the meaningful, code-level differences between,
+                                        implement the consensus-driven approach out-                                          for example, two compiled Java .class files,
+                                        lined above, verifying downloaded packages                                            even if they were contained in .tar in a .xz
+                                        by comparing them against the checksums in                                            (in a .deb in a .iso, etc.).
+                                        .buildinfo files distributed by Debian and                                                In most cases, diffoscope indicates which cat-
+                                        other builders. In this scenario, .buildinfo                                          egory of fix is required to make a build re-
+                                        files are cryptographically signed to represent a                                     producible. For instance, when programs embed
+                                        build attestation, e.g. “I, Alice, given source X                                     build dates into their binaries, diffoscope clearly
+
+
+
+                              6                                                                                                                                                             IEEE Software
+
+
+
+    0740-7459 (c) 2021 IEEE. Personal use is permitted, but republication/redistribution requires IEEE permission. See http://www.ieee.org/publications_standards/publications/rights/index.html for more information.
+                        Authorized licensed use limited to: Cornell University Library. Downloaded on May 24,2021 at 07:27:15 UTC from IEEE Xplore. Restrictions apply.
+This article has been accepted for publication in a future issue of this journal, but has not been fully edited. Content may change prior to final publication. Citation information: DOI 10.1109/MS.2021.3073045, IEEE Software
+
+
+
+
+                 Figure 2. diffoscope recursively unpacks archives of many kinds and transforms various binary formats into
+                 more human-readable forms in order to compare them.
+
+
+                 highlights these date-based variations, and the                                       example, some software will fail to build in the
+                 surrounding context tends to assist in identifying                                    future due to hardcoded SSL certificates with
+                 which part of the original source code to fix.                                        expiry dates—these are detected due to the build
+                      An example diffoscope output is shown in Fig-                                    environment’s artificial future clock. Others fail
+                 ure 2, where two versions of the dolfinx-doc                                          to build in rarely-used timezones due to incorrect
+                 package differ. Here, diffoscope indicates that the                                   assumptions about time offsets—the test suite
+                 difference is in CMakeLists.txt, a generated                                          for the Ruby Timecop library failed in this way
+                 file which contains the same entries with a differ-                                   (bugs.debian.org/795663).
+                 ent ordering between the two builds. This would                                           Due to these serendipitous quality
+                 appear to be a filesystem ordering issue, solved                                      improvements,        addressing     reproducibility
+                 by the addition of an explicit sort. However, this                                    issues improves the correctness and robustness
+                 may be a problem affecting all software that uses                                     of the Debian distribution as a whole. However,
+                 CMake, so the issue may be better addressed                                           even less-critical problems can be identified
+                 there; alas, diffoscope cannot entirely replace a                                     through reproducibility testing as well. For
+                 software engineer’s judgement.                                                        example, an issue in the Doxygen documentation
+                 Quality Assurance (QA)                                                                generator (bugs.debian.org/970431) led to broken
+                 Adopting a methodical approach to verify the re-                                      hyperlinks that linked to their build-time location
+                 producibility of builds can be highly complemen-                                      (e.g.        /tmp/build/foo/usage.html)
+                 tary to QA efforts. This is because problems that                                     instead       of      their      run-time      one
+                 affect build reproducibility are often symptoms of                                    (/usr/share/doc/foo/usage.html).
+                 larger, systemic issues.                                                              This was trivial to identify with diffoscope, and
+                     To begin with, systematic reproducibility test-                                   fixing it corrected broken documentation for
+                 ing implies systematic build testing, so will easily                                  hundreds of end-users.
+                 identify software that fail to build under any                                            Reproducibility testing can even flag spuri-
+                 circumstances. Other software will fail to build                                      ous content within documentation. For instance,
+                 only in the extreme environments designed to                                          manual packages generated by executing an un-
+                 test for reproducibility, but will become more                                        derlying program can fail in several ways, of-
+                 robust as a result of behaving well there. For                                        ten printing error messages that are mistak-
+
+
+                 May/June 2021
+                                                                                                                                                                                              7
+    0740-7459 (c) 2021 IEEE. Personal use is permitted, but republication/redistribution requires IEEE permission. See http://www.ieee.org/publications_standards/publications/rights/index.html for more information.
+                        Authorized licensed use limited to: Cornell University Library. Downloaded on May 24,2021 at 07:27:15 UTC from IEEE Xplore. Restrictions apply.
+This article has been accepted for publication in a future issue of this journal, but has not been fully edited. Content may change prior to final publication. Citation information: DOI 10.1109/MS.2021.3073045, IEEE Software
+
+
+
+
+                                                                                                                              This community-oriented approach ensures that
+                                        Listing 6. An example ConfigData.pm. As it was                                        as many users as possible can benefit from the
+                                        created at build time, all users shared the same                                      specific advantages of reproducible builds, as
+                                        OpenIDConsumerSecret.                                                                 well as from the software quality improvements
+                                        {                                                                                     achieved while pursuing that goal.
+                                         ’cgibin’ => ’/usr/lib/cgi-bin/gbrowse’,
+                                         ’conf’ => ’/etc/gbrowse’,
+                                         ’databases’ => ’/var/lib/gbrowse/databases’,                                         THE REPRODUCIBLE BUILDS
+                                         ’htdocs’ => ’/usr/share/gbrowse/htdocs’,                                             ECOSYSTEM
+                                         ’OpenIDConsumerSecret’ => ’639098210478536’,
+                                         ’tmp’ => ’/var/cache/gbrowse’
+                                                                                                                                   Taking Debian to its current state required
+                                        },                                                                                    over seven years of cross-community work that
+                                                                                                                              was spearheaded by the Reproducible Builds
+                                                                                                                              project (reproducible-builds.org), a non-profit or-
+                                        enly shipped as the package’s “documentation”                                         ganisation that aims to increase the integrity of
+                                        (e.g. bugs.debian.org/972635). These bugs are                                         software supply chains by advocating for and
+                                        difficult to detect if the failure does not occur                                     implementing the approach outlined in this paper.
+                                        on a developer’s own machine, but they can be                                              Although originating in Debian around 2014,
+                                        easily spotted whilst testing for reproducibility as                                  many other FOSS projects have joined the ini-
+                                        the error messages are deliberately designed to                                       tiative such as Arch Linux, coreboot, F-Droid,
+                                        appear in different languages.                                                        Fedora, FreeBSD, Guix, NixOS, openSUSE and
+                                            Even security issues can be discovered                                            Qubes. One milestone of this joint effort is
+                                        whilst testing for reproducibility. In one ex-                                        Tails (https://tails.boum.org/), the operating sys-
+                                        ample, the GBrowse biological genome an-                                              tem used by Edward Snowden to securely com-
+                                        notation viewer failed to build reproducibly                                          municate the NSA’s global surveillance activities
+                                        (bugs.debian.org/833885), and diffoscope identi-                                      in 2013 [14]—Tails began releasing reproducible
+                                        fied a configuration file that contained a differ-                                    ISO images in 2017 to improve end-user verifia-
+                                        ent OpenIDConsumerSecret value between                                                bility and security.
+                                        builds (see Listing 6). Although this secret was                                           The Reproducible Builds project has
+                                        being securely generated, it was being created at                                     also developed several tools (reproducible-
+                                        build time, so the same value was distributed to all                                  builds.org/tools) that facilitate various QA
+                                        users of the package—the fix was to generate the                                      processes related to reproducibility. Some of
+                                        secret at installation time so that each deployment                                   these, such as diffoscope and disorderfs, have
+                                        possessed its own unique key. The mechanics                                           been highlighted in this paper.
+                                        of reproducibility testing suggest that this issue                                         Increasing the security of open source soft-
+                                        would not have been readily discovered another                                        ware is clearly a worthwhile goal, and software
+                                        way.                                                                                  professionals and organisations can always pro-
+                                                                                                                              vide assistance. This is not only by addressing
+                                        Community engagement                                                                  any uncontrolled build inputs and sources of
+                                        Although the causes of build unreproducibility                                        non-determinism in the software they maintain,
+                                        often reside within the source code of individual                                     but by working with the Reproducible Builds
+                                        projects, it is far more effective to detect issues                                   project itself in terms of code, donations and other
+                                        via centralized testing in distributions such as                                      traditional forms of community contribution.
+                                        Debian due to the uniform build interfaces these
+                                        large collections provide. Nevertheless, the social                                   CONCLUSION
+                                        norms of the FOSS community dictate that fixes                                            In this article, we have outlined what it means
+                                        should be integrated upstream, instead of remain-                                     for software to build reproducibly and how that
+                                        ing in distribution-specific patch sets.                                              property can be leveraged by end-users to es-
+                                            To this end, the Reproducible Builds project                                      tablish trust in open source executables, even
+                                        has contributed to hundreds of individual FOSS                                        when they are built by untrusted third parties. We
+                                        projects, in addition to working with key                                             also surveyed several causes of unreproducibility
+                                        toolchains such as GCC, Rust, OCaml, etc.                                             and located their causes in build systems and
+
+
+
+                              8                                                                                                                                                             IEEE Software
+
+
+
+    0740-7459 (c) 2021 IEEE. Personal use is permitted, but republication/redistribution requires IEEE permission. See http://www.ieee.org/publications_standards/publications/rights/index.html for more information.
+                        Authorized licensed use limited to: Cornell University Library. Downloaded on May 24,2021 at 07:27:15 UTC from IEEE Xplore. Restrictions apply.
+This article has been accepted for publication in a future issue of this journal, but has not been fully edited. Content may change prior to final publication. Citation information: DOI 10.1109/MS.2021.3073045, IEEE Software
+
+
+
+
+                 similar logic. We also described some of the                                          code.
+                 quality assurance (QA) processes and tools that
+                 can be used to make large open source software                                        ACKNOWLEDGMENTS
+                 collections reproducible—using this model, the                                            The authors would like to thank the Repro-
+                 Debian operating system has achieved 95% re-                                          ducible Builds and the wider Debian community
+                 producibility in over 30 000+ packages.                                               for their feedback on this paper, as well as for
+                     Additional work is still needed to address the                                    their invaluable work on increasing the trustwor-
+                 software that is not yet reproducible. In the case                                    thiness of free and open source software. The
+                 of Debian, there are no insurmountable obstacles                                      authors also thank Giovanni Mascellani for their
+                 preventing the project from reaching 100%—the                                         insightful discussions on bootstrappable builds.
+                 remaining 5% “only” need fixes similar in kind
+                 to those already discussed. However, this has not
+                                                                                                            REFERENCES
+                 yet been achieved, partly because time and effort
+                 are not inexhaustible or fungible resources in vol-                                     1. Ken Thompson. Reflections on trusting trust. Commu-
+                 unteer communities, but also due to regressions                                             nications of the ACM, 27(8):761–763, 1984.
+                 in previously-reproducible packages. Improved                                           2. Peter C. Rigby, Brendan Cleary, Frédéric Painchaud,
+                 awareness and prioritisation of reproducibility                                             Margaret-Anne D. Storey, and Daniel M. Germán. Con-
+                 amongst software developers would reduce the                                                temporary peer review in action: Lessons from open
+                 incidence of such events.                                                                   source development.               IEEE Software, 29(6):56–61,
+                     Other challenges remain for the reproducible                                            2012.
+                 builds ecosystem too. Cryptographically signed                                          3. Joanna Rutkowska and Alexander Tereshkin.                              Evil
+                 artifacts are becoming more common, which can-                                              maid goes after TrueCrypt. The Invisible Things Lab,
+                 not be made reproducible without distributing                                               2009. https://theinvisiblethings.blogspot.com/2009/10/
+                 signing keys to builders. One solution is to adopt                                          evil-maid-goes-after-truecrypt.html.
+                 detached signatures, but the addition of parallel                                       4. Catalin        Cimpanu.                  Third      malware         strain
+                 distribution channels for these (unreproducible)                                            discovered        in    SolarWinds         supply      chain      attack.
+                 files would require extensive changes to existing                                           ZDNet,        2021.               https://www.zdnet.com/article/
+                 software distribution channels.                                                             third-malware-strain-discovered-in-solarwinds-supply-chain-attack/,
+                     The verification of open source software for                                            retrieved 2021-03-01.
+                 mobile devices also remains problematic. With                                           5. Marc Ohm, Henrik Plate, Arnold Sykosch, and Michael
+                 the notable exception of F-Droid, not only are                                              Meier. Backstabber’s knife collection: A review of open
+                 the build processes of the major app stores unre-                                           source software supply chain attacks. In DIMVA 2020:
+                 producible (or not even FOSS), the checksums of                                             The 17th International Conference on Detection of In-
+                 artifacts are hidden from end-users, rendering any                                          trusions and Malware, and Vulnerability Assessment,
+                 distributed validation scheme impossible. Signifi-                                          volume 12223 of Lecture Notes in Computer Science,
+                 cant usability and transparency improvements are                                            pages 23–43. Springer, 2020.
+                 needed to make meaningful progress in this area.                                        6. Yanfang Ye, Tao Li, Donald Adjeroh, and S Sitharama
+                     Finally, we are left with the recursive ques-                                           Iyengar.      A survey on malware detection using data
+                 tion of whether we can trust even reproducible                                              mining techniques. ACM Computing Surveys (CSUR),
+                 binaries without trusting where our compilers                                               50(3):1–40, 2017.
+                 and other toolchain components come from. To                                            7. Edward Amoroso. Recent progress in software security.
+                 address this, the parallel Bootstrappable Builds                                            IEEE Software, 35(2):11–13, 2018.
+                 (bootstrappable.org) project seeks to minimize the                                      8. Thomas Durieux, Claire Le Goues, Michael Hilton, and
+                 amount of binary code required to bootstrap a                                               Rui Abreu. Empirical study of restarted and flaky builds
+                 minimal C compiler—at time of publication, a                                                on Travis CI.          In MSR 2020: The 17th International
+                 binary as small as 6 KB is enough to activate                                               Conference on Mining Software Repositories. IEEE,
+                 a chain of steps from TCC [15] to GCC from                                                  2020.
+                 which almost all toolchains can then be obtained.                                       9. Qingzhou Luo, Farah Hariri, Lamyaa Eloussi, and Darko
+                 Ken Thompson would likely approve, whilst still                                             Marinov.        An empirical analysis of flaky tests.                   In
+                 pointing out that 6 KB is too much untrusted                                                Proceedings of the 22nd ACM SIGSOFT International
+
+
+
+
+                 May/June 2021
+                                                                                                                                                                                              9
+    0740-7459 (c) 2021 IEEE. Personal use is permitted, but republication/redistribution requires IEEE permission. See http://www.ieee.org/publications_standards/publications/rights/index.html for more information.
+                        Authorized licensed use limited to: Cornell University Library. Downloaded on May 24,2021 at 07:27:15 UTC from IEEE Xplore. Restrictions apply.
+This article has been accepted for publication in a future issue of this journal, but has not been fully edited. Content may change prior to final publication. Citation information: DOI 10.1109/MS.2021.3073045, IEEE Software
+
+
+
+
+                                              Symposium on Foundations of Software Engineering,
+                                              pages 643–653, 2014.
+                                        10. Chris Lamb and Ximin Luo. SOURCE DATE EPOCH
+                                              specification.       Technical report, Reproducible Builds
+                                              project, 2017.          https://reproducible-builds.org/specs/
+                                              source-date-epoch/.
+                                        11. Mathias Meyer. Continuous integration and its tools.
+                                              IEEE Software, 31(3):14–16, 2014.
+                                        12. Bharath Kumar Reddy Vangoor, Vasily Tarasov, and
+                                              Erez Zadok. To FUSE or not to FUSE: performance of
+                                              user-space file systems. In 15th USENIX Conference
+                                              on File and Storage Technologies, FAST 2017, pages
+                                              59–72. USENIX Association, 2017.
+                                        13. Ben Laurie. Certificate transparency. Communications
+                                              of the ACM, 57(10):40–46, 2014.
+                                        14. Susan Landau. Making sense from Snowden: What’s
+                                              significant in the NSA surveillance revelations. IEEE
+                                              Secur. Priv., 11(4):54–63, 2013.
+                                        15. Fabrice Bellard. TCC: Tiny C compiler. https://bellard.
+                                              org/tcc/, 2003. Retrieved 2020-10-05.
+
+
+
+
+                          10                                                                                                                                                                IEEE Software
+
+
+
+    0740-7459 (c) 2021 IEEE. Personal use is permitted, but republication/redistribution requires IEEE permission. See http://www.ieee.org/publications_standards/publications/rights/index.html for more information.
+                        Authorized licensed use limited to: Cornell University Library. Downloaded on May 24,2021 at 07:27:15 UTC from IEEE Xplore. Restrictions apply.
+

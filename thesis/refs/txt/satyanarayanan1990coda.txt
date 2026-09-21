@@ -1,0 +1,873 @@
+IEEE TRANSACTIONS ON COMPUTERS, VOL. 39, NO. 4, APRIL 1990                                                                             447
+
+
+          Coda: A Highly Available File System for a
+             Distributed Workstation Environment
+                 MAHADEV SATYANARAYANAN,MEMBER,  IEEE,JAMES J. KISTLER, PUNEET KUMAR,
+                        MARIA E. OKASAKI, ELLEN H. SIEGEL, AND DAVID C. STEERE
+
+
+
+  Abstmct-Coda is a file system for a large-scale distributed   seriously inconvenience many users for time periods ranging
+computing environment composed of Unix workstations. It pro-    from a few minutes to many hours. At least a few such outages
+vides resiliency to server and network failures through the use of
+                                                                occur somewhere in our system every day.
+two distinct but complementary mechanisms. One mechanism,
+                                                                   The Coda File System is a descendant of AFS that is sub-
+server replication, stores copies of a file at multiple servers. The
+other mechanism, disconnected operution, is a mode of execu-    stantially more resilient to failures. The ideal that Coda strives
+tion in which a caching site temporarily assumes the role of    for is constant data availability, allowing a user to continue
+a replication site. Disconnected operation is particularly use- working regardless of failures elsewhere in the system. Our
+ful for supporting portable workstations. The design of Coda    goal is to provide users with the benefits of a shared data
+optimizes for availability and performance, and strives to pro-
+vide the highest degree of consistency attainable in the light  repository, but to allow them to rely entirely on local resources
+of these objectives. Measurements from a prototype show that    when that repository is partially or totally inaccessible.
+the performance cost of providing high availability in Coda is     A related goal of Coda is to gracefully integrate the use
+reasonable.                                                     of AFS with portable computers. At present, users manually
+                                                                copy relevant files from AFS, use the machine while isolated
+   Index Terms- Andrew, availability, caching, disconnected op-
+eration, distributed file system, performance, portable comput- from   the network, and manually copy updated files back to
+ers, scalability, server replication.                           AFS upon reconnection. These users are effectively perform-
+                                                                ing manual caching of files with write-back on reconnection.
+                                                                If one views the disconnection from AFS as a deliberately-
+                          I. INTRODUCTION                       induced failure, it is clear that a mechanism for supporting
+      LOCATION-transparent distributed file system based on portable machines in isolation is also a mechanism for fault
+A    the Unix' file system model is a valuable mechanism for tolerance.
+collaboration between physically dispersed users. This is par-     Although this paper focuses on Coda, the problem of data
+ticularly true in a distributed workstation environment where   availability is not specific to it. Growth in scale and complexity
+the primary activities are education, research, and software inevitably results in more components that can fail, and more
+development. The Andrew File System (AFS) is a highly hardware and software interactions that can manifest them-
+successful realization of such a mechanism for a campus-sized selves as failures. Consequently, the large-scale distributed
+user community [9], [15]. Positive experience with AFS has file systems of the future will have to provide continued ac-
+motivated the recent work on extending it nationwide [17]. cess to data in the face of temporary failures if they are to
+The importance of a shared Unix file system for a distributed remain viable.
+workstation environment is further confirmed by many other         In the rest of this paper, we describe the design and imple-
+efforts in industry and academia [16].                          mentation   of Coda. We motivate our design choices in Section
+   The work described in this paper arose from our extensive 11, present the design in Sections 111-V, and elaborate on the
+experience as implementors and users of AFS over the past key data structures and protocols in Section VI. We describe
+five years. On the one hand, we were pleased with the func- the status and performance of a Coda prototype in Sections
+tionality, performance, and ease of administration of AFS. VI1 and VIII. We conclude with an examination of related
+At the same time we were concerned with its vulnerability to research in Section IX and a summary of the paper in Section
+failures of servers and network components. Such failures can x.
+   Manuscript received July 6, 1989; revised November 19, 1989. This work                                 RATIONALE
+                                                                                                 11. DESIGN
+was supported by National Science Foundation Contract CCR-8657907, De-
+fense Advanced Research Projects Agency (Order 4976, Contract F33615-          Three fundamental factors influenced the design of Coda.
+87-C-1499), the IBM Corporation (Faculty Development Award and Gradu-        These are
+ate Fkllowship), and Digital Equipment Corporation (Equipment Grant). The
+views and conclusions in this document are those of the authors and do not       our desire to produce a highly scalable system
+represent the official policies of the funding agencies or Carnegie Mellon       the range of failures we wished to address
+University.
+   The authors are with the School of Computer Science, Carnegie Mellon          the need to emulate Unix file semantics.
+University, Pittsburgh, PA 15213.
+  IEEE Log Number 8933887.                                                   In the course of our design, we discovered that the constraints
+  ' Unix is a trademark of AT&T.                                             imposed by these factors often conflicted with each other. The
+
+                                              0018-9340/90/0400-07$01.OO 0 1990 IEEE
+ 448                                                                                IEEE TRANSACTIONS ON COMPUTERS, VOL. 39, NO. 4, APRIL 1990
+
+ current design of Coda is therefore a compromise that, in our                    Clients dynamically map files to servers and cache this
+ judgment, best suits our usage environment.                                      information.
+                                                                                  It uses token-based authentication and end-to-end encryp-
+                                                                                  tion integrated with its communication mechanism [ 131.
+ A . Scalability
+    A scalable distributed system is one that can easily cope                B . Range of Failures
+ with the addition of users and sites. Growth has economic,                      To achieve our goal of continued client operation in the face
+ performance, and administrative consequences. Our goal was                   of failures, we had two strategies available to us. The first was
+ to build a system whose growth would incur as little expense,                to use replication across servers to render the shared storage
+ performance degradation, and administrative complexity as                    repository more reliable. The second was to make each client
+ possible. Since this goal was also the major focus of Coda’s                 capable of fully autonomous operation if the repository failed.
+ ancestor, AFS, we tried to preserve much of its design.                      Each of these strategies improves availability, but neither is
+    In AFS, a small set of trusted servers jointly provide a stor-            adequate alone.
+ age repository shared by a much larger number of untrusted                     Enhancing the availability of the shared storage repository
+ clients. To maximize client-server ratio, most load is borne by              increases the availability of all shared data. It protects against
+ clients. Only functions essential to integrity or security are per-          individual server failures and some network failures. Unfor-
+ formed by servers. Caching is the key to scalability in AFS.                 tunately, it does not help if all servers fail, or if all of them
+ The operating system on each client intercepts open and close                are inaccessible due to a total partition of the client. A spe-
+ file system calls2 and forwards them to a cache-management                  cial case of the latter is the use of a portable computer when
+ process called Venus. After a file is opened, read and write                detached from the network.
+ operations on it bypass Venus. Venus contacts a server only                    Making each client fully autonomous is infeasible. The disk
+ on a cache miss on open, or on a close after modification. In               storage capacity of a client is a small fraction of the total
+ both cases, the file is transferred in its entirety. Cache coher-           shared data. This strategy is also inconsistent with our model
+ ence is maintained by a callback mechanism, whereby servers                 of treating each client’s disk merely as a cache. It represents
+ notify workstations of changes to cached files. Clients dynam-              a return to the model of isolated personal computers rather
+ ically determine the location of files on servers and cache this            than a collection of workstations sharing a file system. The
+ information.                                                                advantages of mobility, and the ability of any user to use any
+    The highly dynamic nature of AFS enhances its scalabil-                  workstation as his own, are lost. Yet temporary autonomy
+ ity. There are very few static bindings that require atomic,                seems acceptable for brief periods of time, on the order of
+ systemwide updates for AbS to function correctly. A work-                   minutes or hours, while a user is active at a client.
+ station with a small disk can potentially access any file in AFS
+                                                                                In the light of these considerations we decided to use a
+ by name. One can move to any other workstation and effort-
+                                                                             combination of the two strategies to cover a broad range of
+ lessly access one’s files from there. Adding a new workstation
+                                                                             failures. Coda uses server replication, or the storing of copies
+ merely involves connecting it to the network and assigning
+                                                                             of files at multiple servers, to provide a shared storage repos-
+ it an address. Workstations can be turned off or physically
+                                                                             itory of higher availability than AFS. A client relies on server
+ relocated at any time without fear of inconveniencing other
+                                                                             replication as long as it remains in contact with at least one
+users. Only a small operational staff is required to monitor
+                                                                             server. When no server can be contacted, the client resorts
+and service the relatively few AFS servers. Backup is needed
+                                                                             to disconnected operation, a mode of execution in which the
+only on the servers, since workstation disks are merely used
+                                                                             client relies solely on cached data. We regard involuntary dis-
+as caches. Files can be easily moved between servers during
+                                                                             connected operation as a measure of last resort and revert to
+normal operation without inconveniencing users.
+                                                                            normal operation at the earliest opportunity. A portable client
+    Coda retains many of the features of AFS that contribute
+                                                                            that is isolated from the network is effectively operating dis-
+to its scalability and security:
+                                                                            connected.
+                                                                                Our need to handle network failures meant that we had
+       It uses the model of a few trusted servers and many un-
+                                                                            to address the difficult issue of consistency guarantees across
+       trusted clients.
+                                                                            partitions. In the terminology of Davidson et al. [3], we had to
+       Clients cache entire files on their local disks. From the
+                                                                            decide whether to use a pessimistic replication strategy, pro-
+       perspective of Coda, whole-file transfer also offers a de-
+                                                                            viding strict consistency, or an optimistic strategy, providing
+       gree of intrinsic resiliency. Once a file is cached and open
+                                                                            higher availability. The former class of strategies avoids up-
+       at a client, it is immune to server and network failures.
+                                                                            date conflicts by restricting modifications to at most one par-
+       Caching on local disks is also consistent with our goal of
+                                                                            tition. The latter allows updates in every partition, but detects
+       supporting portable machines.
+                                                                            and resolves conflicting updates after they occur.
+       Cache coherence is maintained by the use of callbacks.
+       But, as described later in the paper, the maintenance of                 We chose to use an optimistic strategy for three reasons.
+                                                                            First, and most important, such an approach provides higher
+       callbacks is more complex in Coda than in AFS.
+                                                                            availability. Second, we saw no clean way of supporting
+   *Directories are also cached on clients, but modifications to them are   portable workstations using a pessimistic strategy. Third, it
+immediately propagated to servers. For ease of exposition we confine our    is widely believed that write sharing between users is rel-
+discussion to files in this section.                                        atively infrequent in academic Unix environments. Conse-
+SATYANARAYANAN et al.: CODA: A HIGHLY AVAILABLE FILE SYSTEM                                                                                      449
+
+quently, conflicting updates are likely to be rare. We guar-           close success updated(F, S)
+antee detection and confinement of these conflicts, and try to         close failure failure(S)
+do this as soon after their occurrence as possible.
+                                                                          2) AFS-2 Semantics: The second lesson we learned was
+   The specific replication strategy we chose is an adapta-
+                                                                       that the slightly weaker currency guarantees provided by the
+tion of that originally proposed by Locus [19]. Coda ver-
+                                                                       callback mechanism of the revised AFS design (AFS-2) were
+sion vectors (CVV’s), similar in concept but distinct in de-
+                                                                       acceptable. A callback is established as a side effect of file
+tail from version vectors described by Parker et al. [lo], are
+                                                                       fetch or cache validation. It is a guarantee by a server that
+used to detect write-write conflicts on individual files. We
+                                                                       it will notify the client on the first modification of the file
+did not choose the more powerful optimistic strategy pro-
+                                                                       by any other client. If this notification happens, the server is
+posed by Davidson [ 2 ] , even though it is capable of detecting
+                                                                       said to have broken the c a l l b a ~ kOnce
+                                                                                                              . ~ broken, the callback
+read- write conflicts across multiple files. We were concerned
+                                                                       has to be reestablished by the client. But, as a result of a
+with the complexity of the latter strategy and questioned its
+                                                                       network failure, a server’s attempt to break a callback may
+value in a Unix environment where multifile transactional
+                                                                       not be noticed by a client. We refer to such an event as a lost
+guarantees are absent. We also felt that inconsistencies due
+                                                                       callback. Because of a lost callback, a client may continue to
+to conflicting updates should be brought to the attention of
+                                                                       use a cached copy of a file for up to r seconds after the file
+users rather than being rolled back by the system.
+                                                                       was updated elsewhere. r is a parameter of the system, and
+   To summarize, Coda enhances availability both by the repli-
+                                                                       is typically on the order of a few minutes.
+cation of files across servers, as well as by the ability of clients
+                                                                          We can characterize the currency guarantees of AFS with
+to operate entirely out of their caches. Both mechanisms de-
+                                                                       callbacks by extending our notation. latest(F, S, t) now de-
+pend upon an optimistic strategy for detection of update con-
+                                                                       notes the fact that the current value of F at C is the same as
+flicts in the presence of network partitions. Although these
+                                                                       that at S at some instant in the last t seconds. In particular,
+mechanisms are complementary, they can be used indepen-
+                                                                       latest(F, S , 0) means F is currently identical at C and S . If
+dently of each other. For example, a Coda installation might
+                                                                       we indicate the loss of a callback from S to C during the
+choose to exploit the benefits of disconnected operation with-
+                                                                       last t seconds by lostcallback(S, t), and the presence of F in
+out incurring the CPU and disk storage overhead of server
+                                                                       C‘s cache prior to the current operation by incache(F), the
+replication.
+                                                                       resulting currency guarantees can be stated thus:
+C . Unix Emulation                                                     open success latest(F, S , 0) v
+                                                                                          (latest(F, S , r )
+    Our ideal is to make Coda appear to be a giant, failure-proof
+                                                                                           A lostcallback(S, r ) A incache(F))
+ shared Unix file system. Unfortunately, realizing this ideal          all others      as for AFS-l
+ requires strict adherence to one-copy Unix semantics. This
+ implies that every modification to every byte of a file has to           3,        Semantics: In Coda, the sing1e Server is re-
+ be immediately and permanently visible to every client. Such          placed by a set of servers         s.
+                                                                                                        c maintains the subset s of                 s
+ a requirement is obviously in conflict with our goals of scala-       that it was able to contact on the most recent remote oper-
+ bility and availability. we have therefore relaxed the accuracy       ation. S is reevaluated at least once every r seconds. When
+                                                                       S is empty, C is operating disconnected. The intuitive cur-
+with which we emulate Unix semantics, and have settled for
+                                                                       rency guarantee offered by a successful Coda open is that it
+an approximation that can be implemented in a scalable and
+                                                                       yields the most recent copy of F among the set of currently
+available manner. We have drawn upon two lessons from AFS
+to develop this approximation, and believe that it will                accessible servers. If no server is accessible, the cached copy
+the vast majority of users and applications in our environment.        of F is used. A successful close indicates that the file has
+    1) AFS-1 Semantics: The first lesson was that propagat-            been propagated to the set Of                        servers, Or
+ing changes at the granularity of file opens and closes was            that no server is available and the file has been marked for
+adequate for virtually all applications in our environment. The        propagation at the
+initial prototype of AFS (AFS-l) revalidated cached files on              The use of callbacks and an optimistic replication scheme
+each open, and propagated modified files when they were                weakens these intuitive currency guarantees. A more precise
+closed. A successful open implied that the resulting copy of           statement Of the guarantees can be made        further extension
+the file was the latest in the system.                                 of our notation. latest(F, 3 , t) now denotes the fact that the
+    we can precisely state the currency guarantees offered by          current value of F at C was the latest across all servers in S at
+this model by considering a client        operating on a file          some instant in the last t seconds. It also denotes the fact that
+whose custodian is Server S . Let latest(F, S ) denote the fact        there were no conflicts among the copies Of at that instant.
+that the current value of F at c is the Same as that at S . Let        lostcallback(S, t ) now means that a callback from some mem-
+failure(S) denote failure of the current operation by C on S ,         ber Of to’      was lost in the last
+                                                                              that the current            at    was successfully prop-
+                                                                                                                                      ‘)
+and u@ated(F, S ) denote a successful propagation of c‘s
+copy of F to s. Then the currency guarantees provided by               agated to      members Of s.                 s>meanS that the
+open and close operations at can be expressed as follows~              values of F at S are currently in conflict. Using this notation,
+
+open success latest(F, S)                                                   Unfortunately the terminology is a little confusing. As used in the AFS
+                                                                       literature, “callback” IS a noun rather than a verb, and is an abbreviation for
+open failure failure(S)                                                “callback promise.”
+450                                                                            IEEE TRANSACTIONS ON COMPUTERS, VOL. 39, NO. 4, APRIL 1990
+
+
+the currency guarantees offered by Coda operations can be                  its members have stale replicas. As a side effect, a callback
+expressed as follows:                                                      is established with the preferred server.
+                                                                              When a file is closed after modification it is transferred
+   open success ( S # 0 A (latest(F,S , 0 ) V (latest(F,3 , 7 ) in parallel to all members of the AVSG. This approach is
+                               A lostcallback(S, 7) A incache(F)))) simple to implement and maximizes the probability that every
+                        V ( S = 0 A incache(F))                            replication site has current data at all times. Server CPU load
+   open failure            ( S # 0 A conflict(F, 3))                       is minimized because the burden of data propagation is on the
+                        V ( S = 0 A lincache(F))                           client rather than the server. This in turn improves scalability,
+   close success           (3; # 0 A updated(F, 3 ) )                      since the server CPU is the bottleneck in many distributed file
+                        v ( S = 0).                                        systems.
+   close failure           ( S # 0 A conflict(F, S ) )                        Since our replication scheme is optimistic, we have to check
+                                                                           for conflicts on each server operation. We also require that
+Although we believe that the currency guarantees of Coda server modifications be made in a manner that will enable
+are adequate for a typical academic or research environment, future conflicts to be detected. These issues are further dis-
+they may be too weak for some applications. Databases are cussed in Section VI, which describes the data structures and
+a class of applications that we specifically do not attempt to protocols used in server replication.
+support in Coda. Our view is that a database for a large-scale                At present, a server performs no explicit remote actions
+distributed environment should be implemented as a separate upon recovery from a crash. Rather, it depends upon clients to
+system rather than being built on top of a distributed file notify it of stale or conflicting data. Although this lazy strategy
+system.                                                                    does not violate our currency guarantees, it does increase the
+                                                                           chances of a future conflict. A better approach, which we plan
+                        111. SERVER   REPLICATION                          to adopt in the future, is for a recovering server to contact
+   The unit of replication in Coda is a volume, a set of files other servers to bring itself up to date.
+and directories located on one server and forming a partial
+                                                                           B . Cache Coherence
+subtree of the shared name space.4 Each file and directory in
+Coda has a unique low-level file identifier (FID), a compo-                   The Coda currency guarantees stated in Section 11-C require
+nent of which identifies the parent volume. All replicas of an that a client recognize three kinds of events no later than 7
+object have the same FID.                                                  seconds after their occurrence:
+   The set of servers with replicas of a volume constitute its                   enlargement of an AVSG (implying accessibility of a pre-
+volume storage group (VSG). The degree of replication and                        viously inaccessible server)
+the identity of the replication sites are specified when a volume                shrinking of an AVSG (implying inaccessibility of a pre-
+is created and are stored in a volume replication database                       viously accessible server)
+that is present at every server. Although these parameters can                   a lost callback event.
+be changed later, we do not anticipate such changes to be
+frequent. For every volume from which it has cached data, Venus detects enlargement of an AVSG by trying to con-
+Venus (the client cache manager) keeps track of the subset of tact missing members of the VSG once every 7 seconds. If
+the VSG that is currently accessible. This subset is called the an AVSG enlarges, cached objects from the volume may no
+accessible volume storage group (AVSG). Different clients longer be the latest copy in the new AVSG. Hence, the client
+may have different AVSG’s for the same volume at a given drops callbacks on these objects. The next reference to any of
+instant. In the notation of Section 11-C3, the VSG and AVSG these objects will cause the enlarged AVSG to be contacted
+correspond to S and S , respectively.                                      and a newer copy to be fetched (if one exists).
+                                                                              Venus detects shrinking of an AVSG by probing its members
+A . Strategy                                                               once every 7 seconds. Shrinking is detected earlier if a normal
+                                                                           operation on the AVSG fails. If the shrinking is caused by
+   The replication strategy we use is a variant of the read-one,
+                                                                           loss of the preferred server, Venus drops its callbacks from
+write-all approach. When servicing a cache miss, a client ob- it. Otherwise, they remain valid. It is important to note that
+tains data from one member of its AVSG called the preferred
+                                                                           Venus only probes those servers from which it has cached
+server. The preferred server can be chosen at random or on data; it does not probe other servers, nor does it ever probe
+the basis of performance criteria such as physical proximity, other clients. This fact, combined with the relative infrequency
+server load, or server CPU power. Although data are trans-
+                                                                           of probes (7 being ten minutes in our current implementation),
+ferred only from one server, the other servers are contacted by
+                                                                           ensures that probes are not an obstacle to the scalability of the
+the client to verify that the preferred server does indeed have
+                                                                           system.
+the latest copy of the data. If this is not the case, the member
+                                                                              If Venus were to place callbacks at all members of its
+of the AVSG with the latest copy is made the preferred site,
+                                                                           AVSG, the probe to detect AVSG shrinking would also de-
+the data are refetched, and the AVSG is notified that some of
+                                                                           tect lost callback events. Since maintaining callback state at
+                                                                           all servers is expensive, Venus only maintains a callback at
+    Coda also supports nonreplicated volumes and volumes with read-only
+replicas, a feature inherited from AFS. We restrict our discussion here to the preferred server. The probe to the preferred server de-
+volumes with read-write replicas.                                          tects lost callback events from it.
+SATYANARAYANAN et al.: CODA: A HIGHLY AVAILABLE FILE SYSTEM                                                                            45 1
+
+   But maintaining callbacks only at one server introduces a        Coda therefore allows a user to specify a prioritized list
+new problem. The preferred server for one client need not of files and directories that Venus should strive to retain in
+necessarily be in the AVSG of another ~ l i e n t .Hence,
+                                                      ~       an the cache. Objects of the highest priority level are sticky and
+update of an object by the second client may not cause a must be retained at all times. As long as the local disk is large
+callback for the object at the first client to be broken.        enough to accommodate all sticky files and directories, the
+   To detect updates missed by its preferred server, each probe user is assured that he can always access them. Since it is often
+by Venus requests the volume version vector (volume CVV) difficult to know exactly what file references are generated
+for every volume from which it has cached data. A volume by a certain set of high-level user actions, Coda provides the
+CVV is similar to a file or directory CVV, but summarizes ability for a user to bracket a sequence of high-level actions
+update information on the entire volume. It is updated as a and for Venus to note the file references generated during
+side-effect of every operation that modifies the volume. A these actions.
+mismatch in the volume CVV's indicates that some AVSG
+members missed an update. Although the missed update may B . Reintegration
+not have been to an object in the cache, Venus conservatively
+                                                                    When disconnected operation ends, a process of reinte-
+drops it callbacks on all objects from the volume.
+                                                                 gration begins. For each cached file or directory that has
+C. Parallel Communication                                        been created, deleted, or modified during disconnected op-
+                                                                 eration, Venus executes a sequence of update operations to
+   Because of server replication, each remote operation in
+                                                                 make AVSG replicas identical to the cached copy. Reintegra-
+Coda typically requires multiple sites to be contacted. If this
+                                                                 tion proceeds top-down, from the root of each cached volume
+were done serially, latency would be degraded intolerably.
+                                                                 to its leaves.
+Venus therefore communicates with replication sites in paral-
+                                                                    Update operations during reintegration may fail for one
+lel, using the MultiRPC parallel remote procedure call mech-
+                                                                 of two reasons. First, there may be no authentication tokens
+anism [ 141. The original version of MultiRPC provided logical
+                                                                 which Venus can use to securely communicate with AVSG
+parallelism but did not use multicast capability at the media
+                                                                 members. Second, inconsistencies may be detected due to up-
+level. Since we were particularly concerned about the latency
+                                                                 dates to AVSG replicas. Given our model of servers rather
+and network load caused by shipping large files to multiple
+                                                                 than clients being dependable storage repositories, we felt that
+sites, we have extended MultiRPC to use hardware multicast.
+                                                                 the proper approach to handling these situations was to find
+But we view multicast as an optimization rather than a funda-
+                                                                 a temporary home on servers for the data in question and to
+mental requirement, and Coda retains the ability to use non-
+                                                                 rely on a user to resolve the problem later.
+multicast MultiRPC.
+                                                                    The temporary repository is realized as a covolume for ev-
+                 IV. DISCONNECTED    OPERATION                   ery replica of every volume in Coda. Covolumes are similar
+                                                                 in spirit to lost +found directories in Unix. Having a covol-
+   Disconnected operation begins at a client when no member ume per replica allows us to reintegrate as soon as any VSG
+of a VSG is accessible. Clients view it as a temporary state and site becomes available. The storage overhead of this approach
+revert to normal operation at the earliest opportunity. A client is usually small, since a covolume is almost always empty.
+may be operating disconnected with respect to some volumes,
+but not others. Disconnected operation is transparent to a user
+unless a cache miss occurs. Return to normal operation is also C . Voluntary Disconnection
+transparent, unless a conflict is detected.                                      Disconnected operation can also occur voluntarily, when
+                                                                              a client is deliberately disconnected from the network. This
+A . Cache Misses                                                              might happen, for instance, when a user takes a portable ma-
+   In normal operation, a cache miss is transparent to the user,              chine with him on his travels. With a large disk cache the
+                                                                              user can operate isolated from Coda servers for an extended
+and only imposes a performance penalty. But in disconnected
+operation a miss impedes computation until normal operation                   period of time. The file name space he sees is unchanged,
+is resumed or until the user aborts the corresponding file sys-               but he has to be careful to restrict his references to cached
+tem call. Consequently it is important to avoid cache misses                  files and directories. From time to time, he may reconnect his
+                                                                              client to the network, thereby propagating his modifications
+during disconnected operation.
+   During brief failures, the normal LRU caching policy of                    to Coda servers.
+Venus may be adequate to avoid cache misses to a disconnected                    By providing the ability to move seamlessly between zones
+volume. This is most likely to be true if a user is editing                   of normal and disconnected operation, Coda may be able to
+or programming and has been engaged in this activity long                     simplify the use of cordless network technologies such as cel-
+                                                                              lular telephone, packet radio, or infrared communication in
+enough to fill his cache with relevant flles. But it is unlikely
+                                                                              distributed file systems. Although such technologies provide
+that a client could operate disconnected for an extended period
+                                                                              client mobility, they often have intrinsic limitations such as
+of time without generating references to files that are not in
+                                                                              short range, inability to operate inside buildings with steel
+the cache.
+                                                                              frames, or line-of-sight constraints. These shortcomings are
+    This can happen, for example, due to nontransitivity of network cornmu.   reduced in significance if clients are capable of autonomous
+nication.                                                                     operation.
+452                                                                       IEEE TRANSACTIONS ON COMPUTERS, VOL. 39, NO. 4, APRIL 1990
+
+
+                   V. CONFLICT
+                             RESOLUTION                              The latest storeid (LSID)in the update history of a replica
+                                                                  can be used to characterize its state relative to another replica.
+   When a conflict is detected, Coda first attempts to resolve it
+automatically. Since Unix files are untyped byte streams there Two replicas,
+                                                                                 A and B, are said to be equal if their LSID’s are
+                                                                  identical. Equality represents a situation where the most recent
+is, in general, no information to automate their resolution. Di-
+rectories, on the other hand, are objects whose semantics are update to both replicas was the same. If B’s LSID is distinct
+                                                                  from A’s LSID but is present in A’s history, the replica at A
+completely known. Consequently, their resolution can some-
+times be automated. If automated resolution is not possible,      is said to dominate the replica at B . This situation may also
+Coda marks all accessible replicas of the object inconsistent. be described by saying B is submissive to A . In this situation,
+This ensures damage containment since normal operations on both sites have received a common update at some point in
+these replicas will fail. A user will have to manually resolve the past, but the submissive site has received no updates there-
+the problem using a repair tool.                                  after. The replicas are said to be inconsistent if neither A’s
+                                                                  LSID nor B’s LSID is present in the other’s update history.
+A . Automated Resolution                                          Inconsistency represents a situation where updates were made
+                                                                  to a replica by a client that was ignorant of updates made to
+   The semantics of a Coda directory is that it is a list of
+ (name,FZD) pairs with two modification operations, create another replica.
+                                                                     In the case of files, a submissive replica directly corre-
+and delete, that can act on the list. Status modifications, such
+as protection changes, can also be made on the directory. The     sponds   to our intuitive notion of stale data. Hence, Coda al-
+                                                                  ways provides access to the dominant replica of a file among a
+resolution procedure for Coda directories is similar to that of
+                                                                  set of accessible replicas. An inconsistency among file repli-
+Locus [6], [ 191. There are three classes of conflicts involving
+                                                                  cas arises from genuine update conflicts. In such a situation,
+directories that are not amenable to automated resolution. One
+class, updatelupdate conflict, is exemplified by protection Coda immediately marks all accessible replicas in a manner
+                                                                  that causes normal operations on them to fail.
+modifications to partitioned replicas of a directory. The second
+                                                                     The situation is more complex in the case of directories,
+class, removelupdate conflict, involves updating an object
+                                                                  because the update history of a directory does not capture ac-
+in one partition and removing it in another. The third class,
+namelname conflict, arises when new objects with identical tivity in its children. Consequently, update histories can only
+                                                                  be used conservatively in characterizing the states of direc-
+names are created in partitioned replicas of a directory. All
+other directory conflicts can be automatically resolved by a      tory  replicas. Replicas whose update histories are equal are
+                                                                  indeed identical, but replicas with unequal update histories are
+compensating sequence of create or delete operations.
+                                                                  potentially in conflict.
+B . Repair Tool
+   The Coda repair tool allows users to manually resolve con-        B. State ReDresentation
+flicts. It uses a special interface to Venus so that file requests
+                                                                     Since it would be impractical to maintain the entire update
+from the tool are distinguishable from normal file requests.
+                                                                  history of a replica, Coda maintains an approximation to it.
+This enables the tool to overwrite inconsistent files and to per-
+                                                                  The approximation consists of the current length of the update
+form directory operations on inconsistent directories, subject
+                                                                  history and its LSID. The LSID is composed of an identifier
+to normal access restrictions. To assist the user, each replica
+                                                                  unique to each client, concatenated with a monotonically in-
+of an inconsistent object is made available in read-only form.
+                                                                  creasing integer.6 A replication site also maintains an estimate
+Since these read-only copies are not themselves inconsistent,
+                                                                  of the length of the update history of every other replica. A
+normal Unix applications such as editors may be used to ex-
+                                                                  vector containing these length estimates constitutes the CVV at
+amine them.
+                                                                  this site. An estimate is always conservative. In other words,
+                   VI. REPLICA  MANAGEMENT                        a site may fail to notice an update made to a replica, but it
+                                                                  will never erroneously assume that the replica was updated.
+   We now examine replica management at the next level of
+                                                                  A site’s estimate of updates to itself will be accurate as long
+detail, focusing on the data structures and protocols used in
+                                                                  it has the ability to make local modifications in a manner that
+server replication. We begin with an abstract characterization
+                                                                  is atomic and permanent.
+of replica states in Section VI-A, and then describe an ap-
+                                                                     Coda compares the states of replicas using their LSID’s
+proximation that can be efficiently realized in Section VI-B.
+                                                                  and CVV’s. When two replicas, A and B , are compared the
+This approximation is conservative, in that it may occasion-
+                                                                  outcome is constrained to be one of four possibilities:
+ally indicate a conflict where none exists but will never fail to
+                                                                        strong equality, where LSIDA is identical to LSIDB, and
+detect a genuine conflict. Finally, we describe the protocols
+                                                                  CVVA is identical to CVVB.
+that modify replicas in Section VI-C.
+                                                                         weak equality, where LSIDA is identical to LSIDB, but
+A . State Characterization                                        CVVA and CVVB are not identical.
+   Each modification on a Server can be conceptually tagged             dominancelsubmission, where LSIDA is different from
+with a unique storeid by the client performing the operation. LSIDe, and every element of CVVA is greater than or equal
+If a server were to maintain a chronological sequence of the to the corresponding                      Of CVVB (Or vice versa)*
+
+storeids Of an Object?it        possess the entire update his-      6 In our implementation these entities are the Ip address of a
+tory of the object at that server.                                and a logical timestamp.
+SATYANARAYANAN et al.: CODA: A HIGHLY AVAILABLE FILE SYSTEM                                                                      45 3
+
+     inconsistency, where LSIDA is different from LSIDB,            CVV that is identical to the client’s except for one additional
+and some elements of CVV, are greater than, but other ele-          update at this server.
+ments are less than, the corresponding elements of CVVS.               The client examines the replies from the first phase and
+   Strong equality corresponds to a situation where a client        distributes a final CVV. The latter is identical to the CVV of
+successfully updates A and B , and each replica is certain of       the first phase except that it indicates one additional update
+the other’s update. Weak equality arises when the update suc-        at each responding server. Servers that receive this informa-
+ceeds at both sites, but this fact is not known to both replicas.   tion replace their tentative CVV’s by the final CVV. At an
+Together, strong and weak equality correspond to the notion of       AVSG site that crashed or was partitioned between the first
+replica equality defined in terms of update histories in Section    and second phases, the tentative CVV remains unchanged.
+VI-A. The pairwise comparisons defined here can be easily               Since update is frequent, it is important to optimize its per-
+generalized to set comparisons.                                      formance. The total number of messages and latency are re-
+                                                                    duced by communicating with AVSG members in parallel.
+C . State Transformation                                            Latency is further reduced by having Venus return control to
+   There are four classes of operations in Coda that can change     the user at the end of the first phase. Server throughput is in-
+the state of a server replica:                                      creased by the use of batching and piggybacking in the second
+      update extends the update history by a new, hitherto          phase.
+unused, storeid                                                         2) Force: A force operation is a server-to-server interac-
+     force logically replays those updates made to a dominant       tion, with a client playing no part except to set in motion a
+site that are missing from a submissive one                         sequence of events that leads to the force. For example, a
+      repair resembles update, but is used to return a set of       force operation may occur as a result of Venus notifying its
+replicas previously marked inconsistent to normal use.              AVSG that it has detected an inequality during a file fetch. It
+      migrate saves copies of objects involved in unsuccess-        may also occur when the system determines that a directory
+ful updates resulting from disconnected operation for future        conflict can be resolved by a sequence of forces. Force oper-
+repair.                                                             ations may also arise on server crash recovery, when a server
+   We describe the details of these classes of operations in the    brings itself up to date.
+following sections. When we refer to file or directory status           A force of a file merely consists of atomically copying its
+in these sections, we include the CVV and LSID.                     data and status from the dominant to the submissive site. But
+   I) Update: Update is, by far, the most frequent class of         a force of a directory is more complex. The ideal operation
+mutating operation. Every common client-server interaction          would be one that rendered the subtrees rooted at the directory
+that involves modification of data or status at the server falls    replicas identical. The subtrees would be exclusively locked
+into this class. Examples include file store, file and directory    for the entire duration of the force, and all changes would
+creation and deletion, protection change, and link creation.        be atomic. Unfortunately this is impractical, especially if the
+In updates to existing objects, the protocol consists of two        subtrees in question are deep. Consequently, our approach is
+phases, with the client acting as initiator and coordinator. In     to lock, and atomically apply changes, a directory at a time.
+the first phase, each AVSG site checks the LSID and CVV                 This approach does not violate our ability to detect genuine
+presented by the client. If the check succeeds, the site performs   conflicts for two reasons. First, directories only contain infor-
+the requested semantic action such as the transfer of data in       mation about immediate descendants. Second, when creating
+the case of a file store. In the second phase, each AVSG site       an entry for a new object, we first make it point to a runt
+records the client’s view of which sites executed the previous      replica which has a CVV that will always be submissive. A
+phase successfully. In updates where a new object has to be         failure to the forcing server could occur after the creation, but
+created, these two phases are preceded by a phase where a           before the force, of the runt. But any subsequent attempt to
+new FID is allocated by the preferred server.                       access the runt would result in detection of inequality.
+   The check at an AVSG site in the first phase succeeds for           3) Repair and Migrate: Both repair and migrate are rel-
+files if the cached and server copies are equal or if the cached    atively rare operations. A repair operation is used to fix in-
+copy dominates. Cached-copy dominance is acceptable for             consistency and proceeds in two phases, similar to an update.
+files since an update for a submissive site is logically equiv-     A migrate operation is used to place an object in conflict at
+alent to a force that brings its replica into equality followed     the end of disconnected operation in a covolume on a server.
+by the actual update. Since new file data merely overwrite          The server replica is marked inconsistent, and accesses to the
+existing data, we omit the force. For directories, the check        object will fail until it is repaired.
+succeeds only when the two copies are equal. An unsuccess-
+ful check of either type of object by any AVSG site causes the                       VII. IMPLEMENTATION
+                                                                                                    STATUS
+client to pause the operation and invoke the resolution sub-           Our goal in implementing Coda is to explore its overall
+system at the AVSG. If the resolution subsystem is able to          feasibility and to obtain feedback on its design. The proto-
+automatically fix the problem, the client restarts the paused       type implementation runs on IBM RT’s, and is functional in
+operation. Otherwise the operation is aborted and an error          most respects. One can sit down at a Coda client and ex-
+is returned to the user. A successful check causes the server       ecute Unix applications without recompilation or relinking.
+to atomically perform the semantic action, and to commit a          Execution continues transparently when contact is lost with
+new LSID (sent by the client in the first phase) and a tentative    a server due to a crash or network failure. In the absence
+454                                                                             IEEE TRANSACTIONS ON COMPUTERS, VOL. 39, NO. 4, APRIL 1990
+
+
+of failures, using a Coda client feels no different from using          three times, with careful experimental control. In no case was
+an AFS client. The primary areas where our implementation               the variance in any measured quantity more than a few percent
+is incomplete are conflict resolution, the implementation of            of the corresponding mean.
+sticky files, and certain aspects of reintegration. We expect to           Our reference point is Coda replicated at three servers
+complete these shortly.                                                 with Ethernet multicast enabled, a ramdisk at each server
+   We use the Camelot transaction facility [ 181 to obtain atom-        for the Camelot log, and a warm cache.7 This configura-
+icity and permanence of server operations. Our use of Camelot           tion is labeled “Coda:3” in the graphs. For comparison,
+is restricted to single-site, top-level transactions. We do not         we also ran experiments on the same hardware and oper-
+use nested or distributed transactions in our implementation.           ating system with Coda replicated at two and one servers
+To reduce the latency caused by synchronous writes to the               (“Coda:2” and “Coda: 1,” respectively), with Coda non-
+Camelot log, we have built a battery-backed ramdisk for each            replicated (“Coda:NoRep”), with the current release of AFS
+of our servers.                                                         (“AFS”), and with the local Unix file system of a client
+   To test the resiliency of the system we have built an emu-           (“Unix”).
+lator that induces controlled and repeatable failures in Coda.
+It consists of an interactive front-end that runs on a single           B . Effect of Server Replication
+machine, and emulation routines that are invoked by the com-                In the absence of failures, we would like Coda’s perfor-
+munication package at every Venus and file server.                       mance to be minimally affected by its high availability mecha-
+                                                                         nisms. Server replication is the primary source of performance
+                 VIII. PERFORMANCE EVALUATION                            degradation, since it involves a more complex protocol as well
+   In this section, we present measurements that reflect on              as data transfer to multiple sites. Camelot is another potential
+the design and implementation of the Coda prototype. Our                 source of performance degradation.
+discussion focuses on four questions:                                       Fig. 1 shows the effect of server replication. Without repli-
+                                                                        cation, Coda takes 2 1% longer than the local Unix file system
+      What is the effect of server replication?                         to run the benchmark. This is essentially the same as that of
+      How does Coda behave under load?                                  the current production version of AFS. With replication at
+      How important is multicast?                                       one, two, and three servers Coda takes 22%, 26%, and 27%
+      How useful is a ramdisk for logging?                              longer than Unix.
+We have spent little effort until now on tuning the low-level               As Table I shows, the Copy phase of the benchmark is most
+aspects of our implementation. It is likely that a refined im-          affected by replication since it benefits least from caching. On
+plementation will show noticeable performance improvement.              a nonreplicated Coda volume, this phase takes 73% longer
+This should be kept in mind in interpreting the results reported        than on Unix. On a volume replicated at one, two, and three
+here.                                                                    servers it takes 91%, 109%, and 118% longer. For compari-
+                                                                        son, AFS takes 82% longer. Table I also shows that the Scan-
+A . Methodology and Configuration                                       Dir phase is noticeably longer in Coda than in AFS. This is
+   Our evaluation is based on the Andrew benchmark [7],                 because the Coda cache manager is a user process, while the
+which operates on a collection of files constituting the source         AFS cache manager is inside the kernel. Consequently, Coda
+code of a Unix application. An instance of the benchmark gen-           incurs additional overhead in translating a pathname, even if
+erates as much network and server load as five typical AFS              valid cached copies of all components of the pathname are
+users. We use the term load to refer to the number of clients           cached.
+simultaneously running this benchmark.
+   The input to the benchmark is a subtree of 70 files to-
+                                                                  C . Behavior under Load
+talling 200 kbytes in size. There are five distinct phases in the   How does Coda perform when multiple workstations use it
+benchmark: MakeDir, which constructs a target subtree that simultaneously? Fig. 2 and Table I1 show the total elapsed time
+is identical in structure to the source subtree; Copy, which of the benchmark as a function of load. As load is increased
+copies every file from the source subtree to the target sub- from 1 to 10, the time for the benchmark increases from 100%
+tree; ScanDir, which recursively traverses the target subtree to 170%. As mentioned earlier, one load unit roughly corre-
+and examines the status of every file in it; ReadAll, which sponds to five typical AFS users. In contrast, the benchmark
+scans every byte of every file in the target subtree twice; and time for AFS only increases from 100% to 116% as load is
+Make, which compiles and links all the files in the target increased from 1 to 10.
+subtree. The ScanDir and ReadAll phases reap the most ben-          Server CPU utilization is the primary contributor to the
+efit from caching, and hence show the least variation in our difference in behavior between Coda and AFS under load.
+experiments.                                                      Three factors contribute to increased server CPU utilization
+   The clients and servers used in our experiments were in Coda. The first factor is, of course, the overhead due to
+IBM RT/APC’s with 12 megabytes of main memory and 70 replication. The second is our use of Camelot. The third is
+megabyte disks, running the Mach operating system, and com- the lack of tuning of the Coda implementation.
+municating on an Ethernet with no intervening routers. Each
+server had an additional 400 megabyte disk on which Coda           ’Our measurements show that the main effect of a cold cache is to lengthen
+volumes were stored. Each experiment was repeated at least the time of the Copy phase by 23% at a load of one.
+SATYANARAYANAN et ai.: CODA: A HIGHLY AVAILABLE FILE SYSTEM                                                                               455
+
+
+
+
+                                                    Unlx       AFS   Coda: non-rep Coda: 1   Coda: 2    Coda: 3
+                                       Fig. 1 . Effect of replication on elapsed time. This graph shows the total
+                                         elapsed time of the Andrew benchmark at a load of one as a function of
+                                         varying the degree of server replication. It also compares Coda to AFS
+                                         and Unix. These data are presented in more detail in Table I.
+
+                                                                      TABLE I
+                                                                OF REPLICATION
+                                                           EFFECT           ON ELAPSED
+                                                                                     TIME
+
+
+
+                         Coda: 2
+                         Coda: 1
+                         Coda: NoRep
+                         AFS
+                         UNX
+
+                           This table presents the elapsed time of the phases of the mdrew benchmark for a variety of
+                        configurations. Each time reported is in seconds, and is the mean of iree trials. Numbers in parentheses are
+                        standard deviations.
+
+   Fig. 3 shows the relative contributions of each of these fac-               server CPU utilization by these amounts in these configura-
+tors. It presents the total number of server CPU seconds used                  tions. The correlation coefficient is greater than 0.99 in each
+in the benchmark as a function of load for four different con-                 case, indicating that a linear model is indeed an excellent fit
+figurations. The overhead due to replication is the difference                 over this range of load.
+between the curves labeled “Coda:3” and “Coda: NoRep.”
+The overhead due to Camelot is the difference between the
+curves labeled “Coda: NoRep” and “Coda: NoCam.” The                            D.Effect of Multicast
+latter curve corresponds to the configuration “Coda: NoRep”                       Early in our design we debated the importance of multi-
+in which we substituted a dummy transactional virtual memory                   cast, perceiving both advantages and disadvantages in its use.
+package for Camelot. The dummy had an interface identical to                   To quantify the contribution due to multicast we repeated the
+Camelot but incurred zero overhead on every Camelot oper-                      load experiment with multicast turned off. Clients and servers
+ation other than transaction commit. For the latter operation,                 communicated via the nonmulticast version of MultiRPC for
+the dummy performed a write system call with an amount of                      this experiment.
+data corresponding to the average amount of data logged dur-                      Multicast is beneficial in two ways. It reduces the latency
+ing a Camelot transaction in Coda.* The curve thus indicates                   of storing large files, and it reduces network load. Since the
+the expected performance of Coda for nonreplicated data if a                   Andrew benchmark does not involve very large files, we did
+low-overhead transactional system were to be used in lieu of                   not observe a substantial improvement in latency due to mul-
+Camelot. The overhead due to lack of tuning in Coda is the                     ticast. But we did observe substantial reduction in network
+difference between the curves labeled “Coda: NoCam” and                        load. Fig. 4 shows the total number of bytes transmitted as
+“AFS.”                                                                         a function of load during the running of the benchmark. AS
+   Linear regression fits for the four configurations indicate                 one would expect for a replication factor of 3, multicast re-
+slopes of 36.7, 28.5, 21.7, and 18.0 s per load unit, re-                      duces the number of bytes transmitted by about two-thirds.
+spectively. In other words, each additional load unit increases                Fig. 5 shows the corresponding number of packets transmit-
+   Although a Unix write is only synchronous with the copying of data to
+                                                                               ted. The improvement due to multicast is less dramatic than
+a kernel buffer, the comparison is fair because the Camelot log was on a       in Fig. 4 because many small nonmulticast control packets are
+ramdisk for our experiments.                                                   transmitted as part of the multicast file transfer protocol.
+456                                                                                              IEEE TRANSACTIONS ON COMPUTERS, VOL. 39, NO. 4, APRIL 1990
+
+
+
+
+                          100
+
+
+
+
+                                                                TABLE I1
+                                                             OF LOAD
+                                                        EFFECT      ON ELAPSED
+                                                                             TIME
+        Configuration               Load Unie                                                                                                 Make                      Total
+       coda: 3
+                                                                                                                                            248 (5)                    386 ( 5 )
+                                                                                                                                            251 (6)                    391 (4)
+                                                                                                                                            267 (5)                    414 ( 5 )
+                                                                                                                                            278 (8)                    460 (7)
+                                                                                                                                            313 (4)                    529 (3)
+                                                                                                                                            369 (9)                    657 (8)
+
+       AFS
+                                                                                                                                            242 (4)                    369 (7)
+                                                                                                                                            243 (1)                    369 (1)
+                                                                                                                                            247 (1)                    379 (2)
+                                                                                                                                            251 (2)                    382 (2)
+                                                                                                                                            259 (0)                    399(1)
+                                                                                                                                            275 (2)                    429 (3)
+         This table compares the running time of the phases of the Andrew benchmark for Coda replicated at three
+      servers to AFS. Each time reported is in seconds, and is the mean of three trials. Numbers in parentheses are
+      standard deviations.
+
+                 3 500
+                 U
+
+                 B
+                 t
+                 2 4oo ..........................                   ’   ..........................   ............................   ...........................
+                 E
+
+
+
+
+                         0                          2      4        6                                8                              10                            12
+                                                                                                                                             Load Units
+
+                         Fig. 3. Effect of load on server CPU utilization. This graph shows to-
+                           tal number of server CPU seconds used as a function of load in run-
+                           ning the benchmark. The configuration corresponding to the curve labeled
+                           “Coda:NoCam” is described in the text of Section VIII-C.
+SATYANARAYANAN et al.: CODA: A HIGHLY AVAILABLE FILE SYSTEM                                                                           457
+
+
+
+
+                                         0           2              4           6           8          10            12
+                                                                                                            Load Unlts
+                                              Fig. 4. Effect of Multicast on bytes transmitted.
+
+
+
+
+                                 50000   -
+                                 40000   -
+                                 30000 -
+                                 20000 -
+
+
+
+
+                                     0           2              4           6           8             10            12
+                                                                                                           Load Units
+                                             Fig 5       Effect of Multicast on packets transrmtted
+
+E . Contribution of Ramdisk                                                to replica management and have therefore had little influence
+  The function of the ramdisk is to reduce the cost of log                 on Coda.
+forces in Camelot, thereby reducing the latency of update op-                 The exception is Locus, originally developed as a research
+erations. Since the MakeDir and Copy phases of the bench-                  prototype at UCLA and now marketed by Locus Computing
+mark involve the most updates, their combined running time is              Corporation. There are significant differences in the research
+an indicator of the contribution of the ramdisk. We measured               and commercial versions of Locus. Most importantly, opti-
+these times for two configurations: one in which Camelot uses              mistic replication is only used in the research version of Lo-
+a raw disk partition for a log, and the other where it uses a              cus. A less ambitious primary-site replication scheme is used
+ramdisk. The data show that it takes 58 s in the former case               in the commercial version. In the rest of this section, the term
+and 53 s in the latter, a reduction of about 9%.                           “Locus” specifically refers to the research version.
+                      IX. RELATED
+                                WORK                                       Coda uses three ideas from Locus:
+   The system most closely related to Coda is undoubtedly its          the view that optimistic replication is acceptable in a Unix
+ancestor, AFS. Coda strives to preserve the virtues of AFS             environment
+while significantly enhancing its availability. The specific de-       the use of version vectors for detecting conflicts
+sign decisions inherited from AFS have been described in               the use of Unix directory semantics to partially automate
+Section 11-A.                                                          resolution.
+   Data availability has been the topic of many research efforts
+in the last decade. A few of these have been experimental But there are major differences between the two systems, the
+projects to provide high availability in distributed file systems. most significant of which are the following.
+Examples of such projects include Violet [4], [5], RNFS [8]
+(based on ISIS [l]), Saguaro [12], and Locus [19], [ l l ] . All        Scalability and security are fundamental goals in Coda,
+of these, with one exception, have used a pessimistic approach          but not in Locus.
+458                                                                          IEEE TRANSACTIONS ON COMPUTERS, VOL. 39, NO. 4, APRIL 1990
+
+      Only Coda explicitly addresses the use of portable com-         optimistic replication schemes that remains open is whether
+      puters.                                                         users will indeed be willing to tolerate occasional conflicts
+      Coda is based on the client-server model, while Locus           in return for higher availability. Only actual experience will
+      assumes a peer model.                                           provide the answer to this.
+      Coda integrates the use of two different mechanisms,
+      whole-file caching and replication, while Locus relies                                   ACKNOWLEDGMENT
+      solely on replication.
+      Coda clients directly update server replicas in parallel. A       We thank E. Cooper and L. Mummert for their useful com-
+      Locus usage site updates a single replication site which        ments on this paper, M. Benarrosh and K. Ginther-Webster
+      then notifies other replication sites. The latter sites asyn-   for finding many elusive Locus documents, the members of
+      chronously update themselves from the first replication         the Camelot group for helping us use their system, and the
+      site.                                                           AFS group for providing us with the software base on which
+      Coda provides an approximation to Unix semantics. Lo-           we have built Coda.
+      cus provides an exact emulation of Unix semantics that
+      is less scalable and considerably more complex to imple-                                     REFERENCES
+      ment.                                                                K. P. Birman and T. A. Joseph, “Reliable communication in the pres-
+                                                                           ence of failures,” ACM Trans. Comput. Syst., vol. 5 , no. 1, Feb.
+   The differences between Coda and Locus can be traced                    1987.
+to their fundamentally different views of distributed comput-              S. B. Davidson, “Optimism and consistency in partitioned distributed
+                                                                           database systems,” ACM Trans. Database Syst., vol. 9, no. 3, Sept.
+ing systems. Locus was designed in the early 1980’s, prior                 1984.
+to the advent of workstations, when distributed systems typi-              S. B. Davidson, H. Garcia-Molina, and D. Skeen, “Consistency in
+cally consisted of a few sites. Coda, in contrast, is specifically         partitioned networks,” ACM Comput. Surveys, vol. 17, no. 3, Sept.
+                                                                           1985.
+designed for distributed workstation environments which are                D. K. Gifford, “Violet, An experimental decentralized system,” Tech.
+already one to two orders of magnitude larger in scale. This               Rep. CSL-79-12, Xerox Corp., Palo Alto Research Center, Sept. 1979.
+difference in scale is the origin of virtually every design dif-           D. K. Gifford, “Weighted voting for replicated data,” Tech. Rep.
+                                                                           CSL-79-14, Xerox Corp., Palo Alto Research Center, Sept. 1979.
+ference between Coda and Locus.                                            R. G. Guy, 11, “A replicated filesystem design for a distributed Unix
+   Coda uses a highly dynamic mechanism, caching, to reduce                system,” Master Thesis, Dep. Comput. Sci., Univ. of California, Los
+network and server load, to support user mobility, and to en-              Angeles, CA, 1987.
+                                                                           J. H.Howard, M. L. Kazar, S. G. Menees, D. A. Nichols, M. Satya-
+able the addition and removal of clients at will. The more static          narayanan, R. N. Sidebotham, and M. J. West, “Scale and perfor-
+mechanism, replication, is only used among the far fewer                   mance in a distributed file system,” ACM Trans. Comput. Syst.,
+number of servers. Clients only have to keep track of the                  vol. 6, no. 1, Feb. 1988.
+                                                                           K. Marzullo and F. Schmuck, “Supplying high availability with a stan-
+accessibility of servers, not of other clients. Updating server            dard network file system,” in Proc. 8th Int. Conf. Distributed Com-
+replicas directly by clients reduces total server CPU load, the           put. Syst., San Jose, CA, June, 1988.
+resource most widely reported to be the performance bottle-                J. H. Morris, M . Satyanarayanan, M. H. Conner, J. H. Howard, D.
+                                                                           S. Rosenthal, and F. D. Smith, “Andrew: A distributed personal com-
+neck in large-scale distributed file systems. In contrast, we do           puting environment,” Commun. ACM, vol. 29, no. 3, Mar. 1986.
+not see how the strategies of Locus can be easily adapted for              D. S. Parker, Jr., G. J. Popek, G. Rudisin, A. Stoughton, B. J. Walker,
+use in a large-scale distributed environment.                              E. Walton, J. M. Chow, D. Edwards, S . Kiser, and C. Kline, “De-
+                                                                           tection of mutual inconsistency in distributed systems,” IEEE Trans.
+  A performance comparison between Coda and Locus would                    Software Eng., vol. SE-9, no. 3, May 1983.
+be valuable in understanding the merits of the two systems.                G. J. Popek and B. J. Walker, The LOCUS Distributed System Ar-
+But in spite of the voluminous literature on Locus, there is no            chitecture. Cambridge, MA: MIT Press, 1985.
+                                                                           T. Purdin, “Enhancing file availability in distributed systems (The
+quantitative assessment of the performance implications of its             Saguaro file system),” Ph.D. dissertation, University of Arizona,
+high availability mechanisms.                                               1987.
+                                                                           M. Satyanarayanan, “Integrating security in a large distributed sys-
+                         X. CONCLUSION                                     tem,” ACM Trans. Comput. Syst., vol. 7, no. 3, Aug. 1989.
+                                                                           M. Satyanarayanan and E. H. Siegel, “Parallel communication in a
+                                                                          large distributed environment,” IEEE Trans. Comput., vol. 39, pp.
+   Our goal in building Coda is to develop a distributed file             328-348, Mar. 1990.
+system that retains the positive characteristics of AFS while             M. Satyanarayanan, J. H. Howard, D. N. Nichols, R. N. Sidebotham,
+providing substantially better availability. In this paper, we            A. Z. Spector, and M. J. West, “The ITC distributed file system:
+                                                                          Principles and design,” in Proc. IOth ACM Symp. Oper. Syst. Prin-
+have shown how these goals have been achieved through the                 ciples, Orcas Island, Dec. 1985.
+use of two complementary mechanisms, server replication and               M. Satyanarayanan, “A survey of distributed file systems,” in Annu.
+disconnected operation. We have also shown how discon-                    Rev. Comput. Sci., J. F. Traub, B. Grosz, B. Lampson, N. J. Nils-
+                                                                          son, Eds., Annual Reviews, Inc., 1989. Also available as Tech. Rep.
+nected operation can be used to support portable workstations.            CMU-CS-89-116, Dep. Comput. Sci., Carnegie-Mellon Univ., Feb.
+   Although Coda is far from maturity, our initial experience             1989.
+with it reflects favorably on its design. Performance measure-            A. Z. Spector and M. L. Kazar, “Wide area file service and the AFS
+                                                                          experimental system,” Unix Rev., vol. 7, no. 3, Mar. 1989.
+ments from the Coda prototype are promising, although they                A. Z. Spector and K. R. Swedlow, Ed., The Guide to the
+also reveal areas where further improvement is possible. We               Camelot Distributed Transaction Facility: Release I , 0.98(5 1) edi-
+believe that a well-tuned version of Coda will indeed meet its            tion, Carnegie Mellon Univ., 1988.
+                                                                          B. Walker, G. Popek, R. English, C. Kline, and G. Thiel, “The LO-
+goal of providing high availability without serious loss of per-          CUS distributed operating system,” in Proc. 9th ACM Symp. Oper.
+formance, scalability, or security. A general question about              Syst. Principles, Bretton Woods, Oct. 1983.
+SATYANARAYANAN et al.: CODA: A HIGHLY AVAILABLE FILE SYSTEM                                                                                              459
+
+Mahadev Satyanarayanan (S’80-M‘83) for a photograph and biography, see                                     Maria E. Okasaki received the B.S. degree in
+the March 1990 issue of this TRANSACTIOM,
+                                       p. 348.                                                             mathematics (with a computer science option) from
+                                                                                                           Harvey Mudd College, Claremont, CA, in 1988.
+                                                                                                              She is currently a graduate student in computer
+                          James J . Kistler received the B.S. degree in busi-                              science at Carnegie Mellon University. Her research
+                          ness administration from the University of Califor-                              interests include distributed systems, simulation,
+                          nia, Berkeley, in 1982, and the Diploma in Com-                                  and performance evaluation.
+                          puter Science from the University of Cambridge,                                     Ms. Okasaki is a member of Sigma Xi.
+                          England, in 1985.
+                             He is currently working toward the Ph.D. degree
+                          in computer science at Carnegie Mellon University.
+                          He has been a member of the Coda project since
+                          its inception in 1987. His research interests are in
+                          distributed and parallel computing.                      Ellen H. Siege1 for a photograph and biography, see the March 1990 issue
+                             Mr. Kistler is a member of the IEEE Computer          of this TRANSACTIONS,p. 348.
+Society and the Associaltion for Computing Machinery.
+
+
+                          Puneet Kumar received the Bachelor’s degree in                                   David C. Steere received the B.S. degree in com-
+                          computer science from Cornel1 University. Ithaca,                                puter science from Worcester Polytechnic Institute,
+                          NY                                                                               Worcester, MA, in 1988.
+                             He is currently a student in the Ph D program at                                 He is currently pursuing a Ph.D. in computer sci-
+                          the School of Computer Science. Cdrnegie Mellon                                  ence at Carnegie Mellon University. His research
+                          University His research interests are distributed file                           interests include distributed systems, communica-
+                          systems and transaction systems He 15 interested                                 tions, performance modeling, operating systems,
+                          in both the theory and implementdtion of these sys-                              and portable workstations.
+                          tems                                                                                Mr. Steere is a member of the Association for
+                                                                                                           Computing Machinery, Tau Beta Pi, and Upsilon
+                                                                                                           Pi Epsilon.
+
