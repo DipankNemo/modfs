@@ -190,6 +190,95 @@ def t_fresh_monolithic_is_not_flagged(tmp):
     check('CONTROL', 'R3-2 calibration range still published',
           '% HIGH' in md_text, True)
 
+
+# ============================================================== R3-3  FIXED
+T1_HEAD = ['combination', 'n', 'modules', 'verdict', 'exit', 'errors',
+           'warnings', 'benign_overlap', 'version_skew', 'declared_conflict',
+           'file_collision', 'file_collision_suppressed', 'identity_collision',
+           'module_relation', 'base_drift', 'not_composable']
+
+def write_t1(path, mods, maxn):
+    """A tier-1 sweep over `mods` covering set sizes 2..maxn."""
+    import itertools
+    with io.open(path, 'w', newline='', encoding='utf-8') as fh:
+        w = csv.writer(fh)
+        w.writerow(T1_HEAD)
+        for n in range(2, maxn + 1):
+            for c in itertools.combinations(mods, n):
+                d = dict.fromkeys(T1_HEAD, '0')
+                d['combination'] = '-'.join(c); d['n'] = str(n)
+                d['modules'] = ' '.join(c)
+                rej = 'a' in c and 'b' in c
+                d['verdict'] = 'REJECT' if rej else 'ACCEPT'
+                d['exit'] = '1' if rej else '0'
+                d['version_skew'] = '1' if rej else '0'
+                w.writerow([d[k] for k in T1_HEAD])
+
+def _t1_case(tmp, full_maxn, newer_maxn):
+    """Two schema-matching sweeps: an OLDER one to `full_maxn`, and a NEWER one
+    to `newer_maxn`. The generator picks the newest."""
+    mods = ['a', 'b', 'c', 'd']
+    root = newroot(tmp, [('base', 1 << 20)] + [(m, 1 << 18) for m in mods])
+    logs = os.path.join(root, 'logs')
+    old = os.path.join(logs, 'combinations-full.csv')
+    new = os.path.join(logs, 'combinations.csv')
+    write_t1(old, mods, full_maxn)
+    write_t1(new, mods, newer_maxn)
+    os.utime(old, (1600000000, 1600000000))          # decisively older
+    out = tempfile.mkdtemp(dir=tmp)
+    rc, log = generate(root, out)
+    md_text = io.open(os.path.join(out, 'tier1.md'), encoding='utf-8').read()
+    return rc, log, readcsv(out, 'tier1-totals.csv'), md_text
+
+def t_partial_resweep_is_flagged(tmp):
+    """R3-3 FIXED -- the tier-1 source is the NEWEST file carrying the current
+    schema, and the only coverage guard compares MODULE NAMES. A later
+    `09_run_combinations.sh --max-n 2` re-run covers every module and every
+    column and is missing every triple. It wins on mtime, the caption reads
+    clean because the module set is complete, and every triple leaves the
+    evidence in silence -- taking T1.4, the arithmetic cross-check that is the
+    integrity argument for higher N, with them.
+
+    This was not hypothetical. `/srv/modfs/logs` holds BOTH files right now:
+    `combinations-gpu-full.csv` (10,660 rows, N=2 and 3, 40 modules,
+    09-19 01:10:29) and `combinations.csv` (780 rows, N=2 ONLY, 40 modules,
+    09-19 01:02:45). The complete one wins by EIGHT MINUTES of mtime, and
+    because both cover all 40 modules no name-based check can tell them apart.
+    A `touch`, a restore from backup, or one fast `--max-n 2` re-run would have
+    deleted "9880 triples, ACCEPT 7807 / REJECT 2073" from the thesis with no
+    number visibly changing.
+
+    This is the V7/V2 shape: a coverage check comparing NAME SETS cannot see
+    that half the measurement is gone. The fix compares what was MEASURED.
+    """
+    rc, log, totals, md_text = _t1_case(tmp, full_maxn=3, newer_maxn=2)
+    check('FIXED', 'R3-3 generator exits 0', rc, 0)
+    check('FIXED', 'R3-3 only pairs were published',
+          [r[0] for r in totals[1:]], ['2'])
+    check('FIXED', 'R3-3 operator note raised',
+          'TIER-1 SET-SIZE COVERAGE' in log, True)
+    check('FIXED', 'R3-3 warning block in the table',
+          'SET-SIZE COVERAGE WARNING' in md_text, True)
+    check('FIXED', 'R3-3 warning names the richer sweep',
+          'combinations-full.csv' in md_text, True)
+    check('FIXED', 'R3-3 warning names the missing set size',
+          'also measures N=3' in md_text, True)
+
+def t_complete_newest_sweep_is_not_flagged(tmp):
+    """R3-3 CONTROL -- when the newest sweep IS the most complete one, which is
+    the situation on the real artefacts today, nothing must be reported. This
+    is the case the real `/srv/modfs/logs` is in, and a false alarm here would
+    send someone into a re-run of 10,660 combinations for nothing.
+    """
+    rc, log, totals, md_text = _t1_case(tmp, full_maxn=2, newer_maxn=3)
+    check('CONTROL', 'R3-3 generator exits 0', rc, 0)
+    check('CONTROL', 'R3-3 pairs and triples published',
+          [r[0] for r in totals[1:]], ['2', '3'])
+    check('CONTROL', 'R3-3 no operator note',
+          'TIER-1 SET-SIZE COVERAGE' in log, False)
+    check('CONTROL', 'R3-3 no warning block',
+          'SET-SIZE COVERAGE WARNING' in md_text, False)
+
 # =================================================================== driver
 def main():
     tmp = tempfile.mkdtemp(prefix='round3-evidence-')
@@ -199,6 +288,9 @@ def main():
         print('R3-2  staleness of the monolithic baselines in storage S2')
         t_stale_monolithic_is_flagged(tmp)
         t_fresh_monolithic_is_not_flagged(tmp)
+        print('R3-3  set-size coverage of the tier-1 sweep')
+        t_partial_resweep_is_flagged(tmp)
+        t_complete_newest_sweep_is_not_flagged(tmp)
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
     print()

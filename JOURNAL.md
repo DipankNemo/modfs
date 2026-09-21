@@ -5834,3 +5834,73 @@ rebuilding before the Evaluation chapter can claim the model is calibrated:
 
 (Check each package list against `specs/modules.yaml` before running; the
 module name and its requested packages are not always the same string.)
+
+### R3-3 — the tier-1 source is chosen by mtime, and the coverage guard compares names
+
+`pick_tier1()` is careful about one thing and blind to its sibling. It selects
+the tier-1 sweep **by schema** rather than by name, and its docstring explains
+exactly why:
+
+> Selecting by schema rather than by name is what keeps an older file with
+> fewer columns (`combinations-all.csv` has no `module_relation`) from being
+> silently read as if its zeros meant 'none found'.
+
+That reasoning is right, and it stops one file short. Among the files that pass
+the schema test the winner is simply the newest by mtime. The only coverage
+guard downstream is the caption, which compares the **module names** in the
+source against the catalogue and flags a shortfall.
+
+So consider a later `./scripts/09_run_combinations.sh --max-n 2` — a fast
+pairs-only re-run, 780 combinations instead of 10,660, and an entirely ordinary
+thing to do while iterating. It carries the current schema. It covers every
+module. It is newer. It wins. And the caption reads perfectly clean, because
+every module *is* present: what is missing is not a module but a **set size**.
+
+The consequence: `tier1-totals.csv` loses its `n=3` row, `tier1-classes.csv`
+loses its triples, `tier1-crosscheck.csv` and `tier1-nonmonotone.csv` are
+computed over an empty set of triples and report vacuously, and *nothing says
+so*. "9880 triples, ACCEPT 7807 / REJECT 2073" leaves the Evaluation chapter
+without a single published number visibly changing — and T1.4, the arithmetic
+cross-check that every higher-N rejection is explained by a rejecting pair
+inside it, is the integrity argument for the whole higher-N claim.
+
+**This is not hypothetical, and the margin is eight minutes.** `/srv/modfs/logs`
+holds both files right now:
+
+| file | rows | set sizes | modules | mtime |
+|---|---:|---|---:|---|
+| `combinations-gpu-full.csv` | 10,660 | **2, 3** | 40 | 09-19 01:10:29 |
+| `combinations.csv` | 780 | **2 only** | 40 | 09-19 01:02:45 |
+| `t1.csv` | 666 | 2 only | 37 | 09-16 15:39:09 |
+
+The complete sweep wins by **eight minutes**. Both cover all 40 modules, so no
+name-based check can separate them — `t1.csv` is caught only because it happens
+to predate two modules. A `touch`, a restore from backup, a copy that did not
+preserve mtimes, or one more `--max-n 2` run, and the thesis silently publishes
+the 780-row file.
+
+The shape is the one this project keeps finding: **a coverage check comparing
+name sets cannot see that half the measurement is gone.** V7 compared directory
+entry names and missed a 1 MB file replaced by a 5-byte symlink. V2 compared
+package name sets and missed five version skews. This compares module name sets
+and misses 9,880 triples. Three instances, one mistake.
+
+Fixed by comparing what was **measured** rather than what was named. The
+generator now parses every schema-matching candidate, and if one covering at
+least the same modules measures a set size the chosen file does not, it raises
+an operator note and puts a **SET-SIZE COVERAGE WARNING** block at the top of
+`tier1.md` naming the richer sweep, its row count and the set sizes that are
+missing. The `omods >= mods_seen` guard keeps an older, smaller catalogue — the
+`t1.csv` case — from being recommended, since the caption already handles that.
+
+The selection rule itself is left alone. Newest-by-mtime is the right default
+for staleness, and silently preferring a bigger file would trade this defect for
+its mirror image: an old complete sweep quietly outranking a fresh one. The fix
+makes the choice *loud and auditable* rather than making it cleverer.
+
+`tests/round3_evidence.py::R3-3` builds two schema-matching sweeps, backdates
+the complete one, and asserts the warning fires and names the right file and set
+size. The **CONTROL** case inverts the mtimes so the newest sweep is also the
+most complete — the situation on the real artefacts today — and asserts that
+nothing is reported. On the real evidence the fix is silent and
+`tier1-totals.csv` still reads 780 / 9880; verified by regenerating.

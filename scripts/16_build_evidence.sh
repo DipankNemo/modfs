@@ -318,6 +318,60 @@ def build_tier1():
     missing = [m for m in mods_seen if m not in ART]
     absent = [m for m in DELTAS if m not in mods_seen]
 
+    # A SET-SIZE coverage check, not just a module coverage check.
+    #
+    # pick_tier1() takes the NEWEST file carrying the current schema, and the
+    # caption flags a source that covers fewer MODULES than the catalogue. That
+    # pair of guards cannot see the case that matters most here: a later
+    # `--max-n 2` re-run covers every module and every column, and is simply
+    # missing every triple. It wins on mtime, the caption reads clean because
+    # the module set is complete, and 9880 triples leave the thesis in silence
+    # -- taking T1.4, the arithmetic cross-check, with them.
+    #
+    # This is the V7/V2 shape: a coverage check comparing NAME SETS cannot see
+    # that half the measurement is absent. So compare what was MEASURED.
+    ns_best = {int(r['n']) for r in rows if str(r.get('n', '')).isdigit()}
+    richer = []
+    for cand in cands:
+        if os.path.samefile(cand, src):
+            continue
+        try:
+            orows = list(csv.DictReader(open(cand, encoding='utf-8')))
+        except Exception:
+            continue
+        ons = {int(r['n']) for r in orows if str(r.get('n', '')).isdigit()}
+        omods = {m for r in orows for m in r['modules'].split()}
+        extra = sorted(ons - ns_best)
+        # Only a candidate covering AT LEAST the same modules is a real
+        # alternative; an older, smaller catalogue is already caught by the
+        # caption and must not be recommended here.
+        if extra and omods >= set(mods_seen):
+            richer.append((cand, extra, len(orows)))
+    if richer:
+        detail = '; '.join(
+            '`%s` (%d rows, also measures N=%s)'
+            % (os.path.basename(c), nr, ', '.join(str(x) for x in ex))
+            for c, ex, nr in richer)
+        NOTES.append(
+            'TIER-1 SET-SIZE COVERAGE -- the chosen sweep `%s` measures only '
+            'N=%s, while an older sweep covering the same modules measures '
+            'more: %s. The newest file won on mtime; it is not the most '
+            'complete one.'
+            % (os.path.basename(src), ', '.join(str(x) for x in sorted(ns_best)),
+               detail))
+        body.append(
+            '> **SET-SIZE COVERAGE WARNING.** This table is built from `%s`, '
+            'which measures only **N=%s**. Another sweep on disk covering the '
+            'same %d modules measures set sizes this one does not: %s. The '
+            'source is chosen as the NEWEST file with the current schema, so a '
+            'later partial re-run (`--max-n`) silently replaces a complete one '
+            'and every set size it omits disappears from the evidence without '
+            'a number changing. Re-run stage 09 over the full range, or point '
+            'this table at the complete sweep, before reading anything below '
+            'as the tier-1 result.\n\n'
+            % (os.path.basename(src), ', '.join(str(x) for x in sorted(ns_best)),
+               len(mods_seen), detail))
+
     # ---- T1.1 totals by N
     ns = sorted({int(r['n']) for r in rows})
     verdicts = sorted({r['verdict'] for r in rows})
