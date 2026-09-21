@@ -21,6 +21,9 @@ because tier 3 barely depends on N while tier 2 grows with it).
 | 2 | compose for real and verify V1–V8 (`10_compose_sweep.sh`) | compose 175.2 + 30.55 ms × N; verify 161.3 + 41.8 ms × N |
 | 3 | pack a UEFI image and boot under QEMU (`11_boot_test.sh`) | 183–331 s, median 199 s |
 
+Every command, in order, from an empty machine to regenerated thesis tables:
+**`docs/RUNBOOK.md`**.
+
 Nine conflict classes are catalogued in `ARCHITECTURE.md` §4. Two of them —
 runtime resource conflict and opaque directory erasure — were found by running
 the system rather than by reasoning about it.
