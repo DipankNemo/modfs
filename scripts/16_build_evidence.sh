@@ -839,6 +839,7 @@ def build_storage():
     nosq = sorted(n for n, v in DELTAS.items() if not v['bytes'])
     source(name, os.path.join(MOD_DIR, 'base.sqsh'), 'base artefact', CAT_NOW)
 
+    EMPTY_COHORTS = []
     unknown = LARGE - set(names)
     if unknown:
         NOTES.append('declared large but not built: %s' % ', '.join(sorted(unknown)))
@@ -868,9 +869,19 @@ def build_storage():
     def cohort(label, ns):
         d = sum(sz(n) for n in ns); N = len(ns)
         stored = B + d; model = N * B + d
+        if not N:
+            # An EMPTY cohort has no ratio. The old guards (`if stored`,
+            # `if N`) stopped the ZeroDivisionError and then formatted the
+            # fallback zero as a measurement, so a cohort with no members
+            # published `0.00x` -- a claim that the monolithic baseline costs
+            # nothing. Guarding against a crash is not the same as guarding
+            # against a meaningless number, and this script's own header
+            # promises it "never prints a number it cannot name a file for".
+            EMPTY_COHORTS.append(label)
+            return [label, 0, '%.1f' % (B / W), '—', '—', '—']
         return [label, N, '%.1f' % (stored / W), '%.1f' % (model / W),
                 '%.2f×' % (model / stored if stored else 0),
-                '%.1f' % (d / N / W if N else 0)]
+                '%.1f' % (d / N / W)]
     small = [n for n in names if n not in LARGE]
     large = [n for n in names if n in LARGE]
     t = [cohort('small adversarial', small), cohort('large realistic', large),
@@ -1084,6 +1095,15 @@ def build_storage():
         body.append('\n> **Declared in the large cohort but not built:** %s. '
                     'Pending; the large-cohort ratio will move when they land.\n'
                     % ', '.join(sorted(unknown)))
+    if EMPTY_COHORTS:
+        seen = sorted(set(EMPTY_COHORTS))
+        NOTES.append(
+            'EMPTY COHORT -- %s has no members, so it has no ratio; the row is '
+            'dashed rather than reported as 0.00x.' % ', '.join(seen))
+        body.append('\n> **Empty cohort(s):** %s. A cohort with no members has '
+                    'no ratio to report, so those rows are dashed. They are not '
+                    'a measured 1.00x and must not be read as one.\n'
+                    % ', '.join(seen))
     emit('storage.md', '\n'.join(body))
 
 # =========================================================== CATALOGUE

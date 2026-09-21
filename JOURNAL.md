@@ -5964,3 +5964,71 @@ only wants to ask a question about. The `mkdir` is now skipped in check mode,
 which is safe because the comparison loop already treats a non-existent path as
 "changed". `tests/round3_evidence.py::R3-4` asserts `--check` creates nothing
 and still reports, with a **CONTROL** that the writing path still writes.
+
+### Stage 5 — degenerate inputs
+
+Driven with synthetic `$MODFS_ROOT` trees: a catalogue of base alone, a
+catalogue of one module, a tier-2 sweep of a single row, and a tier-1 sweep
+truncated to its header.
+
+What held, and held well:
+
+- **The OLS fit is properly guarded on every degenerate path.** `fit()` refuses
+  fewer than three points, refuses a single distinct N, refuses `sxx == 0`, and
+  returns `nan` rather than dividing when `sst == 0`. A one-row sweep publishes
+  `tier2-fit.csv` with `-` in every coefficient and the literal word
+  `degenerate` in the `n` column. That is the right behaviour and it is a
+  genuinely nice piece of work — four separate ways to be degenerate, all four
+  named.
+- **A one-member cohort** computes correctly: `N=1` gives `ratio = (B+d)/(B+d) =
+  1.00×`, which is true and not a division artefact.
+- **A header-only tier-1 CSV** degrades to `(no rows)` with the caption flagging
+  it, as recorded under Stage 3.
+
+### R3-6 — an empty cohort published a fabricated ratio
+
+`cohort()` guards both its divisions and then formats the fallback as a
+measurement:
+
+```python
+'%.2f×' % (model / stored if stored else 0),
+'%.1f' % (d / N / W if N else 0)
+```
+
+With no members, `N = 0` and `model = 0·B + 0 = 0`, so the published row was:
+
+    large realistic,0,1.0,0.0,0.00×,0.0
+
+`0.00×` is not a blank. It is a claim — that the monolithic baseline for that
+cohort costs nothing, which would make the delta model infinitely worse than
+rebuilding. A reader skimming the storage table sees a number in a ratio column
+and reads it as a ratio.
+
+The guards are the interesting part. They are real guards, deliberately written,
+and they work: there is no `ZeroDivisionError`. They were pointed at *not
+crashing*. Nobody pointed one at *not publishing a meaningless number* — and the
+generator's own header promises that it "never prints a number it cannot name a
+file for". This is the house shape reaching all the way down into a two-line
+expression: **the check only looks where it was pointed.**
+
+Reachable whenever no declared-large module is built: an early catalogue, a
+small experimental one, or a branch where the declared name has moved — the
+script's own comment notes that the noble catalogue's driver is
+`nvidia-driver-580`, not the `nvidia-driver-535` in `LARGE`. The "declared large
+but not built" note did fire in that case, but the *table* still printed a
+ratio, and the table is what a reader reads.
+
+Fixed: an empty cohort now reports `N=0`, its stored figure (which is just the
+base, and is true), and an em dash for monolithic, ratio and mean delta. An
+operator note names every empty cohort, and `storage.md` carries a block saying
+those rows are not a measured `1.00×` and must not be read as one. The same
+`cohort()` feeds S4, so `storage-sensitivity.csv` is fixed with it — a sensitivity
+row that removes a cohort down to nothing was subject to the identical defect.
+
+Output on the real artefacts is byte-identical: both `storage-cohorts.csv` and
+`storage-sensitivity.csv` diff clean against the pre-fix run, because no cohort
+on this catalogue is empty.
+
+`tests/round3_evidence.py::R3-6` drives a catalogue holding one module that is
+in no declared cohort, and a **CONTROL** holding one that is, asserting the
+populated cohorts still report their ratios untouched and raise no note.

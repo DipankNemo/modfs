@@ -392,6 +392,60 @@ def t_correct_row_is_accepted(tmp):
         got = 'refused'
     check('FIXED', 'R3-5 table() refuses a short alignment spec', got, 'refused')
 
+
+# ========================================================= R3-6  empty cohort
+def _cohort_case(tmp, mods):
+    root = newroot(tmp, [('base', 1 << 20)] + mods)
+    out = tempfile.mkdtemp(dir=tmp)
+    rc, log = generate(root, out)
+    rows = {r[0]: r for r in readcsv(out, 'storage-cohorts.csv')[1:]}
+    return rc, log, rows
+
+def t_empty_cohort_has_no_ratio(tmp):
+    """R3-6 FIXED -- `cohort()` guarded its two divisions (`if stored`, `if N`)
+    and then formatted the fallback ZERO as a measurement. A cohort with no
+    members therefore published:
+
+        large realistic,0,1.0,0.0,0.00x,0.0
+
+    `0.00x` is not a missing value, it is a claim: that the monolithic baseline
+    for that cohort costs nothing. Guarding against a ZeroDivisionError is not
+    the same as guarding against a meaningless number, and the generator's own
+    header promises it "never prints a number it cannot name a file for".
+
+    Reachable whenever no declared-large module is built -- an early catalogue,
+    a small experimental one, or a branch where the declared name has moved
+    (the noble catalogue's driver is nvidia-driver-580, not -535). The
+    "declared large but not built" note fired in that case, but the TABLE still
+    printed a ratio, and the table is what a reader reads.
+    """
+    rc, log, rows = _cohort_case(tmp, [('tiny', 1000)])   # nothing in LARGE
+    check('FIXED', 'R3-6 generator exits 0', rc, 0)
+    lr = rows['large realistic']
+    check('FIXED', 'R3-6 empty cohort has N=0', lr[1], '0')
+    check('FIXED', 'R3-6 empty cohort ratio is not 0.00x',
+          lr[4] == '0.00\u00d7', False)
+    check('FIXED', 'R3-6 empty cohort ratio is dashed', lr[4], '\u2014')
+    check('FIXED', 'R3-6 empty cohort monolithic is dashed', lr[3], '\u2014')
+    check('FIXED', 'R3-6 empty cohort mean delta is dashed', lr[5], '\u2014')
+    check('FIXED', 'R3-6 operator note raised', 'EMPTY COHORT' in log, True)
+    # the non-empty cohorts in the same table are unaffected
+    check('FIXED', 'R3-6 populated cohort still reports a ratio',
+          rows['whole catalogue'][4].endswith('\u00d7'), True)
+
+def t_populated_cohort_still_reports(tmp):
+    """R3-6 CONTROL -- a cohort that DOES have members must report its ratio
+    exactly as before. `gcc` is in the declared LARGE set, so this fixture
+    populates both cohorts; neither may be dashed and no note may be raised.
+    """
+    rc, log, rows = _cohort_case(tmp, [('tiny', 1000), ('gcc', 1 << 22)])
+    check('CONTROL', 'R3-6 generator exits 0', rc, 0)
+    for lab in ('small adversarial', 'large realistic', 'whole catalogue'):
+        check('CONTROL', 'R3-6 %s reports a ratio' % lab,
+              rows[lab][4].endswith('\u00d7') and rows[lab][4] != '0.00\u00d7',
+              True)
+    check('CONTROL', 'R3-6 no empty-cohort note', 'EMPTY COHORT' in log, False)
+
 # =================================================================== driver
 def main():
     tmp = tempfile.mkdtemp(prefix='round3-evidence-')
@@ -409,6 +463,9 @@ def main():
         print('R3-5  row width against header width')
         t_short_row_is_refused(tmp)
         t_correct_row_is_accepted(tmp)
+        print('R3-6  a cohort with no members')
+        t_empty_cohort_has_no_ratio(tmp)
+        t_populated_cohort_still_reports(tmp)
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
     print()
