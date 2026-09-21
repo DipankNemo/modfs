@@ -798,7 +798,16 @@ def build_tier3():
         if not res:
             note.append('no result.json — run did not finish')
         # Stale: an artefact in this run has been rebuilt since the run.
-        newer = sorted(m for m in deltas
+        #
+        # Checked over `mods` and ALWAYS over base, never over `deltas`.
+        # `deltas` exists to count N, which counts module deltas and excludes
+        # base by definition; reusing that same list here silently inherited
+        # its exclusion, and a bundle whose BASE had been rebuilt underneath it
+        # was reported as describing artefacts that still exist unchanged. Base
+        # is the one layer every boot image in every bundle is built on, so it
+        # is included whether or not the run recorded it by name.
+        watch = set(mods) | {'base'}
+        newer = sorted(m for m in watch
                        if m in ART and ART[m]['sqsh_mtime']
                        and ART[m]['sqsh_mtime'] > mtime(os.path.join(b, 'run.json')))
         if newer:

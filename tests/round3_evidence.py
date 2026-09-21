@@ -532,6 +532,75 @@ def t_agreeing_cohorts_are_silent(tmp):
     check('CONTROL', 'R3-7 no unverified warning',
           'COHORT CONSISTENCY UNVERIFIED' in log, False)
 
+
+# ============================================== R3-8  base and supersession
+def _bundle_case(tmp, base_offset, mod_offset):
+    """One run bundle, with base and the module aged relative to run.json."""
+    root = tempfile.mkdtemp(dir=tmp)
+    for sub in ('modules', 'logs', 'results'):
+        os.makedirs(os.path.join(root, sub))
+    md = os.path.join(root, 'modules')
+    T = 1700000000
+    for nm, off, sz_ in (('base', base_offset, 1 << 20),
+                         ('gcc', mod_offset, 1 << 20)):
+        mkmod(md, nm, sz_)
+        for ext in ('.sqsh', '.json'):
+            os.utime(os.path.join(md, nm + ext), (T + off, T + off))
+    b = os.path.join(root, 'results', 'boot', 'run-A')
+    os.makedirs(b)
+    doc = dict(modules=['base', 'gcc'], expectation='pass')
+    json.dump(doc, io.open(os.path.join(b, 'run.json'), 'w', encoding='utf-8'))
+    json.dump(dict(modules=['base', 'gcc'], verdict='PASS', exit_code=0,
+                   duration_s=200),
+              io.open(os.path.join(b, 'result.json'), 'w', encoding='utf-8'))
+    os.utime(os.path.join(b, 'run.json'), (T, T))
+    out = tempfile.mkdtemp(dir=tmp)
+    rc, log = generate(root, out)
+    note = readcsv(out, 'tier3.csv')[1][-1]
+    md_text = io.open(os.path.join(out, 'tier3.md'), encoding='utf-8').read()
+    return rc, note, md_text
+
+def t_rebuilt_base_supersedes_a_bundle(tmp):
+    """R3-8 FIXED -- the tier-3 supersession check ran over `deltas`, which is
+    `[m for m in mods if m != 'base']`. That list exists to count N, and N
+    counts module deltas and excludes base BY DEFINITION. Reusing the same list
+    for the staleness question silently inherited its exclusion.
+
+    So a bundle whose BASE had been rebuilt underneath it, with none of its
+    modules touched, was reported as describing artefacts that still exist
+    unchanged -- and T3.0's headline sentence, "N of M bundles describe
+    artefacts that still exist unchanged", counted it as current. Base is the
+    one layer every boot image in every bundle is built on; a rebuilt base means
+    the image cannot be reproduced at all.
+
+    Masked on the real artefacts, which is why it survived: every bundle
+    predating the 2026-09-16 base rebuild also contains a module rebuilt since,
+    so all of them were already flagged for another reason. The count stays 2
+    of 20 after the fix -- what changes is that the notes now name base.
+
+    One list, two purposes, and the second silently inherited the first's
+    exclusion. That is this project's house bug wearing a different coat.
+    """
+    rc, note, md_text = _bundle_case(tmp, base_offset=+10000, mod_offset=-10000)
+    check('FIXED', 'R3-8 generator exits 0', rc, 0)
+    check('FIXED', 'R3-8 rebuilt base supersedes the bundle',
+          'superseded' in note, True)
+    check('FIXED', 'R3-8 the note names base', 'base' in note, True)
+    check('FIXED', 'R3-8 not counted as current',
+          '**0 of 1 bundles describe' in md_text, True)
+
+def t_untouched_bundle_stays_current(tmp):
+    """R3-8 CONTROL -- when neither base nor any module has been rebuilt since
+    the run, the bundle IS current and must not be flagged. Marking live
+    evidence as superseded would retire the only tier-3 results that count.
+    """
+    rc, note, md_text = _bundle_case(tmp, base_offset=-10000, mod_offset=-10000)
+    check('CONTROL', 'R3-8 generator exits 0', rc, 0)
+    check('CONTROL', 'R3-8 untouched bundle not superseded',
+          'superseded' in note, False)
+    check('CONTROL', 'R3-8 counted as current',
+          '**1 of 1 bundles describe' in md_text, True)
+
 # =================================================================== driver
 def main():
     tmp = tempfile.mkdtemp(prefix='round3-evidence-')
@@ -556,6 +625,9 @@ def main():
         t_cohort_divergence_is_detected(tmp)
         t_unreadable_sibling_is_not_silence(tmp)
         t_agreeing_cohorts_are_silent(tmp)
+        print('R3-8  a rebuilt base under a tier-3 bundle')
+        t_rebuilt_base_supersedes_a_bundle(tmp)
+        t_untouched_bundle_stays_current(tmp)
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
     print()

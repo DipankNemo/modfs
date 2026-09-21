@@ -6113,3 +6113,51 @@ dpkg-blindness module a GPU module. Loud rather than silent, and cosmetic. It is
 recorded here rather than fixed because changing it alters no current output and
 the two selectors should be unified deliberately, with the catalogue in front of
 whoever does it.
+
+### R3-8 — the tier-3 supersession check could not see the base
+
+Tier 3 marks a run bundle **superseded** when an artefact it used has been
+rebuilt since the run. The check ran over `deltas`:
+
+```python
+deltas = [m for m in mods if m != 'base']
+...
+newer = sorted(m for m in deltas if ... ART[m]['sqsh_mtime'] > run_mtime)
+```
+
+`deltas` exists to count **N**, and N counts module deltas and excludes base by
+definition — that is correct and documented ("37 layers incl. base; N counts
+module deltas, base excluded"). Reusing the same list for the *staleness*
+question silently inherited that exclusion, and the exclusion is wrong there:
+base is the one layer every boot image in every bundle is built on. A rebuilt
+base means the image cannot be reproduced at all — more comprehensively than any
+single module being rebuilt.
+
+So a bundle whose base had been replaced underneath it, with none of its own
+modules touched, was reported as current evidence, and T3.0's headline sentence —
+"**N of M bundles describe artefacts that still exist unchanged**" — counted it
+among the good ones. Demonstrated on a fixture: base rebuilt after the run, the
+module untouched, and the generator reported `1 of 1 bundles describe artefacts
+that still exist unchanged` with a clean note.
+
+**Why it survived.** On the real artefacts it is completely masked. Every bundle
+predating the 16 September base rebuild also contains a module rebuilt since, so
+all thirteen were already flagged for another reason. The published "2 of 20" is
+correct today and stays correct after the fix — this was checked. What changes is
+that the notes now name base: thirteen bundles that said "superseded: mysql,
+postgres rebuilt since this run" now say "superseded: **base**, mysql, postgres".
+That is a more honest statement of what is wrong with them.
+
+One list, two purposes, and the second purpose silently inherited the first's
+exclusion. It is the house bug in a new coat: the check only looked where it was
+pointed, and it was pointed at a list built for counting.
+
+Fixed: the check now runs over `set(mods) | {'base'}` — base always, whether or
+not the run recorded it by name, because every bundle is a boot image on base.
+`N` still comes from `deltas` and is unchanged.
+
+`tests/round3_evidence.py::R3-8` builds a bundle with base rebuilt after the run
+and its module untouched, asserting supersession, that the note names base, and
+that T3.0 counts it as `0 of 1`. The **CONTROL** ages both artefacts before the
+run and asserts the bundle stays current at `1 of 1` — marking live evidence
+stale would retire the only tier-3 results that count.
