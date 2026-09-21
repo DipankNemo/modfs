@@ -5904,3 +5904,63 @@ size. The **CONTROL** case inverts the mtimes so the newest sweep is also the
 most complete — the situation on the real artefacts today — and asserts that
 nothing is reported. On the real evidence the fix is silent and
 `tier1-totals.csv` still reads 780 / 9880; verified by regenerating.
+
+### Stage 4 — row and column alignment: a clean result, and a missing guard
+
+Every CSV the generator emits was checked column by column against its own
+header: 18 files, 226 data rows, **all aligned**, no blank header cells, no
+shifted fields. The `alt_groups` column of `tier2-by-n.csv` — the one that was a
+shadowed variable in round 2 and published 42 where the truth was 10 — was
+re-derived from `compose-sweep.csv` independently and reproduces exactly, as
+does every other column in that table. **Nothing is misaligned today.** That is
+worth stating as plainly as a defect would be.
+
+What is missing is the guard. Neither `table()` nor `write_csv()` ever compared
+a row's width against its header's. Both are hand-fed lists assembled at a dozen
+call sites, and `csv.writer` will write a row of any width without a word, while
+Markdown renders a short row as a short row and drops the tail of a long one.
+
+`STATE_OF_PLAY` §5c records exactly what that costs:
+
+> Adding two columns without updating six hand-counted `printf`s put every
+> failure label in the wrong column and left `result` empty — so correct summary
+> logic that separated refusals from failures was silently defeated by a data
+> bug one layer down.
+
+A short CSV row does not read as wrong. It reads as a *different number*,
+because every field after the gap has shifted left into a column that means
+something else. And this review had its own chance to make that mistake:
+R3-2 added a sixth column to `storage-model-check.csv`, and getting it right
+depended on care rather than on anything that would have caught the slip.
+
+**R3-5 (hardening).** `table()` and `write_csv()` now refuse a row whose width
+does not match the header, and `table()` also refuses an alignment spec of the
+wrong length. The failure is `SystemExit` with the row, the header and both
+widths printed. That is safe by construction: every file is buffered in `FILES`
+and flushed only after the last table is built, so aborting writes nothing at
+all rather than leaving a half-generated evidence directory. Output on the real
+artefacts is byte-identical, and the guards do not fire.
+
+`tests/round3_evidence.py::R3-5` lifts `table()` and `write_csv()` straight out
+of the shipped script and executes them — the same technique `round2_attacks.py`
+uses on V7's block — feeding each a short row, a long row and a short alignment
+spec, with **CONTROL** cases asserting that correctly shaped rows still produce
+exactly the bytes they did before.
+
+### R3-4 — `--check` created directories
+
+`--check` is documented as "write nothing, report status". The Python does
+honour that: every file is buffered and the write is gated on `CHECK`, so no
+file content was ever at risk — confirmed by hashing `thesis/evidence/` before
+and after a `--check` run and finding it byte-identical.
+
+But the bash preamble ran `mkdir -p "$OUT"` *before* that gate, unconditionally.
+So `./scripts/16_build_evidence.sh --check --out /some/new/path` created
+`/some/new/path` and every missing parent, and left them behind.
+
+Small, and worth fixing anyway: `--check` is the one entry point whose entire
+contract is that it is safe to point at anything, including a path the operator
+only wants to ask a question about. The `mkdir` is now skipped in check mode,
+which is safe because the comparison loop already treats a non-existent path as
+"changed". `tests/round3_evidence.py::R3-4` asserts `--check` creates nothing
+and still reports, with a **CONTROL** that the writing path still writes.

@@ -279,6 +279,119 @@ def t_complete_newest_sweep_is_not_flagged(tmp):
     check('CONTROL', 'R3-3 no warning block',
           'SET-SIZE COVERAGE WARNING' in md_text, False)
 
+
+# ========================================================= R3-4  --check
+def t_check_writes_nothing(tmp):
+    """R3-4 FIXED -- `--check` is documented as "write nothing, report status",
+    and the generator buffers every file and gates the write on CHECK, so no
+    file content was ever at risk. But the bash preamble ran `mkdir -p "$OUT"`
+    before that gate, unconditionally, so `--check --out DIR` created DIR (and
+    any missing parents) and left them behind. A directory is something.
+
+    Minor on its own. It matters because `--check` is the one entry point whose
+    whole contract is that it is safe to point at anything, including a path
+    the operator only wants to ask about.
+    """
+    root = newroot(tmp, [('base', 1 << 20), ('gcc', 1 << 18)])
+    want = os.path.join(tempfile.mkdtemp(dir=tmp), 'a', 'b')
+    env = dict(os.environ, MODFS_ROOT=root)
+    p = subprocess.run(['bash', SCRIPT, '--check', '--out', want], env=env,
+                       stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+    check('FIXED', 'R3-4 --check exits 0', p.returncode, 0)
+    check('FIXED', 'R3-4 --check created no directory',
+          os.path.exists(os.path.dirname(want)), False)
+    check('FIXED', 'R3-4 --check still reports',
+          b'would write' in p.stdout, True)
+    # CONTROL: the writing path must still write.
+    out = tempfile.mkdtemp(dir=tmp)
+    rc, log = generate(root, os.path.join(out, 'fresh'))
+    check('CONTROL', 'R3-4 --out still creates and writes',
+          os.path.exists(os.path.join(out, 'fresh', 'storage.md')), True)
+
+# ================================================ R3-5  row/header width
+def _extract(fn_name):
+    """Pull a function's source straight out of the shipped script, the way
+    round2_attacks.py pulls V7's block out of verify_compose.py."""
+    src = io.open(SCRIPT, encoding='utf-8').read()
+    a = src.index('def %s(' % fn_name)
+    b = src.index('\ndef ', a + 1)
+    return src[a:b]
+
+def _ns():
+    ns = {'csv': csv, 'io': io, 'FILES': {}, 're': __import__('re')}
+    exec(_extract('table'), ns)
+    exec(_extract('write_csv'), ns)
+    return ns
+
+def t_short_row_is_refused(tmp):
+    """R3-5 FIXED (hardening) -- neither `table()` nor `write_csv()` compared a
+    row's width against its header. Both were hand-fed lists built at a dozen
+    call sites.
+
+    STATE_OF_PLAY 5c records what that costs: "Adding two columns without
+    updating six hand-counted printfs put every failure label in the wrong
+    column and left `result` empty -- so correct summary logic that separated
+    refusals from failures was silently defeated by a data bug one layer down."
+    A short CSV row does not look wrong to a reader. It looks like a different
+    number, because every field after the gap has shifted left into a column
+    that means something else.
+
+    Every one of the 18 CSVs the generator emits today is correctly aligned --
+    this was checked, column by column, and is a clean result. The defect is
+    the absence of the guard, not a present misalignment; adding a column to
+    storage-model-check.csv during THIS review was one more chance to make it.
+    """
+    ns = _ns()
+    head = ['module', 'measured_mb', 'modelled_mb', 'result']
+    for label, rows, why in (
+            ('short', [['curl', '43.0', '43.4']],        'one field missing'),
+            ('long',  [['curl', '43.0', '43.4', 'x', 'y']], 'one field extra')):
+        for fname in ('write_csv', 'table'):
+            try:
+                if fname == 'write_csv':
+                    ns['write_csv']('t.csv', head, rows)
+                else:
+                    ns['table'](rows, head)
+                got = 'accepted silently'
+            except SystemExit:
+                got = 'refused'
+            check('FIXED', 'R3-5 %s() refuses a %s row (%s)'
+                  % (fname, label, why), got, 'refused')
+
+def t_correct_row_is_accepted(tmp):
+    """R3-5 CONTROL -- a correctly shaped row, and a correctly sized alignment
+    spec, must pass untouched. A guard that rejected valid input would stop the
+    thesis being generated at all.
+    """
+    ns = _ns()
+    head = ['module', 'measured_mb', 'modelled_mb', 'result']
+    rows = [['curl', '43.0', '43.4', 'ok'], ['jq', '41.9', '42.3', 'ok']]
+    try:
+        ns['write_csv']('t.csv', head, rows)
+        out = ns['FILES']['t.csv']
+        got = 'accepted'
+    except SystemExit:
+        out = ''; got = 'refused'
+    check('CONTROL', 'R3-5 write_csv() accepts an aligned row', got, 'accepted')
+    check('CONTROL', 'R3-5 write_csv() content is right',
+          out, 'module,measured_mb,modelled_mb,result\n'
+               'curl,43.0,43.4,ok\njq,41.9,42.3,ok\n')
+    try:
+        md = ns['table'](rows, head, ['---', '---:', '---:', '---'])
+        got = 'accepted'
+    except SystemExit:
+        md = ''; got = 'refused'
+    check('CONTROL', 'R3-5 table() accepts an aligned row', got, 'accepted')
+    check('CONTROL', 'R3-5 table() emits one row per input',
+          len([l for l in md.strip().split('\n')]), 4)   # head + rule + 2 rows
+    # and a mis-sized alignment spec is refused
+    try:
+        ns['table'](rows, head, ['---', '---:'])
+        got = 'accepted silently'
+    except SystemExit:
+        got = 'refused'
+    check('FIXED', 'R3-5 table() refuses a short alignment spec', got, 'refused')
+
 # =================================================================== driver
 def main():
     tmp = tempfile.mkdtemp(prefix='round3-evidence-')
@@ -291,6 +404,11 @@ def main():
         print('R3-3  set-size coverage of the tier-1 sweep')
         t_partial_resweep_is_flagged(tmp)
         t_complete_newest_sweep_is_not_flagged(tmp)
+        print('R3-4  --check must write nothing at all')
+        t_check_writes_nothing(tmp)
+        print('R3-5  row width against header width')
+        t_short_row_is_refused(tmp)
+        t_correct_row_is_accepted(tmp)
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
     print()

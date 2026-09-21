@@ -50,7 +50,12 @@ command -v python3 >/dev/null 2>&1 || die "python3 not found"
 python3 -c 'import yaml' 2>/dev/null || die "python3-yaml not found (already a pipeline dependency)"
 
 [ -d "$MOD_DIR" ] || die "no module directory: ${MOD_DIR}"
-mkdir -p "$OUT" || die "cannot create ${OUT}"
+# --check must write NOTHING, and a directory is something. The compare loop
+# below treats a path that does not exist as "changed", so there is nothing to
+# create when we are only reporting.
+if [ "$CHECK" -eq 0 ]; then
+    mkdir -p "$OUT" || die "cannot create ${OUT}"
+fi
 
 GIT_COMMIT="$(git -C "$HERE" rev-parse HEAD 2>/dev/null || echo unknown)"
 GIT_BRANCH="$(git -C "$HERE" rev-parse --abbrev-ref HEAD 2>/dev/null || echo unknown)"
@@ -196,6 +201,19 @@ def table(rows, head, align=None):
     if not rows:
         return '_(no rows)_\n'
     align = align or ['---'] * len(head)
+    # Adding a column and forgetting one of the row builders is how this
+    # project once put every failure label one column to the left and left
+    # `result` empty -- correct summary logic defeated by a data bug beneath
+    # it. Markdown will not complain: it renders a short row as a short row and
+    # a long one by silently dropping the tail. So refuse instead.
+    if len(align) != len(head):
+        raise SystemExit('table(): %d alignment spec(s) for %d column(s): %r'
+                         % (len(align), len(head), head))
+    for i, r in enumerate(rows):
+        if len(r) != len(head):
+            raise SystemExit(
+                'table(): row %d has %d field(s), header has %d: %r vs %r'
+                % (i, len(r), len(head), r, head))
     out = ['| ' + ' | '.join(head) + ' |', '|' + '|'.join(align) + '|']
     for r in rows:
         out.append('| ' + ' | '.join('' if c is None else str(c) for c in r) + ' |')
@@ -213,6 +231,14 @@ def emit(name, text):
 
 def write_csv(name, head, rows):
     import io
+    # Same guard as table(), and it matters more here: these CSVs are what the
+    # thesis \input's, so a row one field short does not look wrong, it looks
+    # like a different number. csv.writer will write any width without a word.
+    for i, r in enumerate(rows):
+        if len(r) != len(head):
+            raise SystemExit(
+                '%s: row %d has %d field(s), header has %d: %r vs %r'
+                % (name, i, len(r), len(head), r, head))
     buf = io.StringIO()
     w = csv.writer(buf, lineterminator='\n')
     w.writerow(head)
