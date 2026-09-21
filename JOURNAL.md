@@ -6161,3 +6161,82 @@ and its module untouched, asserting supersession, that the note names base, and
 that T3.0 counts it as `0 of 1`. The **CONTROL** ages both artefacts before the
 run and asserts the bundle stays current at `1 of 1` — marking live evidence
 stale would retire the only tier-3 results that count.
+
+### Round 3 — what held
+
+Recorded because a clean result on a specific attack is evidence, and this
+review's most important single finding is the first line of it.
+
+- **Every published number equals its source.** All 282 rows over 10 source
+  files, re-derived in independent code: tier 1 (10 rows), tier 2 (24), tier 3
+  (20), storage (55), catalogue (40), provenance (41+31). Exact, to the last
+  digit, including the four OLS coefficients and all three headline storage
+  ratios. **No defect found in this review changes a number in the Evaluation
+  chapter.** They change what the numbers are allowed to claim.
+- **The tier-1 sweep is a census, not a sample.** C(40,2) = 780 and
+  C(40,3) = 9880, both complete. The 2145/2073/72 cross-check re-derives
+  exactly, and all 72 non-monotone admissions have `module_relation` as their
+  inner pair class, as published.
+- **`total_ms` really is `mount_ms + reconcile_ms`** on all 152 rows, which is
+  what makes `STATE_OF_PLAY` §7.8 ("verification cost is outside the published
+  model") an accurate statement rather than a guess.
+- **The `alt_groups` column is correct.** The round-2 shadowed-variable defect
+  has not returned; the column re-derives from `compose-sweep.csv` exactly.
+- **All 41 recorded artefact digests verify against the real bytes.** Hashed
+  independently. R3-1 was a mislabel, never a wrong value.
+- **The OLS fit is guarded on all four degenerate paths**, and a one-row sweep
+  publishes the word `degenerate` rather than a coefficient.
+- **`--check` never touched file content**, before or after R3-4; only empty
+  directories were at stake.
+- **The 21 September undeclared-large guard works and is correctly silent.**
+- **Tier 2's 39-module coverage is correct**, not a gap: `control-oldsnap` is
+  rejected against all 39 partners at tier 1 and never reaches a composition.
+
+### The pattern, restated
+
+Eight findings, and **not one was a composition failing**. Three prior review
+passes reported the same thing, and it holds a fourth time. Every defect here
+was a check that passed something it did not model:
+
+| # | The check | What it was pointed at | What it could not see |
+|---|---|---|---|
+| R3-1 | the digest column's label | the value | which file the digest was of |
+| R3-2 | staleness | the tier-1/tier-2 CSVs | the monolithic baselines |
+| R3-3 | tier-1 coverage | module **names** | which **set sizes** were measured |
+| R3-4 | "writes nothing" | file content | directories |
+| R3-5 | (no guard) | — | a row narrower than its header |
+| R3-6 | division by zero | crashing | publishing a meaningless number |
+| R3-7 | cohort consistency | *nothing — the check was a comment* | everything |
+| R3-8 | supersession | a list built for counting N | the base |
+
+R3-6 and R3-8 are the two worth keeping for the Discussion chapter, because
+they are the pattern at its smallest and hardest to see. R3-6 is a *correct*
+guard — `if N else 0` genuinely prevents the crash it was written for — that
+then hands its fallback to a `%` format string, and a safety value becomes a
+published measurement. R3-8 is a list that was right for its first purpose and
+silently inherited into a second where its defining exclusion was wrong.
+
+Neither is a mistake about the system. Both are mistakes about *what the check
+was for*. That is the thesis-relevant claim this project keeps earning:
+**in a system of this shape the instrumentation fails more often than the thing
+instrumented, and it fails by being narrower than its own description.**
+
+### Not done, and deliberately
+
+- `thesis/evidence/` is **not regenerated in this branch.** Regenerating here
+  bakes this worktree's path (`/home/kaptan/modfs-evidence-audit/...`) and this
+  branch's commit into `provenance.csv`, `provenance.md` and `catalogue.md`,
+  which is wrong for the canonical evidence. It must be regenerated from
+  `~/modfs` on the branch that will carry the thesis:
+
+      ./scripts/16_build_evidence.sh
+
+  The regenerated output was diffed against the committed evidence file by file.
+  **Every numeric table is byte-identical.** What changes is the four fixes
+  (`artefact_sha256_recorded`; `baseline_freshness` plus the S2 narrative;
+  thirteen tier-3 notes now naming `base`) and the generation stamp.
+- The six stale monolithic baselines need rebuilding before S2 can claim the
+  model is calibrated. Commands are in the R3-2 entry. **That is a build, and
+  builds go through the operator.**
+- The tier-3 GPU substring selector is recorded UNPROVEN in the R3-7 entry and
+  left alone; it changes no current output.
