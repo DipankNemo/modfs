@@ -28,5 +28,5 @@ storage,Evaluation,/srv/modfs/modules/jq-monolithic.sqsh,real monolithic build,y
 storage,Evaluation,/srv/modfs/modules/nc-traditional-monolithic.sqsh,real monolithic build,yes,2026-09-16 15:22:59Z,63ba7a9ae8e427f3f6227361d0b3e00e3eaf006988e4b30e983c764eb22e5c6f,41586688,
 storage,Evaluation,/srv/modfs/modules/pytools-monolithic.sqsh,real monolithic build,yes,2026-09-16 15:30:17Z,1973a875c3449e063af2fc4b505f0dd51974e66be75058774bb05bdd0fdc30cb,67395584,
 storage,Evaluation,/srv/modfs/modules/webserver-monolithic.sqsh,real monolithic build,yes,2026-09-16 15:26:28Z,09b7875bb989dbe281d12306cf761ab2d9ec46c4279c16cd6c4513f52c3f641e,62251008,
-catalogue,Implementation,/home/kaptan/modfs-evidence/specs/modules.yaml,module catalogue (source of truth),yes,2026-09-21 02:46:37Z,c18fd234ff114c90728945ea24e2992123a2df8f3bf46c19b2bacdc7847db86c,22813,40
-catalogue,Implementation,/home/kaptan/modfs-evidence/specs/uid-ranges.yaml,UID window assignments,yes,2026-09-21 02:46:37Z,34527a86e4180633ab407f5d63ba80aab4bb312515e69b87064aa5a3518d682c,2424,40
+catalogue,Implementation,/home/kaptan/modfs/specs/modules.yaml,module catalogue (source of truth),yes,2026-09-20 16:07:15Z,c18fd234ff114c90728945ea24e2992123a2df8f3bf46c19b2bacdc7847db86c,22813,40
+catalogue,Implementation,/home/kaptan/modfs/specs/uid-ranges.yaml,UID window assignments,yes,2026-09-19 15:00:02Z,34527a86e4180633ab407f5d63ba80aab4bb312515e69b87064aa5a3518d682c,2424,40

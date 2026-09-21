@@ -5421,3 +5421,49 @@ three matches as well and passes. The retained image SHA256 is
   covers 39 of 40 modules by design and the tier-1 CSV predates nothing. The
   six recordable-but-unrecorded measurements above all need either root or a new
   script. Commands handed over separately.
+
+## 2026-09-21 (the doc test only looked where it was pointed; and two false positives of my own)
+- I-21 FIXED, and it was a live code bug rather than documentation drift.
+  13_storage_ratios.sh computed mean_delta as `d / N / 1048576.0` -- binary MiB
+  -- while every other column in the same table is decimal MB, and lines 88-92
+  of the SAME FILE declare "DECIMAL MB (10^6) ... an undeclared unit is exactly
+  the kind of thing that turns into a wrong number in a thesis". It printed
+  7.1 MB where ARCHITECTURE §7 publishes 7.5. Now 7.5, matching both §7 and
+  thesis/evidence/storage.md.
+  I broke the line while fixing it -- appended an explanatory comment inside a
+  Python expression, which swallowed `) if N else 0))` -- and caught it because
+  the script then printed nothing. Fixed before committing.
+- THE STRUCTURAL FINDING, and it is the reason the other 23 entries exist.
+  tests/review_claims.py is the documentation contract test. It held seven
+  assertions and ALL SEVEN read ARCHITECTURE.md; no test read any other
+  document. The consequence was measured, not argued: of 24 inconsistencies,
+  every entry a test covered was CLOSED and every entry it did not was LIVE --
+  including corrections already applied to ARCHITECTURE that were still wrong in
+  STATE_OF_PLAY, PLAN, EVOLUTION and MEETING, because nothing looked there.
+  Same shape as V7 comparing names rather than files, V2 comparing name sets
+  rather than versions, and 00_verify checking that a tool exists rather than
+  that it works: THE CHECK ONLY LOOKS WHERE IT WAS POINTED.
+- FIX: the test now reads six documents. JOURNAL.md is deliberately excluded --
+  it is append-only and must keep its retracted claims, which is its whole
+  evidentiary value.
+- AND MY FIRST TWO ASSERTIONS WERE BOTH FALSE POSITIVES, which is worth
+  recording because it is the exact defect this project keeps finding in others:
+    * banning "identical under order reversal" everywhere flagged
+      STATE_OF_PLAY:178, which QUOTES the phrase in order to correct it. A
+      document must be allowed to say "X said this; it is wrong". The check is
+      now line-scoped: the phrase is a finding only on a line that does not
+      carry its own correction.
+    * requiring the literal substring "161.3 + 41.8" flagged ARCHITECTURE:911,
+      which writes "161.3 ms + 41.80 ms × N". A brittle matcher firing on
+      correct content is the same defect as one that misses. Now a regex over
+      the figures.
+  A check that fires on legitimate content is as damaging as one that misses,
+  and I wrote two of them in ten minutes while fixing exactly that class of bug.
+- ONE GENUINE GAP REMAINED after both false positives were removed: neither
+  ARCHITECTURE nor STATE_OF_PLAY published the verify fit beside the compose
+  fit, so both presented 148 + 27.2 N as the cost of tier 2 when total_ms is
+  exactly mount_ms + reconcile_ms. STATE_OF_PLAY's tier-2 row said "Compose for
+  real, verify" over a composition-only figure. Both now carry both halves.
+  The contract is not a ban -- 148 + 27.2 N is correct where labelled as
+  composing -- it is that a document publishing one half must publish the other.
+- 22 of the 24 inconsistencies remain, deliberately unapplied.

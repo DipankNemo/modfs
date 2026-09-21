@@ -2,7 +2,7 @@
 
 Every file here is written by `scripts/16_build_evidence.sh` from the retained CSVs, run bundles and artefacts. Re-run it and every number moves. Hand edits are lost.
 
-Generated 2026-09-21 11:35:34Z · commit `7402b0a8d1a4ce203606760a225565909e7ec590` (DIRTY) · catalogue **40 modules**
+Generated 2026-09-21 12:54:25Z · commit `5d0ed1ce5f3b720deda8f4d01b783a4d055f20ec` (DIRTY) · catalogue **40 modules**
 
 | file | chapter | contents |
 |---|---|---|

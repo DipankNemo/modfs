@@ -4,7 +4,7 @@
 
 _40 entries: 1 control, 36 real, 3 synthetic. `base` is not a sibling and has no UID window._
 
-_**Catalogue: 40 modules** · measured 2026-09-18 22:58:43Z · source `/home/kaptan/modfs-evidence/specs/modules.yaml` · UID windows are 100 wide from 2000, append-only_
+_**Catalogue: 40 modules** · measured 2026-09-18 22:58:43Z · source `/home/kaptan/modfs/specs/modules.yaml` · UID windows are 100 wide from 2000, append-only_
 
 | module | kind | requested packages | artefact MB | packages in delta | UID window | provokes | status |
 |---|---|---|---:|---:|---|---|---|

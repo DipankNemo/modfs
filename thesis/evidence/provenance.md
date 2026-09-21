@@ -2,7 +2,7 @@
 
 **Chapter: Evaluation (appendix)**
 
-_Generated 2026-09-21 11:35:34Z from `/srv/modfs/results` at commit `7402b0a8d1a4ce203606760a225565909e7ec590` (branch `experiment/evidence-tooling`, working tree DIRTY). The commit is the state of the PIPELINE when this table was generated, which is not necessarily the commit the measurement was taken at — where a run bundle records its own commit, that file is the authority._
+_Generated 2026-09-21 12:54:25Z from `/srv/modfs/results` at commit `5d0ed1ce5f3b720deda8f4d01b783a4d055f20ec` (branch `main`, working tree DIRTY). The commit is the state of the PIPELINE when this table was generated, which is not necessarily the commit the measurement was taken at — where a run bundle records its own commit, that file is the authority._
 
 _Catalogue today: **40 modules** (40 with artefacts). Newest artefact: `cuda-runtime` at 2026-09-18 22:58:43Z._
 
@@ -37,8 +37,8 @@ _Catalogue today: **40 modules** (40 with artefacts). Newest artefact: `cuda-run
 | storage | Evaluation | `/srv/modfs/modules/nc-traditional-monolithic.sqsh` | real monolithic build | yes | 2026-09-16 15:22:59Z | 63ba7a9ae8e427f3… | — |
 | storage | Evaluation | `/srv/modfs/modules/pytools-monolithic.sqsh` | real monolithic build | yes | 2026-09-16 15:30:17Z | 1973a875c3449e06… | — |
 | storage | Evaluation | `/srv/modfs/modules/webserver-monolithic.sqsh` | real monolithic build | yes | 2026-09-16 15:26:28Z | 09b7875bb989dbe2… | — |
-| catalogue | Implementation | `/home/kaptan/modfs-evidence/specs/modules.yaml` | module catalogue (source of truth) | yes | 2026-09-21 02:46:37Z | c18fd234ff114c90… | 40 |
-| catalogue | Implementation | `/home/kaptan/modfs-evidence/specs/uid-ranges.yaml` | UID window assignments | yes | 2026-09-21 02:46:37Z | 34527a86e4180633… | 40 |
+| catalogue | Implementation | `/home/kaptan/modfs/specs/modules.yaml` | module catalogue (source of truth) | yes | 2026-09-20 16:07:15Z | c18fd234ff114c90… | 40 |
+| catalogue | Implementation | `/home/kaptan/modfs/specs/uid-ranges.yaml` | UID window assignments | yes | 2026-09-19 15:00:02Z | 34527a86e4180633… | 40 |
 
 ## P2 Artefact inventory
 

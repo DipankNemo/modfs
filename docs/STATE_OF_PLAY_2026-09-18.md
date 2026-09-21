@@ -89,7 +89,7 @@ merged registry rather than content in their own right.
 | Tier | What it does | Cost |
 |---|---|---|
 | 1 | Metadata only, no mounts (`05_check.sh`) | 89 ms at N=2 → 398 ms at N=36 |
-| 2 | Compose for real, verify (`10_compose_sweep.sh`) | 148 + 27.2 ms × N |
+| 2 | Compose (`10_compose_sweep.sh`) | compose 148 + 27.2 ms × N; verify 161.3 + 41.8 ms × N |
 | 3 | Pack a UEFI image, boot under QEMU (`11_boot_test.sh`) | ~3 min |
 
 Tier-2 checks, in `verify_compose.py`:
@@ -160,7 +160,7 @@ and every one was invisible while N was small or probes were weak.
 | Smoke | 75 passed, 0 failed at N=37 |
 | Regression | `v7_attacks.py` 4/4, `round2_attacks.py` 11/11 |
 | Storage | 5.59× small / 1.32× large / **2.51× whole catalogue** |
-| Cost | tier 2 = 148 + 27.2 ms × N |
+| Cost | tier 2 compose = 148 + 27.2 ms × N; verify = 161.3 + 41.8 ms × N |
 
 **Base fattening** (measured, not adopted): server-side **−24.1%**, but *no
 single-module node can ever win* — structurally, because the shared set is

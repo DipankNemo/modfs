@@ -80,7 +80,7 @@ for label, cohort in (('small adversarial', [n for n in names if n not in LARGE]
     N = len(cohort)
     stored, model = B + d, N * B + d
     rows.append((label, N, stored, model, (model / stored) if stored else 0,
-                 (d / N / 1048576.0) if N else 0))
+                 (d / N / 1000000.0) if N else 0))
 
 # DECIMAL MB (10^6), because that is the unit every published figure in
 # ARCHITECTURE section 7 uses. mksquashfs and the build scripts' human() print
