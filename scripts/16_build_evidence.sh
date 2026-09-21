@@ -1086,15 +1086,18 @@ def build_provenance():
                     'manifest older than artefact'
                     if (v['sqsh_mtime'] and v['manifest_mtime'] < v['sqsh_mtime'])
                     else 'ok'])
-    body.append('_The `sha256` column is the digest the manifest RECORDS, not '
-                'one recomputed here; `verify_bundle` in `lib.sh` and '
-                '`12_verify_binding.sh` are what check it against the bytes._\n\n')
+    body.append('_The `sha256` column is the digest of the **artefact** '
+                '(`<module>.sqsh`) as the manifest RECORDS it -- it is NOT the '
+                'digest of the manifest file itself, and it is not recomputed '
+                'here; `verify_bundle` in `lib.sh` and `12_verify_binding.sh` '
+                'are what check it against the bytes._\n\n')
     body.append(table(inv, ['artefact', 'bytes', 'artefact mtime',
-                            'manifest mtime', 'manifest sha256', 'freshness'],
+                            'manifest mtime', 'artefact sha256 (recorded)',
+                            'freshness'],
                       ['---', '---:', '---', '---', '---', '---']))
     write_csv('provenance-artefacts.csv',
               ['module', 'bytes', 'sqsh_mtime_utc', 'manifest_mtime_utc',
-               'manifest_sha256', 'freshness'],
+               'artefact_sha256_recorded', 'freshness'],
               [[n, ART[n]['bytes'] or '',
                 stamp(ART[n]['sqsh_mtime']) if ART[n]['sqsh_mtime'] else '',
                 stamp(ART[n]['manifest_mtime']),

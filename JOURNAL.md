@@ -5622,3 +5622,102 @@ Unprivileged test sweep, ten files: `review_claims` 8/8, `v7_attacks` 4/4,
 `round2_attacks` 11/11, `review_binding` 8/8, `review_verification` 29/29,
 `review_extended_states` 5/5, and four root-only files skipping cleanly.
 `bash -n` and `py_compile` clean across `scripts/` and `tests/`.
+
+---
+
+## 2026-09-21 — Adversarial review of the evidence generator (round 3)
+
+`scripts/16_build_evidence.sh` had never been reviewed adversarially, which is
+an odd gap: it is the only script whose output a thesis reader sees directly.
+Every table in the Evaluation chapter is one of its files. A defect in the
+pipeline shows up as a strange number someone might question; a defect *here*
+shows up as a plausible number nobody can check, because the generated tables
+are exactly what a reader would check against.
+
+The method was deliberately not "read 1,176 lines of bash". It was to treat the
+generator as a black box and **re-derive its output from its sources in
+independent code** — a separate parser, written against the CSV and JSON on
+disk, never importing or reusing the generator's own parsing. That constraint
+matters: the `alt_groups` defect of round 2 survived because the thing checking
+the number was the thing that computed it.
+
+### Stage 1 — does every published number equal what its source says?
+
+282 published table rows over 10 source files. Re-derived independently:
+
+| family | rows | source | verdict |
+|---|---:|---|---|
+| tier 1 (totals, classes, control, crosscheck, measured, nonmonotone) | 10 | `logs/combinations-gpu-full.csv` | **exact** |
+| tier 2 (by-n, checks, OLS fit) | 24 | `logs/compose-sweep.csv` | **exact** |
+| tier 3 (every run bundle) | 20 | 20 × `results/**/run.json` | **exact** |
+| storage (cohorts, model check, per-module, sensitivity) | 55 | `modules/*.sqsh` | **exact** |
+| catalogue | 40 | `specs/modules.yaml`, `specs/uid-ranges.yaml` | **exact** |
+| provenance (ledger + artefact inventory) | 41 | `modules/*.json` | one mislabel, below |
+
+Every arithmetic result reproduced to the published digit, including the four
+OLS fits (`total_ms` = 175.2 + 30.55·N, r² 0.9747) recomputed from scratch, the
+tier-1 census (C(40,2) = 780 and C(40,3) = 9880 — the sweep really is a census,
+not a sample), and all three storage cohort ratios (5.59× / 1.20× / 1.84×).
+
+`./scripts/16_build_evidence.sh --out` reproduces the committed
+`thesis/evidence/` byte for byte apart from the generation timestamp, the
+generating commit, and the absolute path of the source tree. **No number in the
+committed evidence is wrong.** That is worth stating plainly, because the rest
+of this entry is about the ways it could have been.
+
+Two things that looked like defects and were not, recorded because a clean
+result on a specific attack is evidence:
+
+- **Tier 2 covers 39 modules, not 40.** `control-oldsnap` appears in no
+  composition. That is correct and not a gap: it is the positive control, it is
+  rejected by tier 1 against every partner (39 pairs, 741 triples, all of them),
+  so it is never admitted to a composition to begin with. The generator derives
+  `catalogue_n = 39` from its own source and labels the table accordingly, which
+  is exactly the behaviour the header promises.
+- **The undeclared-large guard is inert on this catalogue, correctly.** The
+  guard added on 21 September computes a floor from the smallest *declared*
+  large module (`mysql`, 56.6 MB) and flags any undeclared module at or above
+  it. Nothing undeclared comes close — the largest is `emacs` at 37.0 MB — so
+  the guard is silent because there is nothing to say, not because it is blind.
+  Verified by recomputing the floor independently.
+
+### R3-1 — a digest column that named the wrong file
+
+`provenance-artefacts.csv` published a column headed **`manifest_sha256`**. Its
+content is `artifact.sha256` read out of the manifest: the digest of the
+**artefact**, `<module>.sqsh`. On all 41 rows the published value equals the
+artefact's digest and on **zero** rows does it equal the sha256 of the manifest
+file it is named after.
+
+The Markdown caption disclaimed the wrong thing. It said the digest is "the one
+the manifest RECORDS, not one recomputed here" — which addresses *recorded vs
+recomputed* and leaves *manifest vs artefact* untouched. And `provenance.csv`,
+the sibling file, has a `sha256` column that genuinely **is** the hash of the
+file in that row, so the two provenance files used one word for two things.
+
+The consequence is not a wrong number, it is a reader misled into thinking the
+evidence is corrupt. Someone auditing the thesis does the obvious thing —
+`sha256sum apache.json` — and gets a mismatch. They get 41 of them. The correct
+conclusion from that evidence is "this provenance table has been falsified",
+and it would be wrong.
+
+This is the round-2 `alt_groups` shape precisely: **a column header and its
+content drifted apart**, and every check pointed at the value rather than at the
+label, so every check passed. The value was never in question — all 41 recorded
+digests verify against the real bytes, which this review confirmed by hashing
+each `.sqsh`.
+
+Fixed: the CSV column is now `artefact_sha256_recorded`, the Markdown column is
+`artefact sha256 (recorded)`, and the caption says which file the digest is of
+before it says it is not recomputed. `tests/round3_evidence.py::R3-1` builds a
+fixture module tree, runs the shipped generator against it, and asserts the
+published digest equals the artefact's hash and **not** the manifest's. Against
+the pre-fix script the test fails; against the fix it passes.
+
+**Testing note.** These tests drive the real generator rather than importing
+from it, which the round-2 suite could do and this one cannot — the generator is
+a bash wrapper around an embedded Python heredoc with no importable surface.
+`config.sh` honours `MODFS_ROOT`, so a test can point the whole pipeline at a
+synthetic `modules/`, `logs/` and `results/` tree and read back what the shipped
+script wrote. That is a stronger guarantee than importing a block would give:
+it exercises argument parsing, source selection and file emission as shipped.
