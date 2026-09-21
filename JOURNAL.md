@@ -6032,3 +6032,84 @@ on this catalogue is empty.
 `tests/round3_evidence.py::R3-6` drives a catalogue holding one module that is
 in no declared cohort, and a **CONTROL** holding one that is, asserting the
 populated cohorts still report their ratios untouched and raise no note.
+
+### Stage 2 — hardcoded literals, and R3-7
+
+Every string literal in the generator naming a module was enumerated and
+accounted for. There are exactly three places where the catalogue is encoded as
+a literal:
+
+1. `LARGE` — the nine-module storage cohort, at the top of the file.
+2. `GPU = {'nvidia-driver-535', 'cuda-runtime'} & set(names)` — the storage
+   sensitivity rows, named exactly, with a comment explaining that matching on
+   the substrings `nvidia` or `cuda` would wrongly catch the synthetic
+   `fake-nvidia-driver` and `fake-cuda`.
+3. `KIND_BY_PROVOKES` — keyed to `provokes` in `modules.yaml`, not to names at
+   all, so it cannot drift as the catalogue grows. Correct by construction.
+
+The undeclared-large guard added on 21 September was re-verified independently:
+its floor is the smallest declared-large module (`mysql`, 56.6 MB), nothing
+undeclared reaches it (`emacs`, 37.0 MB, is the largest), and the guard is
+therefore silent because there is nothing to say. That is a clean result.
+
+### R3-7 — a consistency check that was only ever a comment
+
+`LARGE` is declared **twice**: once here and once in `13_storage_ratios.sh`.
+The two must agree — they split the same catalogue into the same cohorts and
+publish ratios that are read against each other. This file asserted three times
+that they were kept in step automatically:
+
+> Declared cohort for the storage split (mirrors `13_storage_ratios.sh`; kept in
+> step with it **by the consistency check below**, not by hope).
+
+> Same guard as `13_storage_ratios.sh`; **the two LARGE sets are kept in step by
+> the consistency check**, which is why the guard has to be in step as well.
+
+There is no consistency check. All four mentions of `13_storage_ratios.sh` in
+the file are comments and message text; the script never opens it. The thing at
+the place the first comment points to ("below") is the **C2 cohort table**,
+which *displays* the membership of `LARGE` — it does not compare it to anything.
+The two sets are identical today because someone typed them that way twice.
+
+This is the shape `STATE_OF_PLAY` records as having been found three times
+before — *a script documenting itself as doing something it does not do* — in
+its more dangerous direction. `10_compose_sweep.sh` **under**-claimed: its
+header advertised V1–V6 while V7 and V8 both ran, so the evidence was better
+than the document. This **over**-claimed, and the gap was in the safety
+argument: the 21 September review added the undeclared-large guard to both
+scripts precisely *because* a shared literal had already gone wrong once, and
+the comment written alongside that fix asserted a safety net that was never
+built.
+
+The stakes are already measured. The 21 September finding showed one module
+moving between cohorts takes the headline ratio from **5.59× to 2.59×**. A
+divergence between the two declarations does exactly that, to one script and not
+the other, and the two would then publish different ratios for the same
+catalogue with nothing to say why.
+
+Fixed by writing the check the comments promised. `sibling_large()` parses the
+`LARGE = {...}` declaration out of `13_storage_ratios.sh` textually — it never
+executes it — and compares. On disagreement the note names which modules are in
+which file. And the second half matters as much: if the declaration cannot be
+found at all, because the file was renamed, moved or rewritten, the generator
+reports `COHORT CONSISTENCY UNVERIFIED` rather than passing quietly. **"I could
+not check" must never read as "it agrees"** — that single confusion is the
+mechanism behind most of the twenty-odd defects in this project's history.
+
+`tests/round3_evidence.py::R3-7` copies the repo's `scripts/`, adds `emacs` to
+the sibling's `LARGE`, and asserts the divergence is reported by name; a second
+case removes the declaration entirely and asserts UNVERIFIED; a **CONTROL**
+runs the shipped pair unmodified and asserts silence.
+
+Left as UNPROVEN, not fixed: `build_tier3()` selects the GPU modules with
+`[m for m in DELTAS if 'nvidia' in m or 'cuda' in m]` — the substring match the
+comment 170 lines below it explains is wrong, and which catches `fake-cuda` and
+`fake-nvidia-driver` too. Today both selectors give the same answer, because
+every one of the four modules appears in a boot bundle and the pending list is
+empty either way, so **I could not make it produce a wrong published number.**
+The reachable failure is a false alarm — prune the 37-module bundles and
+`tier3.md` would report "GPU coverage pending: fake-cuda", calling a synthetic
+dpkg-blindness module a GPU module. Loud rather than silent, and cosmetic. It is
+recorded here rather than fixed because changing it alters no current output and
+the two selectors should be unified deliberately, with the catalogue in front of
+whoever does it.

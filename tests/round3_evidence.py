@@ -22,7 +22,7 @@ Three kinds of case, as in round 2:
              reason recorded in JOURNAL.md. The expected value is today's
              BEHAVIOUR, not today's wish.
 """
-import csv, hashlib, io, json, os, shutil, subprocess, sys, tempfile
+import csv, hashlib, io, json, os, re, shutil, subprocess, sys, tempfile
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 REPO = os.path.dirname(HERE)
@@ -446,6 +446,92 @@ def t_populated_cohort_still_reports(tmp):
               True)
     check('CONTROL', 'R3-6 no empty-cohort note', 'EMPTY COHORT' in log, False)
 
+
+# ================================================ R3-7  cross-script cohort
+def _repo_copy(tmp):
+    """A scratch copy of the repo's scripts/, specs/ and config.sh, so the
+    sibling script can be perturbed without touching the real tree."""
+    d = tempfile.mkdtemp(dir=tmp)
+    for sub in ('scripts', 'specs'):
+        shutil.copytree(os.path.join(REPO, sub), os.path.join(d, sub))
+    shutil.copy(os.path.join(REPO, 'config.sh'), os.path.join(d, 'config.sh'))
+    return d
+
+def _run_copy(repo, root, out):
+    env = dict(os.environ, MODFS_ROOT=root)
+    p = subprocess.run(['bash', os.path.join(repo, 'scripts',
+                                             '16_build_evidence.sh'),
+                        '--out', out], env=env,
+                       stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+    return p.returncode, p.stdout.decode('utf-8', 'replace')
+
+def t_cohort_divergence_is_detected(tmp):
+    """R3-7 FIXED -- the LARGE cohort is declared TWICE, in
+    16_build_evidence.sh and in 13_storage_ratios.sh, and the two must agree:
+    they split the same catalogue and publish ratios compared against each
+    other. Three comments in 16_build_evidence.sh asserted a "consistency
+    check" kept them in step -- "kept in step with it by the consistency check
+    below, not by hope", "the two LARGE sets are kept in step by the
+    consistency check".
+
+    There was no such check. All four mentions of 13_storage_ratios.sh in the
+    file were comments and message text; the script never opened it. The two
+    sets were equal only by hand.
+
+    This is the shape STATE_OF_PLAY records as found three times before -- a
+    script documenting itself as doing something it does not do -- in its worse
+    direction: 10_compose_sweep.sh under-claimed (ran V7 and V8 while
+    advertising V1-V6), and this over-claimed. And the stakes are the ones the
+    21 September cohort bug already demonstrated: one module moving between
+    cohorts takes the headline ratio from 5.59x to 2.59x.
+    """
+    repo = _repo_copy(tmp)
+    sib = os.path.join(repo, 'scripts', '13_storage_ratios.sh')
+    src = io.open(sib, encoding='utf-8').read()
+    io.open(sib, 'w', encoding='utf-8').write(
+        src.replace("'nvidia-driver-535', 'cuda-runtime'}",
+                    "'nvidia-driver-535', 'cuda-runtime', 'emacs'}", 1))
+    root = newroot(tmp, [('base', 1 << 20), ('gcc', 1 << 22), ('emacs', 1 << 21)])
+    rc, log = _run_copy(repo, root, tempfile.mkdtemp(dir=tmp))
+    check('FIXED', 'R3-7 generator exits 0', rc, 0)
+    check('FIXED', 'R3-7 divergence detected', 'COHORT DIVERGENCE' in log, True)
+    check('FIXED', 'R3-7 names the diverging module', 'emacs' in log, True)
+    check('FIXED', 'R3-7 names the sibling script',
+          '13_storage_ratios.sh' in log, True)
+
+def t_unreadable_sibling_is_not_silence(tmp):
+    """R3-7 FIXED (second half) -- "I could not check" must never read as "it
+    agrees". If the sibling's LARGE declaration cannot be found -- renamed,
+    moved, rewritten -- the generator says the cohorts are UNVERIFIED rather
+    than passing quietly, which is the failure mode that let every check in
+    this project's history pass while proving nothing.
+    """
+    repo = _repo_copy(tmp)
+    sib = os.path.join(repo, 'scripts', '13_storage_ratios.sh')
+    src = io.open(sib, encoding='utf-8').read()
+    io.open(sib, 'w', encoding='utf-8').write(
+        re.sub(r'^LARGE\s*=\s*\{.*?\}', 'COHORT = {}', src, count=1,
+               flags=re.S | re.M))
+    root = newroot(tmp, [('base', 1 << 20), ('gcc', 1 << 22)])
+    rc, log = _run_copy(repo, root, tempfile.mkdtemp(dir=tmp))
+    check('FIXED', 'R3-7 generator exits 0', rc, 0)
+    check('FIXED', 'R3-7 unreadable sibling reported',
+          'COHORT CONSISTENCY UNVERIFIED' in log, True)
+
+def t_agreeing_cohorts_are_silent(tmp):
+    """R3-7 CONTROL -- the two declarations agree in the shipped tree, as they
+    do today, and nothing may be reported. A false cohort alarm would cast
+    doubt on the headline storage ratios every time the generator runs.
+    """
+    repo = _repo_copy(tmp)
+    root = newroot(tmp, [('base', 1 << 20), ('gcc', 1 << 22)])
+    rc, log = _run_copy(repo, root, tempfile.mkdtemp(dir=tmp))
+    check('CONTROL', 'R3-7 generator exits 0', rc, 0)
+    check('CONTROL', 'R3-7 no divergence reported', 'COHORT DIVERGENCE' in log,
+          False)
+    check('CONTROL', 'R3-7 no unverified warning',
+          'COHORT CONSISTENCY UNVERIFIED' in log, False)
+
 # =================================================================== driver
 def main():
     tmp = tempfile.mkdtemp(prefix='round3-evidence-')
@@ -466,6 +552,10 @@ def main():
         print('R3-6  a cohort with no members')
         t_empty_cohort_has_no_ratio(tmp)
         t_populated_cohort_still_reports(tmp)
+        print('R3-7  the cohort consistency check that did not exist')
+        t_cohort_divergence_is_detected(tmp)
+        t_unreadable_sibling_is_not_silence(tmp)
+        t_agreeing_cohorts_are_silent(tmp)
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
     print()

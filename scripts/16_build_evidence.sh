@@ -97,13 +97,55 @@ KIND_BY_PROVOKES = {
     'module-dependency': 'synthetic',
     'dpkg-blindness':    'synthetic',
 }
-# Declared cohort for the storage split (mirrors 13_storage_ratios.sh; kept in
-# step with it by the consistency check below, not by hope).
+# Declared cohort for the storage split. This same set is declared again in
+# 13_storage_ratios.sh, and the two MUST agree: they split the same catalogue
+# into the same cohorts and publish ratios that are compared against each other.
+# Until 2026-09-21 three comments in this file asserted that a "consistency
+# check" kept them in step. There was no such check -- all four mentions of
+# 13_storage_ratios.sh in this file were comments and message text, and the two
+# sets stayed equal by hand. They are now actually compared, below.
 LARGE = {'gcc', 'java', 'rust', 'llvm', 'postgres', 'mysql', 'docker',
          'nvidia-driver-535', 'cuda-runtime'}
 
+def sibling_large(path):
+    """Parse the LARGE declaration out of a sibling script WITHOUT executing
+    it. Returns None if the file or the declaration cannot be found -- which is
+    itself reported, because 'I could not check' must never read as 'it agrees'.
+    """
+    try:
+        src = open(path, encoding='utf-8').read()
+    except Exception:
+        return None
+    m = re.search(r'^LARGE\s*=\s*\{(.*?)\}', src, re.S | re.M)
+    if not m:
+        return None
+    return set(re.findall(r"'([^']+)'", m.group(1)))
+
+COHORT_DIVERGENCE = ''
+_sib = os.path.join(os.environ.get('MODFS_SRC', ''), 'scripts',
+                    '13_storage_ratios.sh')
+_other = sibling_large(_sib)
+if _other is None:
+    COHORT_DIVERGENCE = (
+        'COHORT CONSISTENCY UNVERIFIED -- could not read a LARGE declaration '
+        'from `%s`, so the storage cohorts published here are NOT known to '
+        'match the ones 13_storage_ratios.sh publishes.' % _sib)
+elif _other != LARGE:
+    only_here = sorted(LARGE - _other)
+    only_there = sorted(_other - LARGE)
+    COHORT_DIVERGENCE = (
+        'COHORT DIVERGENCE -- the LARGE set here and in 13_storage_ratios.sh '
+        'disagree, so the two scripts split the same catalogue differently and '
+        'their ratios are not comparable.%s%s Reconcile BOTH declarations.'
+        % (' Only in 16_build_evidence.sh: %s.' % ', '.join(only_here)
+           if only_here else '',
+           ' Only in 13_storage_ratios.sh: %s.' % ', '.join(only_there)
+           if only_there else ''))
+
 PROV = []          # provenance rows, appended by every source() call
 NOTES = []         # operator-visible warnings
+if COHORT_DIVERGENCE:              # raised above, before NOTES existed
+    NOTES.append(COHORT_DIVERGENCE)
 
 def sha256(path):
     h = hashlib.sha256()
