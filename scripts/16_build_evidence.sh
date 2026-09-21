@@ -813,38 +813,88 @@ def build_storage():
                'mean_delta_mb'], t)
 
     # ---- S2 the model checked against real monolithic builds
+    # A monolithic baseline is itself an artefact and can go stale. It is a
+    # like-for-like comparison ONLY if it was built from the same base and the
+    # same delta it is compared against -- that is, only if it is NEWER than
+    # both. Nothing else here would catch it: ART_NEWEST gates the tier-1 and
+    # tier-2 CSVs, and a `-monolithic.sqsh` carries no manifest, so the artefact
+    # inventory never sees it either. Publishing a calibration measured across a
+    # rebuild boundary is the defect STATE_OF_PLAY §5c records as "monolithic
+    # baselines two weeks stale", recurring in the REPORTING layer.
     checked = []
     for n in names:
         mono = os.path.join(MOD_DIR, n + '-monolithic.sqsh')
         if os.path.exists(mono):
             meas = os.path.getsize(mono); modl = B + sz(n)
+            mmt = mtime(mono)
+            against = []
+            if DELTAS[n]['sqsh_mtime'] and mmt < DELTAS[n]['sqsh_mtime']:
+                against.append('delta')
+            if ART['base']['sqsh_mtime'] and mmt < ART['base']['sqsh_mtime']:
+                against.append('base')
             checked.append([n, '%.1f' % (meas / W), '%.1f' % (modl / W),
                             '%+.2f %%' % (100.0 * (modl / meas - 1.0)),
-                            stamp(mtime(mono))])
+                            stamp(mmt),
+                            'ok' if not against
+                            else 'STALE: predates ' + ' and '.join(against)])
             source(name, mono, 'real monolithic build')
     body.append('\n## S2 Is the `B + d` monolithic model honest?\n\n')
     if checked:
-        errs = [float(r[3].split()[0]) for r in checked]
+        fresh = [r for r in checked if r[5] == 'ok']
+        stale = [r for r in checked if r[5] != 'ok']
+        if stale:
+            NOTES.append(
+                'STALE MONOLITHIC BASELINE -- %d of %d predate the delta or the '
+                'base they are compared against, so their model error is not a '
+                'like-for-like measurement: %s. Rebuild with '
+                './scripts/02_build_delta.sh --compare <name> <pkg>.'
+                % (len(stale), len(checked), ', '.join(r[0] for r in stale)))
         body.append('_The monolithic column above is MODELLED as `B + d` for '
                     'every module. Only %d of %d have a real monolithic build '
-                    'to check it against. Across those %d the model comes in '
-                    '%.2f–%.2f %% HIGH, because squashfs compresses one whole '
-                    'tree slightly better than a base and a delta compressed '
-                    'separately — so the model mildly OVERSTATES the saving._\n\n'
-                    % (len(checked), len(names), len(checked), min(errs), max(errs)))
+                    'to check it against._\n\n' % (len(checked), len(names)))
+        if fresh:
+            errs = [float(r[3].split()[0]) for r in fresh]
+            body.append('_Across the %d baseline(s) that are genuinely '
+                        'like-for-like the model comes in %.2f–%.2f %% HIGH, '
+                        'because squashfs compresses one whole tree slightly '
+                        'better than a base and a delta compressed separately '
+                        '— so the model mildly OVERSTATES the saving._\n\n'
+                        % (len(fresh), min(errs), max(errs)))
+        if stale:
+            body.append('_**%d of the %d baselines are STALE** — the '
+                        '`-monolithic.sqsh` was built BEFORE the delta or the '
+                        'base it is compared against, so the `model error` on '
+                        'those rows compares two different builds and cannot '
+                        'be read as a like-for-like measurement. Whether the '
+                        'rebuild actually moved those bytes is not recoverable '
+                        'from what is on disk; it needs a rebuild to settle._\n\n'
+                        % (len(stale), len(checked)))
         body.append(table(checked, ['module', 'measured MB', 'modelled MB',
-                                    'model error', 'built'],
-                          ['---', '---:', '---:', '---:', '---']))
+                                    'model error', 'built', 'baseline'],
+                          ['---', '---:', '---:', '---:', '---', '---']))
         write_csv('storage-model-check.csv',
                   ['module', 'measured_mb', 'modelled_mb', 'model_error_pct',
-                   'built_utc'],
-                  [[r[0], r[1], r[2], r[3].split()[0], r[4]] for r in checked])
-        body.append('\n**The whole-catalogue monolithic column is therefore %d '
-                    'modelled figures and %d measured ones, not %d rebuilt '
-                    'baselines.** Any sentence calling the whole-catalogue '
-                    'baseline "rebuilt like-for-like" is wrong; the SIX are '
-                    'rebuilt like-for-like and they calibrate the rest.\n'
-                    % (len(names) - len(checked), len(checked), len(names)))
+                   'built_utc', 'baseline_freshness'],
+                  [[r[0], r[1], r[2], r[3].split()[0], r[4], r[5]]
+                   for r in checked])
+        if fresh:
+            body.append('\n**The whole-catalogue monolithic column is therefore '
+                        '%d modelled figures and %d measured ones, not %d '
+                        'rebuilt baselines.** Any sentence calling the '
+                        'whole-catalogue baseline "rebuilt like-for-like" is '
+                        'wrong; the %d FRESH one(s) are rebuilt like-for-like '
+                        'and they calibrate the rest.\n'
+                        % (len(names) - len(checked), len(checked), len(names),
+                           len(fresh)))
+        else:
+            body.append('\n**The model is currently UNCALIBRATED.** All %d '
+                        'monolithic baselines on disk predate the delta or the '
+                        'base they would check, so not one is a like-for-like '
+                        'comparison. The whole-catalogue monolithic column is '
+                        '%d modelled figures and ZERO usable measured ones. No '
+                        'sentence in the thesis may call any part of that '
+                        'baseline "rebuilt like-for-like" until these are '
+                        'rebuilt.\n' % (len(checked), len(names)))
     else:
         body.append(unavailable(
             'no monolithic baselines on disk',

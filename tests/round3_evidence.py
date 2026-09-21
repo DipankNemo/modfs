@@ -119,12 +119,86 @@ def t_sha_column_names_what_it_holds(tmp):
     check('FIXED', 'R3-1 value is NOT the manifest-file digest',
           by['gcc'] == sha256(os.path.join(md, 'gcc.json')), False)
 
+
+# ============================================================== R3-2  FIXED
+def _mono_case(tmp, mono_offset):
+    """A fixture with one real monolithic baseline, built `mono_offset`
+    seconds relative to the delta it is compared against."""
+    root = newroot(tmp, [('base', 1 << 20), ('curl', 1 << 18)])
+    md = os.path.join(root, 'modules')
+    mono = os.path.join(md, 'curl-monolithic.sqsh')
+    io.open(mono, 'wb').write(b'M' * ((1 << 20) + (1 << 18)))
+    delta_mt = os.path.getmtime(os.path.join(md, 'curl.sqsh'))
+    os.utime(mono, (delta_mt + mono_offset, delta_mt + mono_offset))
+    out = tempfile.mkdtemp(dir=tmp)
+    rc, log = generate(root, out)
+    rows = readcsv(out, 'storage-model-check.csv')
+    head, body = rows[0], rows[1:]
+    md_text = io.open(os.path.join(out, 'storage.md'), encoding='utf-8').read()
+    return rc, log, head, body, md_text
+
+def t_stale_monolithic_is_flagged(tmp):
+    """R3-2 FIXED -- S2 published a `model error` for every `-monolithic.sqsh`
+    on disk with NO staleness check, while the header promises that a source
+    older than what it describes is replaced by a STALE block.
+
+    A monolithic baseline is only a like-for-like comparison if it is newer
+    than both the base and the delta it is measured against. On the real
+    artefacts ALL SIX predate their delta -- the monolithics were built
+    2026-09-16 15:10-15:39Z and every delta was rebuilt after that, two of them
+    (curl, jq) two days later -- yet S2 stated "the SIX are rebuilt
+    like-for-like and they calibrate the rest".
+
+    This is STATE_OF_PLAY 5c's "monolithic baselines two weeks stale"
+    recurring in the REPORTING layer. The staleness machinery existed and was
+    pointed only at the tier-1 and tier-2 CSVs; a `-monolithic.sqsh` carries no
+    manifest, so the artefact inventory never saw it either.
+    """
+    rc, log, head, body, md_text = _mono_case(tmp, -3600)   # baseline 1h OLDER
+    check('FIXED', 'R3-2 generator exits 0', rc, 0)
+    check('FIXED', 'R3-2 CSV carries a freshness column',
+          'baseline_freshness' in head, True)
+    if 'baseline_freshness' not in head:
+        return
+    col = head.index('baseline_freshness')
+    check('FIXED', 'R3-2 stale baseline marked STALE',
+          body[0][col].startswith('STALE'), True)
+    check('FIXED', 'R3-2 stale baseline says what it predates',
+          'delta' in body[0][col], True)
+    check('FIXED', 'R3-2 operator note raised', 'STALE MONOLITHIC' in log, True)
+    check('FIXED', 'R3-2 like-for-like claim withdrawn',
+          'UNCALIBRATED' in md_text, True)
+    check('FIXED', 'R3-2 no unqualified like-for-like sentence',
+          'the SIX are rebuilt like-for-like' in md_text, False)
+
+def t_fresh_monolithic_is_not_flagged(tmp):
+    """R3-2 CONTROL -- a baseline built AFTER its delta is a genuine
+    like-for-like comparison and must not be flagged. A generator that cries
+    stale over fresh evidence would be as useless as one that published stale
+    numbers silently, and would push someone into a rebuild costing hours.
+    """
+    rc, log, head, body, md_text = _mono_case(tmp, +3600)   # baseline 1h NEWER
+    check('CONTROL', 'R3-2 generator exits 0', rc, 0)
+    if 'baseline_freshness' not in head:
+        return                      # already reported by the FIXED case above
+    col = head.index('baseline_freshness')
+    check('CONTROL', 'R3-2 fresh baseline marked ok', body[0][col], 'ok')
+    check('CONTROL', 'R3-2 no stale note raised',
+          'STALE MONOLITHIC' in log, False)
+    check('CONTROL', 'R3-2 model reported as calibrated',
+          'UNCALIBRATED' in md_text, False)
+    check('CONTROL', 'R3-2 calibration range still published',
+          '% HIGH' in md_text, True)
+
 # =================================================================== driver
 def main():
     tmp = tempfile.mkdtemp(prefix='round3-evidence-')
     try:
         print('R3-1  the digest column in provenance-artefacts.csv')
         t_sha_column_names_what_it_holds(tmp)
+        print('R3-2  staleness of the monolithic baselines in storage S2')
+        t_stale_monolithic_is_flagged(tmp)
+        t_fresh_monolithic_is_not_flagged(tmp)
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
     print()

@@ -5721,3 +5721,116 @@ a bash wrapper around an embedded Python heredoc with no importable surface.
 synthetic `modules/`, `logs/` and `results/` tree and read back what the shipped
 script wrote. That is a stronger guarantee than importing a block would give:
 it exercises argument parsing, source selection and file emission as shipped.
+
+### Stage 3 — testing the staleness claim, and R3-2
+
+The generator's header makes a strong promise:
+
+> If a source file is missing, or is OLDER than the artefacts it describes, the
+> table is replaced by a STALE/MISSING block that says which file, how old, and
+> what to re-run. A missing result is a fact; a silently stale one is a defect.
+
+That promise was tested rather than believed, by driving the shipped script
+against synthetic `$MODFS_ROOT` trees with sources removed, backdated and
+truncated. It holds for the two sources it was pointed at. It was never pointed
+at a third.
+
+What held:
+
+- **Missing source.** Remove `compose-sweep.csv` and tier 2 is replaced by a
+  MISSING block naming the file and the command. Correct.
+- **Backdated source.** Both tier 1 and tier 2 compare their CSV's mtime
+  against `ART_NEWEST`, the newest `.sqsh` on disk, and replace the whole table
+  with a STALE block naming the artefact, both timestamps and the re-run
+  command. Correct.
+- **Header-only source.** Tier 2 detects it explicitly. Tier 1 has no such
+  branch — but it does not publish a confident number either: the caption
+  machinery reports `**Catalogue: 0 modules**` and `**covers 0 of the 2 modules
+  it should — this table is not current**`, and every table prints `(no rows)`.
+  Legible failure, not silent. Left as is; adding a branch would duplicate a
+  guard that already works.
+- **Tier 3** has no table-level staleness gate and does not need one: it flags
+  staleness per bundle, marking a run `superseded` when any module in it has
+  been rebuilt since. On the real evidence that is 18 of 20 bundles, and the
+  summary says "2 of 20 describe artefacts that still exist unchanged".
+
+### R3-2 — the calibration measured across a rebuild boundary
+
+Storage §S2 is the section that answers "is the `B + d` monolithic model
+honest?". It finds every `<name>-monolithic.sqsh` on disk, computes the model
+error against `B + d`, and concluded:
+
+> Any sentence calling the whole-catalogue baseline "rebuilt like-for-like" is
+> wrong; **the SIX are rebuilt like-for-like and they calibrate the rest.**
+
+A monolithic baseline is a like-for-like comparison only if it was built from
+the same base and the same delta it is compared against — that is, only if it
+is **newer than both**. S2 did no such check. It read the file, computed the
+percentage, and printed the baseline's mtime in a column beside it without ever
+comparing that mtime to anything.
+
+On the real artefacts, all six fail:
+
+| module | delta `.sqsh` | monolithic | gap |
+|---|---|---|---|
+| curl | 09-18 22:45:18Z | 09-16 15:10:06Z | **2d 7h** |
+| jq | 09-18 22:45:38Z | 09-16 15:19:27Z | **2d 7h** |
+| emacs | 09-16 16:29:48Z | 09-16 15:33:05Z | 57 min |
+| nc-traditional | 09-16 16:31:00Z | 09-16 15:22:59Z | 68 min |
+| pytools | 09-16 16:33:12Z | 09-16 15:30:17Z | 63 min |
+| webserver | 09-16 16:31:32Z | 09-16 15:26:28Z | 65 min |
+
+Every monolithic baseline was built *before* the full catalogue rebuild of
+16 September that produced all the current deltas, and `curl` and `jq` were
+rebuilt again two days later. The published `+0.25 %` … `+0.95 %` calibration
+therefore compares a 18 September delta against a 16 September monolith and
+calls the result a measurement.
+
+**What this does and does not invalidate.** The headline ratios — 5.59× / 1.20×
+/ 1.84× — do not move. They are computed from `B + d` directly and never touch a
+monolithic baseline; Stage 1 re-derived all three independently and they are
+exact. What is invalidated is the *validation*: the claim that the model was
+checked against real rebuilt images and found to overstate the saving by under
+one percent. That claim had no support on disk. The model may well be that
+good — nothing here shows it is not — but the six numbers offered as proof were
+measured across a rebuild boundary, and whether the rebuild moved those bytes is
+not recoverable from what is retained. **It needs a rebuild to settle, which is
+outside the remit of a reporting audit.**
+
+This is `STATE_OF_PLAY` §5c's "monolithic baselines two weeks stale" — a defect
+already found once, in the *build* layer — recurring intact in the *reporting*
+layer. And it is the house shape again, in its purest form yet: **the staleness
+check only looked where it was pointed.** `ART_NEWEST` gates the tier-1 and
+tier-2 CSVs. A `-monolithic.sqsh` carries no manifest, so `artefacts()` never
+enumerates it and the artefact inventory never sees it. The one artefact class
+whose staleness the generator never modelled is the one whose whole purpose is
+to be a fixed point of comparison.
+
+Fixed: each baseline is now compared against both its delta and the base, and
+carries a `baseline_freshness` column in `storage-model-check.csv` saying `ok`
+or `STALE: predates delta and/or base`. The calibration range is computed from
+the fresh rows only. When none is fresh — which is the situation today — the
+section reports **the model is currently UNCALIBRATED** and states that no
+sentence in the thesis may call that baseline "rebuilt like-for-like" until they
+are rebuilt. An operator note is raised on stdout naming every stale baseline
+and the command to rebuild it.
+
+`tests/round3_evidence.py::R3-2` drives the shipped generator against a fixture
+whose baseline is backdated one hour behind its delta and asserts every one of
+those behaviours, and — the half that matters as much — a **CONTROL** case whose
+baseline is one hour *ahead*, asserting it is marked `ok`, raises no note, and
+still publishes its calibration range. A generator that cried stale over fresh
+evidence would send someone into a multi-hour rebuild for nothing.
+
+**Action for the operator, not for this branch.** Six monolithic baselines need
+rebuilding before the Evaluation chapter can claim the model is calibrated:
+
+    sudo ./scripts/02_build_delta.sh --compare curl curl
+    sudo ./scripts/02_build_delta.sh --compare jq jq
+    sudo ./scripts/02_build_delta.sh --compare emacs emacs
+    sudo ./scripts/02_build_delta.sh --compare nc-traditional netcat-traditional
+    sudo ./scripts/02_build_delta.sh --compare pytools python3-numpy
+    sudo ./scripts/02_build_delta.sh --compare webserver nginx
+
+(Check each package list against `specs/modules.yaml` before running; the
+module name and its requested packages are not always the same string.)
