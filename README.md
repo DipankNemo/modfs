@@ -10,7 +10,10 @@ storage and assembly**, and a provisioned node receives an ordinary image.
 
 ## What is verified, and how
 
-Three tiers, each cheaper than the next by roughly two orders of magnitude:
+Three tiers of increasing cost. The gaps are **not** uniform, and saying "two
+orders of magnitude at each step" overstates the first one by more than tenfold:
+tier 1 → tier 2 is **5–7×**, tier 2 → tier 3 is **68–414×** (the spread is
+because tier 3 barely depends on N while tier 2 grows with it).
 
 | tier | what it does | cost |
 |---|---|---|

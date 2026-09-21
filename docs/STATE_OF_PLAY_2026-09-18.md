@@ -195,7 +195,14 @@ build**; the thesis must state which it claims.
 
 1. **Class 8** — no detection below tier 3, by nature.
 2. **V7 same-size substitution** — `(kind, size)` cannot see same-size content replacement. Encoded as a `KNOWN OPEN` test.
-3. **V7 non-regular nodes** — FIFOs, sockets, device nodes collapse together.
+3. ~~**V7 non-regular nodes** — FIFOs, sockets, device nodes collapse together.~~
+   — **closed, and this entry was stale when written.** `verify_compose.py`
+   scores FIFOs `p`, sockets `s`, character devices `c` and block devices `b`
+   separately, and carries `st_rdev` for both device kinds, so `/dev/null`
+   becoming `/dev/sda` is a change of *content*, not merely of kind.
+   `round2_attacks.py::R2-3` drives FIFO→socket and reports `vis_ok=False`.
+   The remaining indistinguishability is semantically empty: two FIFOs at one
+   path carry no content to differ in.
 4. **Order-independence is semantic, not byte-wise.** `ARCHITECTURE` §4 says the merged account files are "identical under order reversal". Measured: **set-equal yes, byte-equal no.** The claim is too strong as written.
 5. **Four probes satisfied by a sibling** — `gawk`, `gcc`, `rsync` and one more. Documented with `probe_note` rather than fixed.
 6. ~~**The sidecar seal is optional**~~ — **closed.** `binding.sidecar_sha256` lives *inside* `binding` and so cannot be covered by its own digest; deleting that one field used to disable the check while the manifest seal still verified, letting a tampered sidecar invent collisions or erase evidence. The seal is now **consumer policy, not document policy**: `manifest_binding.validate_manifest()` rejects a manifest whose `sidecar_sha256` is missing or malformed, and `load_sidecar()` refuses to parse ownership data until the digest matches. A document can no longer opt out of being checked. Covered by `tests/review_binding.py` — `test_missing_sidecar_digest`, `test_malformed_sidecar_digest`, `test_tampered_sidecar`, `test_resealed_reduced_coverage`, 8/8. *(Codex H1.)*
