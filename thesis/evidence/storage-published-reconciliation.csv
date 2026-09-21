@@ -1,0 +1,6 @@
+document,section,catalogue_described,published,n_today,recomputed,verdict
+docs/STATE_OF_PLAY_2026-09-18.md,6,"38 modules, 2026-09-16",5.59x / 1.32x / 2.51x,38,5.59x / 1.32x / 2.51x,reproduces
+ARCHITECTURE.md,"7 ""Storage depends on the catalogue""","38 modules, 2026-09-16",5.59x / 1.32x / 2.51x,38,5.59x / 1.32x / 2.51x,reproduces
+ARCHITECTURE.md,7 re-measure block,"40 modules, 2026-09-19",5.59x / 1.20x / 1.84x,40,5.59x / 1.20x / 1.84x,reproduces
+thesis/PLAN.md,ch. 6 list,40 modules,5.59x / 1.20x / 1.84x,40,5.59x / 1.20x / 1.84x,reproduces
+docs/REASSESSMENT_2026-09-10.md,8.2,"37 modules, 2026-09-10",2.47x whole,-,-,NOT REPRODUCIBLE: that generation was overwritten by the 2026-09-16 full rebuild

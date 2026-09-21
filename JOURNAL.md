@@ -5336,3 +5336,88 @@ three matches as well and passes. The retained image SHA256 is
   silently unmount part of the host's /dev is a reproducibility hazard for
   anyone who runs this pipeline, and it belongs in the thesis limitations
   whether or not the mechanism is ever pinned down.
+
+## 2026-09-21 (evidence tooling: every thesis number now has a script and a file)
+- BUILT `scripts/16_build_evidence.sh`. Regenerates `thesis/evidence/` from the
+  artefacts, the retained CSVs under $LOG_DIR and the run bundles under
+  $RESULTS_DIR. No root, no mounts, idempotent: a second run rewrites only
+  `README.md` and `provenance.md`, which carry the generation timestamp, so
+  `--check` is usable as a drift alarm. Six families, Markdown to read and CSV
+  to \input: tier1, tier2, tier3, storage, catalogue, provenance. Every table
+  carries the catalogue size DERIVED FROM ITS OWN SOURCE and the chapter it
+  belongs to.
+- IT REFUSES TO PRINT A STALE NUMBER. If a source is missing, or older than the
+  newest .sqsh it describes, the table is replaced by a block naming the file,
+  both timestamps and the command to re-run. Verified on a synthetic tree:
+  touching one artefact newer than the CSV suppresses the whole tier-1 table.
+  It also selects the tier-1 CSV BY SCHEMA, not by name, because
+  `combinations-all.csv` predates the `identity_collision` and
+  `module_relation` columns and reading it would report zeros that were never
+  measured.
+- NEW RESULT, tier 1 at 40 modules: 780 pairs (667/113) and 9 880 triples
+  (7 807/2 073). Every one of the 2 073 rejecting triples contains a rejecting
+  pair -- 0 unexplained. The converse does NOT hold: **72 triples are ADMITTED
+  although a pair inside them is rejected, and all 72 are `module_relation`**.
+  Rejection is monotone under adding modules for every class except an
+  unsatisfied module requirement, which a third module can satisfy. That is the
+  general form of the `fake-cuda` observation in ARCHITECTURE section 6, now
+  measured at N=3 rather than argued from one module.
+- STORAGE RESOLVED. 2.47x (37 modules, 10 Sep), 2.51x (38, 16 Sep) and 1.84x
+  (40, 19 Sep) are ONE estimator on THREE catalogues, not three methods.
+  Recomputed from today's artefacts: the 38-module catalogue reproduces
+  5.59/1.32/2.51 exactly and the 40-module one 5.59/1.20/1.84 exactly. 2.47x is
+  NOT reconstructible -- that generation was overwritten by the 16 September
+  rebuild -- and it is the only one of the three that applies the x0.993
+  calibration; removing it gives 2.49x, which is the N=37 figure recorded here
+  on 16 September. So 0.02 of the 2.47->2.51 gap is calibration and 0.02 is the
+  38th module. Canonical today: 5.59x / 1.20x / 1.84x at 40 modules.
+- AND THE BASELINE IS WEAKER THAN PLAN.md SAYS. `thesis/PLAN.md` claims the
+  monolithic baseline was "rebuilt like-for-like". Six of forty were. The other
+  34 are modelled B+d, and the six real monoliths span deltas of 0.3-37.0 MB
+  while the nine large modules carry 87.8% of all delta bytes and cuda-runtime
+  alone is 18.4x the largest delta the calibration was measured on. H9 is still
+  open and this is its concrete form.
+- AUDITED EVERY QUANTITATIVE CLAIM in ARCHITECTURE, EVOLUTION, STATE_OF_PLAY,
+  README and PLAN: 132 rows in `thesis/evidence/claims.md`. 58 TRACED, 41
+  UNTRACEABLE, 13 STALE, 10 split, 5 traced-for-their-generation-but-stale-now.
+  Most UNTRACEABLE rows died in the 16 September rebuild. Six did not and are
+  still fixable by writing a file: 869/456/178 opaque markers, the 1 479-file
+  registry enumeration, "7 of 37" debconf, the sampler admissibility
+  percentages, the GPU path counts, and the 14 in-range accounts. Every one has
+  a program that computes it and no program that records it.
+- ONE CLAIM IN THE CORPUS SHIPS ITS OWN DIGEST. ARCHITECTURE line 494 quotes the
+  SHA256 of the CSV it fits, and it verifies:
+  b383725ee699bde86ebeaba74ec344694e7e6e383233a772c3c17cf197fe64df. No other
+  quantitative claim in any document names a file and a digest together.
+- CONSISTENCY PASS: 24 entries in `thesis/evidence/inconsistencies.md`, none
+  applied. Nine were on Dipanker's list; four of those nine turn out to be
+  ALREADY CLOSED in ARCHITECTURE.md and two more are closed there and alive
+  elsewhere (EVOLUTION and MEETING still say "order-independent" unconditionally;
+  STATE_OF_PLAY and PLAN still publish 148 + 27.2 N). Fifteen are new.
+- THE PATTERN IS MECHANICAL AND WORTH RECORDING. `tests/review_claims.py` has
+  seven assertions and ALL SEVEN READ ARCHITECTURE.md. Every item a test covers
+  is closed; every item no test covers is open -- including the four still live
+  inside ARCHITECTURE itself (183 vs 189-204 s, "35 of 36" siblings, "78% of
+  delta bytes", 792.8 vs 792.7 MB), which are exactly the four that are NUMBERS,
+  while all seven existing assertions are on PHRASES. Phrase tests cannot catch
+  a stale number; `16_build_evidence.sh --check` can, which is why it is
+  idempotent.
+- ALSO FOUND, and it is the script's own warning coming true:
+  `13_storage_ratios.sh` computes its mean-delta column as `d / N / 1048576.0`
+  -- binary MiB -- in a table whose every other column is decimal MB, 40 lines
+  below its own comment saying an undeclared unit "is exactly the kind of thing
+  that turns into a wrong number in a thesis". It prints 7.1 where ARCHITECTURE
+  section 7 says 7.5. One character class to fix; not applied.
+- REFERENCE DIGESTS: `docs/refs/NOTES.md`, 17 papers, one self-contained
+  paragraph each. Ten prior-art flags. The three that matter: pendry1995union
+  contains the opaque-directory attribute AND its rm -rf/mkdir rationale, so
+  class 9's novelty must narrow to the build-time/compose-time marker mismatch
+  plus the measurement; treinen2008solving section 2.2.5 already gives class 4's
+  exact detection method (intersect the file index, filter by co-installability,
+  suppress via Replaces and diversions); vouillon2013coinstallability formalises
+  classes 2 and 3 but files appear NOWHERE in its model, so class 4 is genuinely
+  outside it -- which is support for the file-level check, not a threat to it.
+- NOT DONE, needs root: no new tier-1/tier-2 sweep was run, so tier 2 still
+  covers 39 of 40 modules by design and the tier-1 CSV predates nothing. The
+  six recordable-but-unrecorded measurements above all need either root or a new
+  script. Commands handed over separately.

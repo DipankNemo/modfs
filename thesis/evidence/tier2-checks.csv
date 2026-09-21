@@ -1,0 +1,9 @@
+check,assertion,column,passing,total,verdict
+V1,reconciliation completed,`reconcile_ms`,152,152,clean
+V2,"merged dpkg status is the exact union, by (name, version)",`pkg_ok`,152,152,clean
+V3,every alternatives group holds every candidate offered,`alt_groups_bad`,152,152,clean
+V4,/etc/ld.so.cache is the union of the layers' caches,`ld_ok`,152,152,clean
+V5,dpkg --audit clean,`audit_ok`,152,152,clean
+V6,account databases are the exact semantic union,`acct_ok`,152,152,clean
+V7,every layer path visible in the merge,`vis_ok`,152,152,clean
+V8,every debconf record any layer answered survives,`dbc_ok`,152,152,clean
