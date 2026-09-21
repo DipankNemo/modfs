@@ -466,3 +466,259 @@ story stops being an inference.
 **Still honest gaps:** the four-run causal matrix has not been executed; H1–H12
 and M1–M7 from the audit are listed in ARCHITECTURE §10 and untouched; and
 "tier 3 passes" remains a claim nobody has earned — one set booted, once.
+
+---
+
+## Phase 14 — Class 7 was a claim about numbers, not about composition
+
+**16 September.** An external reassessment said the class-7 work proved less than
+it claimed. Checking it independently confirmed the charge: UID *range
+partitioning* guaranteed two modules never allocate the same number, and the
+manifest comparison checked that. Neither looked at the account **databases**.
+`/etc/passwd`, `group`, `shadow` and `gshadow` are rewritten whole by maintainer
+scripts, are owned by no package, and OverlayFS takes the top layer's copy
+*entire*. Two modules that each created users produced a composed system holding
+only one module's records.
+
+"Class 7 prevented" was true of the numbers and false of the records.
+
+**What it forced:** account databases became the fifth reconciled registry —
+union by record, member lists merged, modes preserved because `/etc/shadow` is
+0640 root:shadow. Tier 2 gained **V6**, asserting the composed databases are the
+exact semantic union of the layers, compared record by record rather than line
+by line. Proven at runtime on 17 September: `base postgres mysql` and `base
+mysql postgres` both boot with `mariadbd` on 3306 and `postgres` on 5432, each
+under its own reconciled identity, in both orders.
+
+---
+
+## Phase 15 — The instrument was the thing under test
+
+Five defects in three days where **the harness, not the system, set the limit**.
+Each was invisible while N stayed small or the probes stayed weak.
+
+- `require_no_mounts` parsed **field 2** of `/proc/self/mountinfo` instead of
+  field 5. The guard was completely inert.
+- Signal handlers `return`ed instead of re-raising, so scripts **continued after
+  Ctrl-C and exited 0**.
+- **The observer was the job.** The boot harness waited for a steady state its
+  own queued job prevented: `systemctl is-system-running --wait` could never
+  succeed at any timeout. 180 s wasted per run. Compounded by `grep -c . || echo
+  0` yielding the two-line string `0\n0`, so the drain loop could not break *even
+  on an empty queue* — one symptom, two sufficient causes.
+- **A 4096-byte ceiling.** OverlayFS packs every lower layer into one mount
+  option string. A 37-layer set succeeded or failed *depending on how long its
+  scratch directory name was*. Relative lowerdirs took it from 4319 bytes to 419.
+- `07_smoke_test.sh` **never created `/tmp`**. Nine probes "failed"; all nine
+  were the harness. Invisible for the life of the project because no probe had
+  ever written a file.
+
+**What it forced:** the recognition that a stronger probe does not only test the
+module better — it tests the harness. Nine harness defects surfaced the moment
+the probes started doing real work.
+
+---
+
+## Phase 16 — Class 9, and a design assumption that was true and wrong
+
+**16 September.** A 36-module boot lost the whole of `pytools`' numpy tree.
+`dpkg` correctly reported `python3-numpy` installed; the files were absent. **No
+file collided** — the modules ship different filenames — so class 4 could never
+see it.
+
+Cause: `pyyaml` carried `trusted.overlay.opaque` on `/usr/lib/python3`, which
+tells OverlayFS to ignore every lower layer at that path. Measured across 38
+modules: **869 markers, 456 distinct directories, 178 claimed by two or more**.
+
+`config.sh` had classified that xattr as *"SEMANTIC. A directory replaced
+wholesale. Keep."* The reasoning was sound; its **premise** was false and nobody
+had measured it. Of the 456 directories, **zero exist in base**, zero modules
+carry a whiteout, and every parent is base — so no marker was ever hiding
+anything. Each was written when the only layer below was base; at compose time
+"below" becomes the *sibling modules*, which did not exist when the marker was
+made.
+
+**What it forced:** `opaque` joined `uuid` and `origin` in
+`SQUASH_XATTR_EXCLUDE`; `02_build_delta.sh` now *asserts* the premise on every
+build rather than trusting a comment; and tier 2 gained **V7**, requiring every
+name present in any layer to be visible in the merge — the first check in the
+project that looks at the composed filesystem rather than its metadata.
+
+---
+
+## Phase 17 — Three adversarial passes, and the checkers lost
+
+**17–18 September.** Three independent sessions were told to attack the
+checkers, each without being shown what the previous one found.
+
+- **Round 1** reproduced **seven false negatives**, six of which V7 passed.
+- **Round 2**, attacking the fixes for round 1, found **thirteen more** — including
+  that V7 v2 was defeated by a relative symlink to a decoy carrying the same
+  entry name (1 MB of payload replaced by 6 bytes, `vis_ok=1`), and that V7
+  resolved absolute symlinks against the **checking host's** filesystem, so its
+  verdict depended on the machine running it.
+- **Round 3**, a different model entirely, found **twelve more**, including that
+  the new manifest-binding seal was *optional*: `binding.sidecar_sha256` lives
+  inside `binding`, which cannot be inside its own digest, so deleting one field
+  disabled the check while the manifest seal still verified.
+
+Two findings needed no fixtures at all. `postgres` + `java`: postgres' debconf
+database silently replaced by java's, all checkers green. `curl` +
+`control-oldsnap`: tier 1 rejects it for five version skews and **tier 2 passed
+every column**, because V2 compared package *name sets*.
+
+**What it forced:** V2 compares `(name, version)`; a bare `Replaces:` no longer
+excuses a file collision (Policy §7.6 requires `Breaks` or `Conflicts` for
+side-by-side installs); alternatives priority disagreement is a conflict rather
+than a last-wins merge; class 7 compares the **numeric owners of shipped files**,
+not only declared records; debconf became the sixth reconciled registry with its
+own **V8**; and the seal became mandatory. Every finding is now a regression
+test.
+
+**And one line worth keeping:** *V7 is a check that the right names are present,
+and it was being read as a check that the right files are present.*
+
+---
+
+## Phase 18 — Rebuilding everything, and the storage claim narrowing again
+
+The catalogue was rebuilt from scratch: base plus 38 modules in 19 minutes.
+`/etc/apt/apt.conf.d/99modfs` — which disabled apt recommends on any provisioned
+node — was found in base and unevenly through modules, and is now gone from all
+of them. `pipdemo` built for the first time since 10 September, having failed on
+an `IFS=$'\t'` empty-field collapse that put its `post_install` into the snapshot
+variable.
+
+**Storage was not comparable and nobody had noticed:** `08 --force` does *not*
+rebuild the monolithic baselines, so fresh deltas were being measured against
+monoliths built on the leaked base. Rebuilt like-for-like, the model was then
+*checked* rather than assumed — measured monolithic sizes run 0.2–0.9 % **below**
+the modelled `B + d`, so the model mildly overstates the saving.
+
+**Base fattening**, named in §7 as "the obvious next experiment and has not been
+run", was run. Server-side it is an unconditional **−24.1 %**. Per node it is
+not: **no single-module node can ever win, structurally**, because the shared set
+is chosen by "appears in ≥2 modules", so `dB` always exceeds any one module's
+saving. Server-side and per-node metrics give **opposite answers for the same
+build**.
+
+---
+
+## Phase 19 — What "updatable" actually costs
+
+**19–20 September.** The title claims a *modular, updatable* filesystem; §11
+scheduled an update manager for week 3 and it was never built. The word
+"updatable" appeared once in the whole document — in the title.
+
+Within a pin nothing can change: same pin plus same spec gives the same bytes,
+re-verified on `curl`, `jq` and `zstd`. So an update *means* a new spec or a new
+pin. The design decision taken was that **the pin is atomic across the
+catalogue** — one snapshot, one generation, mixed pins never valid.
+
+- **Intra-generation** (a module's packages change): `jq` gains `moreutils`, only
+  the new `jq` ships — 10.43 MB of 51.65 MB, a **4.95× saving**.
+- **Inter-generation** (the pin moves): **all 40 modules rehash. 100 % reships.**
+  No free modules. The hoped-for incremental result did not hold, and was
+  reported rather than engineered around — no timestamp normalisation, no
+  binary patching, no chunk deduplication.
+
+Three mechanisms explain it, and two are incidental rather than fundamental:
+`SOURCE_EPOCH` is derived from the snapshot id and stamps every file's mtime;
+every delta ships the new snapshot URL in `sources.list`; and each delta carries
+a dpkg status containing base's package versions, of which 36 of 113 changed.
+
+---
+
+## Phase 20 — A second machine, and what the pin actually guarantees
+
+**20 September.** The whole catalogue was rebuilt on rented hardware. Result:
+**0 of 41 artefacts byte-identical** — and a mechanism identified for every
+single mismatch.
+
+The finding is not the zero. It is what sits underneath it: **40 of 41 modules
+have identical package maps across machines and dates**, the one exception being
+the module we ourselves respecced. **The pin does exactly what it claims.** What
+differs is state generated at *install* time — shadow password-change days,
+nullmailer embedding the hostname, MySQL's Aria UUID encoding the build date and
+the NIC MAC, PostgreSQL's cluster ids and snakeoil certificates, Java's JKS
+timestamps, Emacs info-dir ordering from an unsorted `find`.
+
+Java is the sharpest case: its CDS dump differs between **two runs on the same
+machine**, so that artefact cannot be byte-reproducible by anyone.
+
+**What it forced:** §8's claim narrows from "byte-reproducible artefacts" to
+**deterministic package resolution, with byte-identity holding only for modules
+whose packages generate no install-time state**. That is a property of the
+package set, not of the build system — which is why `curl`, `jq` and `zstd`
+reproduced perfectly and the daemons did not.
+
+The same run found `00_verify.sh` checks that a tool *exists* but not that it is
+*capable*: SquashFS 4.5 lacks `-xattrs-exclude`, and the checker hid the decisive
+`mksquashfs` error.
+
+---
+
+## Phase 21 — GPU modules, and the limit of the claim
+
+A 680 MB CUDA runtime and a 232 MB driver module were built from the pinned
+snapshot. The method carries them: byte-exact, V1–V8 clean to N=38, boots, and at
+matched N composes **no more expensively than a 0.5 MB module** — cost tracks
+layer count, not size. What it does *not* do is save anything at that size: 99 %
+return on `nc-traditional` against **5.8 %** on the CUDA runtime.
+
+The brief given to that session was wrong in three ways it caught: Ubuntu ships
+prebuilt nvidia *objects* plus a link script rather than a prebuilt `.ko`, so
+`binutils` is required; Canonical's unsigned build leaves **zero-byte `.ko`**
+files where `depmod` scans, which a `test -e` probe would have passed; and the
+sizes quoted were roughly half the truth.
+
+**The honest limit:** the driver targets kernel ABI `5.15.0-185`, and no machine
+available ran it — the workstation is on 7.0, the rented instance was on 6.8. So
+the module is shown to be well-formed for the system ModFS builds, and *not*
+shown to bind real hardware.
+
+---
+
+## Phase 22 — Making the evidence regenerable, and finding the prior art
+
+**21 September.** Every thesis number now comes from `16_build_evidence.sh`
+reading retained CSVs and run bundles, so the tables update when the artefacts
+do. It refuses rather than reports stale: a source older than the artefacts it
+describes is replaced by a block naming both timestamps.
+
+An audit of 132 quantitative claims across the documents returned **58 TRACED, 41
+UNTRACEABLE, 13 STALE** — most of the untraceable ones died in the 16 September
+rebuild. A consistency pass found 24 disagreements, and explained *why* they
+persist: the documentation contract test holds seven assertions and **all seven
+read `ARCHITECTURE.md`**. Everything a test covers is closed; everything it does
+not is live. The same defect shape as V7, V2 and `00_verify` — *the check only
+looks where it was pointed.*
+
+And the literature was finally read against the claims. **`pendry1995union`
+(1995) already contains the opaque attribute and its `rm -rf`/`mkdir`
+rationale.** Class 9's mechanism is thirty-one-year-old prior art; what remains
+novel is the **build-time versus compose-time marker mismatch** and the
+measurement. `treinen2008solving` already gives class 4's detection method.
+`vouillon2013coinstallability` formalises classes 2 and 3 — but has no
+file-level model, so class 4 genuinely sits outside it.
+
+---
+
+## The theme, restated after six more weeks
+
+Phase 12 said it once: the checks were sound about the things they modelled and
+silent about the things they did not model at all. Everything since has been the
+same sentence with a different subject.
+
+- Class 7 modelled **numbers**, not records.
+- Class 4 modelled **paths**, so it could not see a directory erasing a sibling.
+- V2 modelled **names**, not versions.
+- V7 modelled **names**, not files.
+- `00_verify` modelled **presence**, not capability.
+- The documentation test modelled **one file**, not five.
+
+Twenty-plus defects across three adversarial passes, and not one of them was a
+composition failing. Every one was a *check* that passed something it did not
+model. The strongest claim this project can make is not that delta composition
+works — it is that **verifying it is harder than performing it**, and that each
+strengthening of a check found something the weaker version had been passing.
