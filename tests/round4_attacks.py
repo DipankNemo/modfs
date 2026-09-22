@@ -145,6 +145,24 @@ class RegistryAttacks(unittest.TestCase):
         users, _, _, _ = self.account_view('svc:x:2500:2500::/srv:/bin/false')
         self.assertEqual(users['svc'], {'uid': '2500', 'gid': '2500'})
 
+    def extracted_diversions(self, body):
+        source = (REPO / 'scripts' / '06_extract_metadata.sh').read_text()
+        start = source.index('diversions = []\n')
+        end = source.index("sidecar = {'schema'", start)
+        self.put('tree', 'var/lib/dpkg/diversions', body)
+        scope = {'tree': str(self.root / 'tree'), 'os': os,
+                 'warn': lambda *_: None}
+        exec(source[start:end], scope)
+        return scope['diversions']
+
+    def test_fixed_incomplete_diversion_rejected_at_extraction(self):
+        with self.assertRaisesRegex(ValueError, 'malformed diversions'):
+            self.extracted_diversions('/one\n/one.distrib\npkg\n/two\n/two.distrib\n')
+
+    def test_control_valid_diversion_extraction_without_final_newline(self):
+        self.assertEqual(self.extracted_diversions('/one\n/one.distrib\npkg'),
+                         [{'path': '/one', 'to': '/one.distrib', 'by': 'pkg'}])
+
 
 if __name__ == '__main__':
     unittest.main(verbosity=2)

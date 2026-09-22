@@ -649,8 +649,10 @@ dpath = os.path.join(tree, 'var/lib/dpkg/diversions')
 if os.path.exists(dpath):
     try:
         with open(dpath, encoding='utf-8', errors='replace') as f:
-            lines = [l for l in f.read().split('\n') if l]
-        for i in range(0, len(lines) - 2, 3):
+            lines = f.read().splitlines()
+        if len(lines) % 3 or any(not line for line in lines):
+            raise ValueError('%s: malformed diversions (expected three nonempty lines per record)' % dpath)
+        for i in range(0, len(lines), 3):
             diversions.append({'path': lines[i], 'to': lines[i+1],
                                'by': None if lines[i+2] == ':' else lines[i+2]})
     except OSError as exc:

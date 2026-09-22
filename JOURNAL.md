@@ -5799,3 +5799,22 @@ Verification: `python3 tests/round4_attacks.py` passes all FIXED/CONTROL cases;
 `python3 tests/round2_attacks.py` still passes 11/11. The root-dependent
 `review_account_metadata.py` cases skip in this unprivileged worktree. No
 root-only extraction, new squashfs build, or boot was attempted.
+
+### Round-four continuation: two tier-one boundary gaps
+
+| ID | Trigger and wrong output before fix | Correct output and fix | Site | House pattern |
+|---|---|---|---|---|
+| R4-8 | The same incomplete diversions file used in R4-3 gave `06_extract_metadata.sh` a one-record sidecar with no warning; the trailing two lines vanished. | Extraction raises `ValueError: malformed diversions` before sealing or publishing a new sidecar. A valid three-line record without a final newline remains accepted. | `06_extract_metadata.sh` old 650–654, now 651–657 | Sidecar writer counted complete triples; missed the remainder, exactly as the merger had. |
+| R4-9 | A complete, correctly sealed synthetic manifest with `file_gids: [2500]` made `05_check.sh delta` REJECT with `IDENTITY BORROWED`. Removing only `accounts.file_gids` and recomputing the documented local field seal changed that to exit 0, zero warnings and `every file owner resolves ... [OK]`. The same behavior was reproduced using copies of real base and curl manifests in `/tmp`: removing `file_gids` left a clean ACCEPT. | If **either** `file_uids` or `file_gids` is missing or malformed, report `numeric file ownership NOT CHECKED`, suppress the ownership `[OK]`, and return `ACCEPT WITH WARNINGS` unless another check rejects. The complete clean control still prints `[OK]`; the present bad GID still rejects. JSON `null` and a nonnumeric GID element also produce the warning. | `05_check.sh` old 632–645, now 632–645 | The coverage check tested only the UID key; `get('file_gids') or []` made a missing GID list indistinguishable from a genuinely empty one. |
+
+R4-9 is the highest-risk finding in this continuation because it changes the
+scope of a tier-one safety claim without changing its apparent verdict. It does
+not break the documented integrity model: the field seal detects drift, not a
+manifest deliberately resealed after editing. The defect is that even a
+well-formed, internally consistent schema-1 document could omit a nested field
+and the checker still asserted complete ownership coverage. The new structural
+check gives that omission a visible warning.
+
+Regressions: R4-8 is in `tests/round4_attacks.py`; R4-9 runs the **full**
+`05_check.sh` on sealed synthetic manifests and sidecars in
+`tests/round4_class7.py`. These tests use scratch directories and need no root.
