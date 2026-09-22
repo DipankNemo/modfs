@@ -1,4 +1,4 @@
-module,bytes,sqsh_mtime_utc,manifest_mtime_utc,manifest_sha256,freshness
+module,bytes,sqsh_mtime_utc,manifest_mtime_utc,artefact_sha256_recorded,freshness
 apache,28106752,2026-09-16 16:32:02Z,2026-09-22 20:35:44Z,347c50614a3ab54b664ef6eda0470afadcdb5d95ce9c6d278752be6c4b410c36,ok
 base,41717760,2026-09-16 14:44:32Z,2026-09-22 20:35:41Z,e4fbed70bb74f351b7ad27dd61289845dccabf54fc23d6504b2011dc8d8de6c6,ok
 control-oldsnap,1638400,2026-09-16 16:41:19Z,2026-09-22 20:35:52Z,adb8b5d8d6f6a2fb14ae35d8f5d752d3a448cdc933f603abd3785eef323d2ced,ok

@@ -2,13 +2,13 @@
 
 **Chapter: Evaluation (appendix)**
 
-_Generated 2026-09-22 22:06:45Z from `/srv/modfs/results` at commit `3b1058e146136159088ba8c2fb23cd4a06caeda6` (branch `main`, working tree clean). The commit is the state of the PIPELINE when this table was generated, which is not necessarily the commit the measurement was taken at — where a run bundle records its own commit, that file is the authority._
+_Generated 2026-09-22 23:05:49Z from `/srv/modfs/results` at commit `58e926b515dd1c8537a1dde24a435bf210329e11` (branch `main`, working tree DIRTY). The commit is the state of the PIPELINE when this table was generated, which is not necessarily the commit the measurement was taken at — where a run bundle records its own commit, that file is the authority._
 
 _Catalogue today: **40 modules** (40 with artefacts). Newest artefact: `nc-traditional` at 2026-09-22 21:46:29Z._
 
 | table | chapter | source file | role | exists | mtime (UTC) | sha256 (first 16) | catalogue size at the time |
 |---|---|---|---|---|---|---|---|
-| tier1 | Evaluation | `/srv/modfs/logs/combinations.csv` | tier-1 sweep results | yes | 2026-09-22 22:06:27Z | eed8000e1a9a0b7d… | 40 |
+| tier1 | Evaluation | `/srv/modfs/logs/combinations.csv` | tier-1 sweep results | yes | 2026-09-22 23:05:49Z | 8d1e4bd23a62c360… | 40 |
 | tier2 | Evaluation | `/srv/modfs/logs/compose-sweep.csv` | tier-2 sweep results | yes | 2026-09-18 23:15:42Z | 7cde08a6d62eb2cd… | 39 |
 | tier3 | Evaluation | `/srv/modfs/results/boot/acct-mp-20260916T142443Z/run.json` | tier-3 bundle: acct-mp-20260916T142443Z | yes | 2026-09-16 14:24:43Z | 928843be838390d3… | 2 |
 | tier3 | Evaluation | `/srv/modfs/results/boot/acct-pm-20260916T134737Z/run.json` | tier-3 bundle: acct-pm-20260916T134737Z | yes | 2026-09-16 13:47:37Z | b0e070d325b9a395… | 2 |
@@ -42,9 +42,9 @@ _Catalogue today: **40 modules** (40 with artefacts). Newest artefact: `nc-tradi
 
 ## P2 Artefact inventory
 
-_The `sha256` column is the digest the manifest RECORDS, not one recomputed here; `verify_bundle` in `lib.sh` and `12_verify_binding.sh` are what check it against the bytes._
+_The `sha256` column is the digest of the **artefact** (`<module>.sqsh`) as the manifest RECORDS it -- it is NOT the digest of the manifest file itself, and it is not recomputed here; `verify_bundle` in `lib.sh` and `12_verify_binding.sh` are what check it against the bytes._
 
-| artefact | bytes | artefact mtime | manifest mtime | manifest sha256 | freshness |
+| artefact | bytes | artefact mtime | manifest mtime | artefact sha256 (recorded) | freshness |
 |---|---:|---|---|---|---|
 | apache | 28106752 | 2026-09-16 16:32:02Z | 2026-09-22 20:35:44Z | 347c50614a3ab54b… | ok |
 | base | 41717760 | 2026-09-16 14:44:32Z | 2026-09-22 20:35:41Z | e4fbed70bb74f351… | ok |

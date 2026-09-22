@@ -18,18 +18,20 @@ _**Catalogue: 40 modules** · measured 2026-09-22 21:46:29Z · source `/srv/modf
 
 ## S2 Is the `B + d` monolithic model honest?
 
-_The monolithic column above is MODELLED as `B + d` for every module. Only 6 of 40 have a real monolithic build to check it against. Across those 6 the model comes in 0.25–1.34 % HIGH, because squashfs compresses one whole tree slightly better than a base and a delta compressed separately — so the model mildly OVERSTATES the saving._
+_The monolithic column above is MODELLED as `B + d` for every module. Only 6 of 40 have a real monolithic build to check it against._
 
-| module | measured MB | modelled MB | model error | built |
-|---|---:|---:|---:|---|
-| curl | 43.0 | 43.4 | +0.91 % | 2026-09-22 21:35:56Z |
-| emacs | 78.3 | 78.7 | +0.51 % | 2026-09-22 21:40:57Z |
-| jq | 51.5 | 52.2 | +1.34 % | 2026-09-22 21:38:30Z |
-| nc-traditional | 41.6 | 42.0 | +0.95 % | 2026-09-22 21:48:35Z |
-| pytools | 67.4 | 67.6 | +0.25 % | 2026-09-22 21:46:11Z |
-| webserver | 62.3 | 62.8 | +0.82 % | 2026-09-22 21:43:31Z |
+_Across the 6 baseline(s) that are genuinely like-for-like the model comes in 0.25–1.34 % HIGH, because squashfs compresses one whole tree slightly better than a base and a delta compressed separately — so the model mildly OVERSTATES the saving._
 
-**The whole-catalogue monolithic column is therefore 34 modelled figures and 6 measured ones, not 40 rebuilt baselines.** Any sentence calling the whole-catalogue baseline "rebuilt like-for-like" is wrong; the SIX are rebuilt like-for-like and they calibrate the rest.
+| module | measured MB | modelled MB | model error | built | baseline |
+|---|---:|---:|---:|---|---|
+| curl | 43.0 | 43.4 | +0.91 % | 2026-09-22 21:35:56Z | ok |
+| emacs | 78.3 | 78.7 | +0.51 % | 2026-09-22 21:40:57Z | ok |
+| jq | 51.5 | 52.2 | +1.34 % | 2026-09-22 21:38:30Z | ok |
+| nc-traditional | 41.6 | 42.0 | +0.95 % | 2026-09-22 21:48:35Z | ok |
+| pytools | 67.4 | 67.6 | +0.25 % | 2026-09-22 21:46:11Z | ok |
+| webserver | 62.3 | 62.8 | +0.82 % | 2026-09-22 21:43:31Z | ok |
+
+**The whole-catalogue monolithic column is therefore 34 modelled figures and 6 measured ones, not 40 rebuilt baselines.** Any sentence calling the whole-catalogue baseline "rebuilt like-for-like" is wrong; the 6 FRESH one(s) are rebuilt like-for-like and they calibrate the rest.
 
 ## S3 Per-module saving against its own monolithic image
 
