@@ -398,6 +398,7 @@ else:
     artifact = None
 
 sys.path.insert(0, os.path.join(E['MODFS_SRC'], 'scripts'))
+from account_schema import FIELDS
 from generation import extraction_generation
 # Snapshot provenance lives in the shipped sources.list. Never label existing
 # bytes using only the caller's environment during a metadata refresh.
@@ -431,8 +432,9 @@ resolved_generation = extraction_generation(
 # NOT stored: verifying that a shadow record exists needs the name only.
 def colon_table(tree, rel, key_at, want):
     out = {}
-    expected = {'etc/passwd': 7, 'etc/group': 4,
-                'etc/shadow': 9, 'etc/gshadow': 4}[rel]
+    # From account_schema.FIELDS, not a third private copy: R4-6 was R4-4's
+    # defect found again here because the two tables were independent.
+    expected = FIELDS[rel]
     path = os.path.join(tree, rel)
     if not os.path.exists(path):
         return out

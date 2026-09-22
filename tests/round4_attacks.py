@@ -128,7 +128,12 @@ class RegistryAttacks(unittest.TestCase):
         start = source.index('def colon_table(')
         end = source.index('own_u, own_g,', start)
         self.put('tree', 'etc/passwd', body)
-        scope = {'os': os, 'warn': lambda *_: None}
+        # colon_table now takes its field counts from the shared
+        # account_schema table, so this artificial scope has to supply
+        # that dependency as it already supplies os and warn.
+        sys.path.insert(0, str(REPO / 'scripts'))
+        from account_schema import FIELDS
+        scope = {'os': os, 'warn': lambda *_: None, 'FIELDS': FIELDS}
         exec(source[start:end], scope)
         return scope['account_view'](str(self.root / 'tree'))
 

@@ -31,6 +31,8 @@ the authority on computing them. Same argument for ldconfig.
 Exit: 0 reconciled, 2 something was unreadable or inconsistent.
 """
 import json, os, stat, sys
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from account_schema import FIELDS as _FIELDS
 
 # ---------------------------------------------------------------- helpers
 def read(path):
@@ -192,13 +194,18 @@ def merge_alternatives(layers, merged):
 # merge indices of comma-separated member lists that must be UNIONED rather
 #       than overwritten -- a group can legitimately gain members from several
 #       modules, e.g. ssl-cert gains postgres.
+# Field counts come from account_schema.FIELDS so that this file, the verifier
+# and the extractor cannot drift apart; round 4 had to fix the same wrong-field-
+# count defect twice (R4-4 here, R4-6 in the extractor) because they were three
+# separate copies. Key and member columns stay here: they are what THIS file
+# does with the record, not properties of the format.
 ACCOUNT_FILES = [
-    ('etc/passwd',  7, 0, ()),      # name:x:uid:gid:gecos:home:shell
-    ('etc/group',   4, 0, (3,)),    # name:x:gid:members
-    ('etc/shadow',  9, 0, ()),      # name:hash:...
-    ('etc/gshadow', 4, 0, (2, 3)),  # name:hash:admins:members
-    ('etc/subuid',  3, None, ()),   # name:start:count -- whole-line union
-    ('etc/subgid',  3, None, ()),
+    ('etc/passwd',  _FIELDS['etc/passwd'],  0,    ()),
+    ('etc/group',   _FIELDS['etc/group'],   0,    (3,)),
+    ('etc/shadow',  _FIELDS['etc/shadow'],  0,    ()),
+    ('etc/gshadow', _FIELDS['etc/gshadow'], 0,    (2, 3)),
+    ('etc/subuid',  _FIELDS['etc/subuid'],  None, ()),   # whole-line union
+    ('etc/subgid',  _FIELDS['etc/subgid'],  None, ()),
 ]
 
 # ------------------------------------------------------------------- debconf

@@ -43,6 +43,7 @@ def main(argv):
 
     sys.path.insert(0, scripts)
     from reconcile import stanzas, field, parse_alt, read
+    from account_schema import FIELDS as _FIELDS
 
     # ---- V2: dpkg status is the exact union of the layers -----------------
     # NAME AND VERSION. Comparing name sets left tier 2 with no independent view
@@ -129,13 +130,16 @@ def main(argv):
     # member lists and subordinate ranges union as sets; other fields and file
     # attributes come from the highest layer providing the record/file.
     # Conflicting numeric identities are never a legitimate override.
+    # Field counts from account_schema.FIELDS; identity columns, member columns
+    # and the whole-line-union flag stay here, being what V6 does with a record
+    # rather than properties of the format.
     account_schema = {
-        'etc/passwd': (7, (2, 3), (), False),
-        'etc/group': (4, (2,), (3,), False),
-        'etc/shadow': (9, tuple(range(2, 9)), (), False),
-        'etc/gshadow': (4, (), (2, 3), False),
-        'etc/subuid': (3, (1, 2), (), True),
-        'etc/subgid': (3, (1, 2), (), True),
+        'etc/passwd':   (_FIELDS['etc/passwd'],   (2, 3),              (),     False),
+        'etc/group':    (_FIELDS['etc/group'],    (2,),                (3,),   False),
+        'etc/shadow':   (_FIELDS['etc/shadow'],   tuple(range(2, 9)),  (),     False),
+        'etc/gshadow':  (_FIELDS['etc/gshadow'],  (),                  (2, 3), False),
+        'etc/subuid':   (_FIELDS['etc/subuid'],   (1, 2),              (),     True),
+        'etc/subgid':   (_FIELDS['etc/subgid'],   (1, 2),              (),     True),
     }
     acct_bad, n_acct = [], 0
 
