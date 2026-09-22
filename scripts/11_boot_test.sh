@@ -145,6 +145,14 @@ LOOPDEV=""
 boot_cleanup() {
     [ -n "$LOOPDEV" ] && { umount "$C/mnt/esp" 2>/dev/null; umount "$C/mnt/root" 2>/dev/null
                            losetup -d "$LOOPDEV" 2>/dev/null; }
+    # DROP THE DISK IMAGE on every exit path. The mount teardown was already
+    # trap-based and correct; the scratch TREE was never removed, so three
+    # failed GPU runs left 11.9 GB behind without saying so and a fourth took
+    # it to 19 GB on a disk with 38 GB free. The image is 3.6 GB of a 4.5 GB
+    # tree -- 80 % -- and it is the one part that is fully reproducible by
+    # re-running this script. The merged tree, the logs and the mount points
+    # stay, because those are what a failed run is debugged from.
+    [ -n "${IMG:-}" ] && [ -f "$IMG" ] && rm -f "$IMG"
     return 0
 }
 # Every exit path records a result, including die2 and a signal. Run A left
@@ -700,7 +708,7 @@ if [ "$INTERACTIVE" -eq 1 ]; then
     log "qemu exited ${QRC}"
     echo
     echo " serial log: ${SERIAL}"
-    echo " disk image: ${IMG}  (scratch; delete with: rm -rf ${C})"
+    echo " scratch   : ${C}  (disk image dropped; tree kept for inspection, delete with: rm -rf ${C})"
     echo " run bundle: ${B}"
     echo
     echo " interactive session -- NO VERDICT. This composes and boots the set for"
@@ -821,6 +829,6 @@ case "$RC" in
 esac
 echo
 echo " serial log: ${SERIAL}"
-echo " disk image: ${IMG}  (scratch; delete with: rm -rf ${C})"
+echo " scratch   : ${C}  (disk image dropped; tree kept for inspection, delete with: rm -rf ${C})"
 echo " run bundle: ${B}  (evidence -- do not delete)"
 exit "$RC"
