@@ -85,16 +85,28 @@ class ClaimTests(unittest.TestCase):
                    if r['quantity'] == 'total (compose only)')
         current = '%s + %s' % (row['intercept_ms'], row['slope_ms_per_module'])
         # A line may quote a superseded fit only while saying so.
+        # A line is exempt when it RETRACTS the figure, or when it ATTRIBUTES it
+        # to a named retained CSV -- "<file> yields <fit>" is provenance, and a
+        # check that fires on provenance is a false positive, which this project
+        # has found to be as damaging as a check that misses.
         SUPERSEDED = re.compile(r'pre-round|supersed|older|earlier|historical|'
-                                r'must not be published|not the fit of the current',
+                                r'must not be published|not the fit of the current|'
+                                r'yields|\bcsv\b',
                                 re.I)
+        # Match the FIGURES, not one spelling of them. A literal '148 + 27.2'
+        # misses '148.3 + 27.20N' and '148.286 + 27.200 N', which is how the
+        # superseded fit is actually written elsewhere -- and writing a
+        # literal-substring check is the precise brittleness that
+        # test_cost_scope's own comment warns about, committed one function
+        # away from that warning.
+        OLD_FIT = re.compile(r'148(?:\.\d+)?\s*\+\s*27\.2\d*')
         stale = []
         for name, text in CLAIM_DOCS.items():
             for i, line in enumerate(text.split('\n'), 1):
                 # Exempt a line that supersedes itself: either it says so in
                 # words, or it carries the current slope right beside the old
                 # one, which is a dated comparison rather than a claim.
-                if ('148 + 27.2' in line
+                if (OLD_FIT.search(line)
                         and not SUPERSEDED.search(line)
                         and row['slope_ms_per_module'] not in line):
                     stale.append('%s:%d' % (name, i))
@@ -104,7 +116,7 @@ class ClaimTests(unittest.TestCase):
                          % (current, ', '.join(stale)))
         # And whoever publishes a tier-2 cost must publish the current one.
         for name, text in CLAIM_DOCS.items():
-            if '148 + 27.2' in text or '30.55' in text:
+            if OLD_FIT.search(text) or '30.55' in text:
                 self.assertIn(current.split(' + ')[0], text,
                               '%s discusses the tier-2 cost but never states the '
                               'current intercept %s' % (name, current))
