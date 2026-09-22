@@ -50,6 +50,24 @@ command -v python3 >/dev/null 2>&1 || die "python3 not found"
 python3 -c 'import yaml' 2>/dev/null || die "python3-yaml not found (already a pipeline dependency)"
 
 [ -d "$MOD_DIR" ] || die "no module directory: ${MOD_DIR}"
+
+# REFUSE to publish one generation's numbers into another's directory.
+#
+# `source .../env.sh` exports MODFS_ROOT for the whole shell. Running this
+# afterwards in the same terminal read /srv/modfs-noble and wrote its numbers
+# into this repo's thesis/evidence -- storage went 5.59x -> 2.49x, the catalogue
+# gained nvidia-driver-580, and nothing complained, because OUT and ROOT are
+# independent and no check compared them. Recovered from git.
+#
+# One guard, where every caller routes through: a non-default ROOT may write
+# anywhere EXCEPT the repo's own evidence directory.
+if [ "$ROOT" != "/srv/modfs" ] && [ "$OUT" = "${HERE}/thesis/evidence" ]; then
+    die "refusing to write ${ROOT} numbers into ${OUT}
+   MODFS_ROOT is ${ROOT}, not the default /srv/modfs -- probably a leftover
+   'source .../env.sh' in this shell. Either unset MODFS_ROOT, or pass
+   --out DIR to publish this generation somewhere of its own."
+fi
+
 mkdir -p "$OUT" || die "cannot create ${OUT}"
 
 GIT_COMMIT="$(git -C "$HERE" rev-parse HEAD 2>/dev/null || echo unknown)"
@@ -784,6 +802,24 @@ def build_storage():
                 'state in ARCHITECTURE section 7 why it is small.'
                 % (_floor / W,
                    ', '.join('%s (%.1f MB)' % (n, sz(n) / W) for n in _undecl)))
+            # And REFUSE to publish. The note alone was not enough: on the noble
+            # catalogue it printed, scrolled past in a wall of output, and the
+            # wrong cohort table was written anyway -- small cohort 5.59x ->
+            # 2.49x with a 542 MB driver in it. A warning that does not stop the
+            # wrong output is the same defect as no warning.
+            emit('storage.md', head + unavailable(
+                'a module is larger than the large cohort and is not declared in it',
+                'At or above the large-cohort floor (%.1f MB): %s. Publishing the '
+                'cohort split now would put them in "small adversarial" and '
+                'understate every ratio.'
+                % (_floor / W,
+                   ', '.join('`%s` (%.1f MB)' % (n, sz(n) / W) for n in _undecl)),
+                'edit LARGE in BOTH scripts/16_build_evidence.sh and '
+                'scripts/13_storage_ratios.sh, then re-run'))
+            write_csv('storage-cohorts.csv',
+                      ['cohort', 'n', 'stored_mb', 'monolithic_mb', 'ratio',
+                       'mean_delta_mb'], [])
+            return
 
     def cohort(label, ns):
         d = sum(sz(n) for n in ns); N = len(ns)
