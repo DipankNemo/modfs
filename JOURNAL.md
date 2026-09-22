@@ -5738,3 +5738,64 @@ JOURNAL is two appends and ARCHITECTURE is the branch's new section 7 against
 yesterday's cost-fit supersession note. Nothing else overlaps. The branch is
 **not merged**, and the NVIDIA kernel module still has not been inserted into a
 running host — that test waits on installing and booting `6.8.0-124-generic`.
+
+## 2026-09-22 — round 4: merger and metadata adversarial audit
+
+Scope: `reconcile.py`, the account and unit extraction in `06_extract_metadata.sh`,
+the class-7 consumer in `05_check.sh`, the evidence capture in `11_boot_test.sh`,
+and shared account/schema assumptions. `16_build_evidence.sh` was excluded as
+requested. All attack fixtures are synthetic; no `/srv` path was written. The
+executable regressions are `tests/round4_attacks.py` (FIXED and CONTROL cases).
+
+### Confirmed findings, in order of likely thesis impact
+
+| ID | Trigger and observed wrong result before fix | Correct result and fix | Site | What the check looked at / missed |
+|---|---|---|---|---|
+| R4-1 | Two layers each define `svc` in `passwd`: `svc:x:2500:2500::/srv:/bin/false` then `svc:x:2500:2600::/srv:/bin/false`. `merge_accounts()` returned no problem, wrote GID 2600, and the CLI exited 0. | Report the primary GID disagreement and exit 2; the test still shows the last layer's record in the scratch merge, but callers must discard that merge. | `reconcile.py` old 352–356, now 361–370 | Compared UID field 2; missed primary GID field 3. |
+| R4-2 | `grp:x:2500:alice,alice,,bob` plus `grp:x:2500:bob,carol,carol,` produced `alice,alice,bob,carol`; the first layer's duplicate survived. | Canonical member union `alice,bob,carol`, empty entries removed, exit 0. | `reconcile.py` old 346–348, now 353–356 | Deduplicated only when appending later members; missed duplication in the first record. |
+| R4-3 | Diversions text `/one\n/one.distrib\npkg\n/two\n/two.distrib\n` returned count 1 and exit 0. The incomplete second record disappeared. | Reject the malformed source, name the layer, exit 2; do not publish its partial diversion file. | `reconcile.py` old 392–395, now 402–413 and 518–522 | Iterated complete triples only; never checked the remainder. |
+| R4-4 | `svc:x:2500:2500::/srv:/bin/false:extra` was accepted as a `passwd` record and emitted verbatim with exit 0. | Require exactly seven fields and a nonempty name; report malformed record and exit 2. | `reconcile.py` old 342, now 349–352 | Tested a minimum field count; missed surplus fields. |
+| R4-5 | A unit containing `User=root` followed by `User=missinguser` (likewise `Group=`) was recorded as `root` by the real extractor block. Tier 1 would validate the wrong identity. | Record the final scalar directive, `missinguser`/`missinggroup`, so class 7 can flag an unresolved identity. | `06_extract_metadata.sh` old 568–571, now 575–578 | Took the first matching directive; missed a later override in the same unit. |
+| R4-6 | Extracting `svc:x:2500:2500` produced a valid-looking user entry despite a short `passwd` record. Two `svc` records with different IDs silently collapsed to the second. In each case the manifest lost the condition that the merger would reject. | Fail extraction on wrong field count, empty name, or duplicate key. A valid seven-field line without a final newline still extracts. | `06_extract_metadata.sh` old 451–454, now 452–459 | Read only the fields it needed and keyed into a dict; missed the complete record shape and earlier duplicate. |
+| R4-7 | `etc/subuid` containing `svc:100000` was passed through, counted as one record and exited 0. | Require `name:start:count`, decimal numbers and positive count; report malformed record and exit 2. A valid line without a final newline still merges. | `reconcile.py` old 336–340, now 336–347 | The whole-line union ran before any field validation. |
+
+R4-5 and R4-6 are the shared-contract failures: tier 1 trusts the extracted
+manifest, and the extractor previously reduced a hostile source to a plausible
+record. R4-1 is the most direct merger failure: a user keeps its UID while its
+primary group changes, yet the merger reported no inconsistency. R4-3 and R4-7
+show the same pattern in other registries: a parser processed what it recognised
+and called the unchecked remainder a successful merge. None is a demonstrated
+failure of the published compositions; these fixtures demonstrate the boundary
+conditions and the wrong verdicts before repair.
+
+### What held, and what the boot files actually contain
+
+- The `round2_attacks.py` debconf controls still pass: three-layer disagreement
+  attributes the third value to the correct layer, `Owners` unions without
+  duplicates, and template continuation lines survive. Round-four controls
+  additionally pass CRLF account input, missing final newlines in account,
+  diversion and subordinate-ID records, and two names differing only by case
+  (case-sensitive account keys remain distinct).
+- The boot-file premise needs correction. In the seven readable PASS bundles
+  across jammy and noble, `integrity.txt` and `rsync.log` are empty in all
+  seven, but `units.txt` and `journal.txt` are **nonempty in five** and empty in
+  two. For example, jammy `m2-apache-20260903T080409Z` contains 119 bytes in
+  `units.txt` and 238 in `journal.txt`. The serial log's `MODFS UNIT` and
+  `MODFS UNITLOG` markers are captured by the parser in those runs. The
+  zero-byte files therefore have two distinct causes: `verify_bundle` prints
+  only failures, and successful `rsync` prints nothing without `--stats`;
+  `units.txt` and `journal.txt` are empty when the expected-unit list is empty.
+  They are written, not discarded. No boot-parser defect was reproduced from
+  these files; no change to `11_boot_test.sh` was made.
+- The duplicated account-record shape in extractor and merger was **not**
+  enforced consistently; R4-4/R4-6 close that gap for the four colon-delimited
+  account files. The schema-1 manifest constant in extractor and checker is
+  also checked by `manifest_binding.validate_manifest`, so no drift was found
+  there. Other shared constants were inspected, including the central squash
+  exclusions and the storage `LARGE` declarations, but this branch's scope did
+  not include a fresh adversarial proof of every cross-script literal.
+
+Verification: `python3 tests/round4_attacks.py` passes all FIXED/CONTROL cases;
+`python3 tests/round2_attacks.py` still passes 11/11. The root-dependent
+`review_account_metadata.py` cases skip in this unprivileged worktree. No
+root-only extraction, new squashfs build, or boot was attempted.

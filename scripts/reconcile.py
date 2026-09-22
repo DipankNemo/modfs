@@ -335,25 +335,39 @@ def merge_accounts(layers, merged):
                     continue
                 if key_at is None:
                     # No stable key (subuid/subgid): union whole lines.
+                    fields = line.split(':')
+                    if (len(fields) != nfields or not fields[0]
+                            or not all(v.isdecimal() for v in fields[1:])
+                            or int(fields[2]) == 0):
+                        problems.append("%s: %s malformed record %r" %
+                                        (name, rel, line[:40]))
+                        continue
                     if line not in seen_lines:
                         seen_lines.append(line)
                     continue
                 f = line.split(':')
-                if len(f) < nfields:
+                if len(f) != nfields or not f[0]:
                     problems.append("%s: %s malformed record %r" % (name, rel, line[:40]))
                     continue
                 k = f[key_at]
                 if k not in records:
+                    for mi in member_at:
+                        f[mi] = ','.join(dict.fromkeys(x for x in f[mi].split(',') if x))
                     records[k] = f; order.append(k)
                     continue
                 old = records[k]
                 # Same name, different number, is exactly what the UID windows
                 # exist to prevent. Report rather than silently pick one.
-                if rel in ('etc/passwd', 'etc/group'):
-                    idx = 2
+                if rel == 'etc/passwd':
+                    id_fields = ((2, 'uid'), (3, 'primary gid'))
+                elif rel == 'etc/group':
+                    id_fields = ((2, 'gid'),)
+                else:
+                    id_fields = ()
+                for idx, label in id_fields:
                     if old[idx] != f[idx]:
-                        problems.append("%s: %s '%s' has id %s and %s"
-                                        % (name, rel, k, old[idx], f[idx]))
+                        problems.append("%s: %s '%s' has %s %s and %s"
+                                        % (name, rel, k, label, old[idx], f[idx]))
                 new = list(f)
                 for mi in member_at:
                     members = [x for x in old[mi].split(',') if x]
@@ -386,19 +400,22 @@ def merge_accounts(layers, merged):
 # ---------------------------------------------------------------- diversions
 # Flat file, three lines per record: original path, diverted-to path, package.
 def merge_diversions(layers, merged):
-    seen, out = set(), []
+    seen, out, problems = set(), [], []
     for name, root in layers:
         text = read(os.path.join(root, 'var/lib/dpkg/diversions'))
         if not text: continue
-        L = [l for l in text.split('\n') if l != '']
-        for i in range(0, len(L) - 2, 3):
+        L = text.splitlines()
+        if len(L) % 3 or any(not line for line in L):
+            problems.append("%s: malformed diversions (expected three nonempty lines per record)" % name)
+            continue
+        for i in range(0, len(L), 3):
             rec = (L[i], L[i + 1], L[i + 2])
             if rec in seen: continue
             seen.add(rec); out.append(rec)
     if out:
         write(os.path.join(merged, 'var/lib/dpkg/diversions'),
               ''.join('%s\n%s\n%s\n' % r for r in out))
-    return len(out)
+    return len(out), problems
 
 # ---------------------------------------------------------------- extended_states
 def merge_extended_states(layers, merged):
@@ -501,7 +518,11 @@ def main(argv):
         print("      PROBLEM %s" % pr)
     problems.extend(dbc_problems)
 
-    print("  diversions         : %d" % merge_diversions(layers, merged))
+    ndiv, div_problems = merge_diversions(layers, merged)
+    print("  diversions         : %d" % ndiv)
+    for pr in div_problems:
+        print("      PROBLEM %s" % pr)
+    problems.extend(div_problems)
     print("  extended_states    : %d" % merge_extended_states(layers, merged))
 
     if groups_out:

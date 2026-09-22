@@ -431,6 +431,8 @@ resolved_generation = extraction_generation(
 # NOT stored: verifying that a shadow record exists needs the name only.
 def colon_table(tree, rel, key_at, want):
     out = {}
+    expected = {'etc/passwd': 7, 'etc/group': 4,
+                'etc/shadow': 9, 'etc/gshadow': 4}[rel]
     path = os.path.join(tree, rel)
     if not os.path.exists(path):
         return out
@@ -448,8 +450,12 @@ def colon_table(tree, rel, key_at, want):
             if not line or line.startswith('#'):
                 continue
             parts = line.split(':')
-            if len(parts) <= max([key_at] + [i for i, _ in want]):
-                continue
+            if len(parts) != expected or not parts[key_at]:
+                raise ValueError('%s: malformed %s record %r' %
+                                 (path, rel, line[:40]))
+            if parts[key_at] in out:
+                raise ValueError('%s: duplicate %s record %r' %
+                                 (path, rel, parts[key_at]))
             out[parts[key_at]] = {name: parts[i] for i, name in want}
     return out
 
@@ -566,9 +572,9 @@ for unit_dir in ('lib/systemd/system', 'usr/lib/systemd/system', 'etc/systemd/sy
             with open(fp, encoding='utf-8', errors='replace') as f:
                 for line in f:
                     line = line.strip()
-                    if line.startswith('User=') and not rec['user']:
+                    if line.startswith('User='):
                         rec['user'] = line[5:].strip() or None
-                    elif line.startswith('Group=') and not rec['group']:
+                    elif line.startswith('Group='):
                         rec['group'] = line[6:].strip() or None
                     elif line.startswith('SupplementaryGroups='):
                         rec['supplementary'] += line[20:].split()
