@@ -27,7 +27,9 @@ Every command, in order, from an empty machine to regenerated thesis tables:
 Nine conflict classes are catalogued in `ARCHITECTURE.md` §4, and the eight
 registries that class 5 reconciles are documented record-by-record in
 `docs/REGISTRY_FORMATS.md`. What a module records and how it is trusted —
-manifest, sidecar, spec files and the three digests — is in `docs/DATA_MODEL.md`. Two of them —
+manifest, sidecar, spec files and the three digests — is in `docs/DATA_MODEL.md`.
+How tier 2 chooses which sets to compose, and how a composed tree becomes a
+booting machine, are in `docs/SAMPLING_AND_BOOT.md`. Two of them —
 runtime resource conflict and opaque directory erasure — were found by running
 the system rather than by reasoning about it.
 
