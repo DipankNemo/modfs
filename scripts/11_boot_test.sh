@@ -31,13 +31,13 @@ source "${HERE}/scripts/lib.sh"
 die2() { printf '\033[1;31m[FAIL]\033[0m %s\n' "$*" >&2; exit 2; }
 [ "$(id -u)" -eq 0 ] || die2 "must run as root (mounts, chroot, loop devices)"
 
-NAME=""; TIMEOUT=600; MEM=2048; IMG_MB=3072; KNOWN_NEG=0; EXPECT="all-green"; INTERACTIVE=0
+NAME=""; TIMEOUT=600; MEM=2048; IMG_MB=3072; IMG_MB_SET=0; KNOWN_NEG=0; EXPECT="all-green"; INTERACTIVE=0
 while [ $# -gt 0 ]; do
     case "$1" in
         --name)    [ $# -ge 2 ] || die2 "--name needs a value";    NAME="$2"; shift 2 ;;
         --timeout) [ $# -ge 2 ] || die2 "--timeout needs a value"; TIMEOUT="$2"; shift 2 ;;
         --mem)     [ $# -ge 2 ] || die2 "--mem needs a value";     MEM="$2"; shift 2 ;;
-        --size-mb) [ $# -ge 2 ] || die2 "--size-mb needs a value"; IMG_MB="$2"; shift 2 ;;
+        --size-mb) [ $# -ge 2 ] || die2 "--size-mb needs a value"; IMG_MB="$2"; IMG_MB_SET=1; shift 2 ;;
         --interactive) INTERACTIVE=1; shift ;;
         --known-negative) KNOWN_NEG=1; EXPECT="tier-1 rejection"; shift ;;
         --expect) [ $# -ge 2 ] || die2 "--expect needs a value"; EXPECT="$2"; shift 2 ;;
@@ -557,6 +557,23 @@ printf 'LABEL=modfsroot / ext4 defaults 0 1\n' > "$M/etc/fstab"
 remove_chroot_policy "$M"
 
 # ---- 4. pack a UEFI disk -------------------------------------------------
+# SIZE THE IMAGE FROM THE CONTENT, not from a constant.
+#
+# IMG_MB was a fixed 3072. The jammy GPU stack fitted (912 MB of artefact) and
+# the noble one did not (1358 MB): rsync died with ENOSPC on
+# libcusolver.so.11.4.3.1 with 42 GB free on the host, because what filled was
+# the 3 GB image file. The same shape as the 4096-byte mount-data ceiling -- a
+# constant that was ample until the content grew past it, and nothing recomputed
+# it. An explicit --size-mb still wins; the floor keeps every set that works
+# today working.
+if [ "$IMG_MB_SET" -eq 0 ]; then
+    CONTENT_MB=$(du -sm "$M" 2>/dev/null | cut -f1)
+    if [ -n "$CONTENT_MB" ] && [ "$CONTENT_MB" -gt 0 ] 2>/dev/null; then
+        IMG_MB=$(( CONTENT_MB * 5 / 4 + 640 ))
+        [ "$IMG_MB" -lt 3072 ] && IMG_MB=3072
+        log "content is ${CONTENT_MB} MB; sizing image at ${IMG_MB} MB"
+    fi
+fi
 log "packing ${IMG_MB} MB UEFI image"
 rm -f "$IMG"; truncate -s "${IMG_MB}M" "$IMG"
 sgdisk -Z "$IMG" >/dev/null 2>&1
