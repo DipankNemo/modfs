@@ -495,6 +495,12 @@ if [ -r /etc/modfs-probes ]; then
     while IFS='|' read -r name probe; do
         [ -n "$probe" ] || continue
         out=$(timeout 30 sh -c "$probe" 2>&1); rc=$?
+        # A PASSING probe's output was DISCARDED, so a probe could not report
+        # anything it merely observed -- only whether it exited 0. The NVIDIA
+        # insmod diagnostic printed its result and it vanished. Pass through
+        # lines on the harness's own structured channel regardless of verdict,
+        # so a probe can carry a finding without having to fail to be heard.
+        printf '%s\n' "$out" | grep '^MODFS-' || :
         if [ "$rc" -eq 0 ]; then echo "MODFS PROBE $name PASS"
         else
             echo "MODFS PROBE $name FAIL rc=$rc"
