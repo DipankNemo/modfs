@@ -629,14 +629,14 @@ else:
     for m in modules:
         d = docs.get(m) or {}
         acc = d.get('accounts') or {}
-        if 'file_uids' not in acc:
-            # WAS A BARE `continue`. The "manifests predate this field" warning
-            # below fires only when NO module in the set carries it, so one
-            # module without it was skipped in SILENCE and the set still printed
-            # "every file owner resolves ... [OK]". Deleting two keys from a
-            # manifest turned a REJECT into a clean ACCEPT with no warning at
-            # all -- the understating-manifest attack, done by omission rather
-            # than by forgery. Named here, and it suppresses the [OK] line.
+        def owner_list(value):
+            return isinstance(value, list) and all(
+                (type(i) is int and i >= 0) or
+                (isinstance(i, str) and i.isdecimal()) for i in value)
+        if not owner_list(acc.get('file_uids')) or not owner_list(acc.get('file_gids')):
+            # Both complete numeric-owner lists are required. A missing
+            # file_uids used to skip silently; missing/null/malformed
+            # file_gids was treated as empty and printed an unsupported [OK].
             no_field.append(m)
             continue
         own_u = _ids(d, 'users', 'uid') | base_uids | {0}
@@ -658,7 +658,7 @@ else:
         WARN_REASONS.append("numeric file ownership not checked for %d module(s)"
                             % len(no_field))
         print("    numeric file ownership NOT CHECKED for: %s" % ', '.join(no_field))
-        print("    those manifests record no file_uids/file_gids;"
+        print("    those manifests lack valid file_uids/file_gids lists;"
               " regenerate with 08_build_catalogue.sh --refresh-metadata")
     if not unowned and len(no_field) < len(modules):
         print("    every file owner resolves to base or to the module's own"
