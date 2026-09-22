@@ -24,7 +24,9 @@ because tier 3 barely depends on N while tier 2 grows with it).
 Every command, in order, from an empty machine to regenerated thesis tables:
 **`docs/RUNBOOK.md`**.
 
-Nine conflict classes are catalogued in `ARCHITECTURE.md` §4. Two of them —
+Nine conflict classes are catalogued in `ARCHITECTURE.md` §4, and the eight
+registries that class 5 reconciles are documented record-by-record in
+`docs/REGISTRY_FORMATS.md`. Two of them —
 runtime resource conflict and opaque directory erasure — were found by running
 the system rather than by reasoning about it.
 

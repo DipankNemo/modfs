@@ -253,6 +253,10 @@ understand what it is merging:
 | 1 | `/var/lib/dpkg/status-old` | **drop** — a backup dpkg rewrites on every run | todo |
 | 4 | `/var/lib/dpkg/status`, `/var/lib/apt/extended_states`, `/var/lib/dpkg/alternatives/*`, `/var/lib/dpkg/diversions` | **semantic union** — must parse the file to merge it | **done** |
 
+> **What "parse the file to merge it" means, per registry**, is in
+> `docs/REGISTRY_FORMATS.md`: the real record format, what identifies a record,
+> what OverlayFS does to it, the merge rule, and the case that cannot be merged.
+
 `aux-cache` is ldconfig's scratch index and stores each library's *inode
 number*, so it differs between two builds whose libraries are byte-identical.
 A real double build of `webserver` confirmed it was the single remaining
