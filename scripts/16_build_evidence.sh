@@ -68,7 +68,12 @@ if [ "$ROOT" != "/srv/modfs" ] && [ "$OUT" = "${HERE}/thesis/evidence" ]; then
    --out DIR to publish this generation somewhere of its own."
 fi
 
-mkdir -p "$OUT" || die "cannot create ${OUT}"
+# --check must write NOTHING, and a directory is something. The compare loop
+# below treats a path that does not exist as "changed", so there is nothing to
+# create when we are only reporting.
+if [ "$CHECK" -eq 0 ]; then
+    mkdir -p "$OUT" || die "cannot create ${OUT}"
+fi
 
 GIT_COMMIT="$(git -C "$HERE" rev-parse HEAD 2>/dev/null || echo unknown)"
 GIT_BRANCH="$(git -C "$HERE" rev-parse --abbrev-ref HEAD 2>/dev/null || echo unknown)"
@@ -110,13 +115,55 @@ KIND_BY_PROVOKES = {
     'module-dependency': 'synthetic',
     'dpkg-blindness':    'synthetic',
 }
-# Declared cohort for the storage split (mirrors 13_storage_ratios.sh; kept in
-# step with it by the consistency check below, not by hope).
+# Declared cohort for the storage split. This same set is declared again in
+# 13_storage_ratios.sh, and the two MUST agree: they split the same catalogue
+# into the same cohorts and publish ratios that are compared against each other.
+# Until 2026-09-21 three comments in this file asserted that a "consistency
+# check" kept them in step. There was no such check -- all four mentions of
+# 13_storage_ratios.sh in this file were comments and message text, and the two
+# sets stayed equal by hand. They are now actually compared, below.
 LARGE = {'gcc', 'java', 'rust', 'llvm', 'postgres', 'mysql', 'docker',
          'nvidia-driver-535', 'cuda-runtime'}
 
+def sibling_large(path):
+    """Parse the LARGE declaration out of a sibling script WITHOUT executing
+    it. Returns None if the file or the declaration cannot be found -- which is
+    itself reported, because 'I could not check' must never read as 'it agrees'.
+    """
+    try:
+        src = open(path, encoding='utf-8').read()
+    except Exception:
+        return None
+    m = re.search(r'^LARGE\s*=\s*\{(.*?)\}', src, re.S | re.M)
+    if not m:
+        return None
+    return set(re.findall(r"'([^']+)'", m.group(1)))
+
+COHORT_DIVERGENCE = ''
+_sib = os.path.join(os.environ.get('MODFS_SRC', ''), 'scripts',
+                    '13_storage_ratios.sh')
+_other = sibling_large(_sib)
+if _other is None:
+    COHORT_DIVERGENCE = (
+        'COHORT CONSISTENCY UNVERIFIED -- could not read a LARGE declaration '
+        'from `%s`, so the storage cohorts published here are NOT known to '
+        'match the ones 13_storage_ratios.sh publishes.' % _sib)
+elif _other != LARGE:
+    only_here = sorted(LARGE - _other)
+    only_there = sorted(_other - LARGE)
+    COHORT_DIVERGENCE = (
+        'COHORT DIVERGENCE -- the LARGE set here and in 13_storage_ratios.sh '
+        'disagree, so the two scripts split the same catalogue differently and '
+        'their ratios are not comparable.%s%s Reconcile BOTH declarations.'
+        % (' Only in 16_build_evidence.sh: %s.' % ', '.join(only_here)
+           if only_here else '',
+           ' Only in 13_storage_ratios.sh: %s.' % ', '.join(only_there)
+           if only_there else ''))
+
 PROV = []          # provenance rows, appended by every source() call
 NOTES = []         # operator-visible warnings
+if COHORT_DIVERGENCE:              # raised above, before NOTES existed
+    NOTES.append(COHORT_DIVERGENCE)
 
 def sha256(path):
     h = hashlib.sha256()
@@ -214,6 +261,19 @@ def table(rows, head, align=None):
     if not rows:
         return '_(no rows)_\n'
     align = align or ['---'] * len(head)
+    # Adding a column and forgetting one of the row builders is how this
+    # project once put every failure label one column to the left and left
+    # `result` empty -- correct summary logic defeated by a data bug beneath
+    # it. Markdown will not complain: it renders a short row as a short row and
+    # a long one by silently dropping the tail. So refuse instead.
+    if len(align) != len(head):
+        raise SystemExit('table(): %d alignment spec(s) for %d column(s): %r'
+                         % (len(align), len(head), head))
+    for i, r in enumerate(rows):
+        if len(r) != len(head):
+            raise SystemExit(
+                'table(): row %d has %d field(s), header has %d: %r vs %r'
+                % (i, len(r), len(head), r, head))
     out = ['| ' + ' | '.join(head) + ' |', '|' + '|'.join(align) + '|']
     for r in rows:
         out.append('| ' + ' | '.join('' if c is None else str(c) for c in r) + ' |')
@@ -231,6 +291,14 @@ def emit(name, text):
 
 def write_csv(name, head, rows):
     import io
+    # Same guard as table(), and it matters more here: these CSVs are what the
+    # thesis \input's, so a row one field short does not look wrong, it looks
+    # like a different number. csv.writer will write any width without a word.
+    for i, r in enumerate(rows):
+        if len(r) != len(head):
+            raise SystemExit(
+                '%s: row %d has %d field(s), header has %d: %r vs %r'
+                % (name, i, len(r), len(head), r, head))
     buf = io.StringIO()
     w = csv.writer(buf, lineterminator='\n')
     w.writerow(head)
@@ -335,6 +403,60 @@ def build_tier1():
 
     missing = [m for m in mods_seen if m not in ART]
     absent = [m for m in DELTAS if m not in mods_seen]
+
+    # A SET-SIZE coverage check, not just a module coverage check.
+    #
+    # pick_tier1() takes the NEWEST file carrying the current schema, and the
+    # caption flags a source that covers fewer MODULES than the catalogue. That
+    # pair of guards cannot see the case that matters most here: a later
+    # `--max-n 2` re-run covers every module and every column, and is simply
+    # missing every triple. It wins on mtime, the caption reads clean because
+    # the module set is complete, and 9880 triples leave the thesis in silence
+    # -- taking T1.4, the arithmetic cross-check, with them.
+    #
+    # This is the V7/V2 shape: a coverage check comparing NAME SETS cannot see
+    # that half the measurement is absent. So compare what was MEASURED.
+    ns_best = {int(r['n']) for r in rows if str(r.get('n', '')).isdigit()}
+    richer = []
+    for cand in cands:
+        if os.path.samefile(cand, src):
+            continue
+        try:
+            orows = list(csv.DictReader(open(cand, encoding='utf-8')))
+        except Exception:
+            continue
+        ons = {int(r['n']) for r in orows if str(r.get('n', '')).isdigit()}
+        omods = {m for r in orows for m in r['modules'].split()}
+        extra = sorted(ons - ns_best)
+        # Only a candidate covering AT LEAST the same modules is a real
+        # alternative; an older, smaller catalogue is already caught by the
+        # caption and must not be recommended here.
+        if extra and omods >= set(mods_seen):
+            richer.append((cand, extra, len(orows)))
+    if richer:
+        detail = '; '.join(
+            '`%s` (%d rows, also measures N=%s)'
+            % (os.path.basename(c), nr, ', '.join(str(x) for x in ex))
+            for c, ex, nr in richer)
+        NOTES.append(
+            'TIER-1 SET-SIZE COVERAGE -- the chosen sweep `%s` measures only '
+            'N=%s, while an older sweep covering the same modules measures '
+            'more: %s. The newest file won on mtime; it is not the most '
+            'complete one.'
+            % (os.path.basename(src), ', '.join(str(x) for x in sorted(ns_best)),
+               detail))
+        body.append(
+            '> **SET-SIZE COVERAGE WARNING.** This table is built from `%s`, '
+            'which measures only **N=%s**. Another sweep on disk covering the '
+            'same %d modules measures set sizes this one does not: %s. The '
+            'source is chosen as the NEWEST file with the current schema, so a '
+            'later partial re-run (`--max-n`) silently replaces a complete one '
+            'and every set size it omits disappears from the evidence without '
+            'a number changing. Re-run stage 09 over the full range, or point '
+            'this table at the complete sweep, before reading anything below '
+            'as the tier-1 result.\n\n'
+            % (os.path.basename(src), ', '.join(str(x) for x in sorted(ns_best)),
+               len(mods_seen), detail))
 
     # ---- T1.1 totals by N
     ns = sorted({int(r['n']) for r in rows})
@@ -694,7 +816,16 @@ def build_tier3():
         if not res:
             note.append('no result.json — run did not finish')
         # Stale: an artefact in this run has been rebuilt since the run.
-        newer = sorted(m for m in deltas
+        #
+        # Checked over `mods` and ALWAYS over base, never over `deltas`.
+        # `deltas` exists to count N, which counts module deltas and excludes
+        # base by definition; reusing that same list here silently inherited
+        # its exclusion, and a bundle whose BASE had been rebuilt underneath it
+        # was reported as describing artefacts that still exist unchanged. Base
+        # is the one layer every boot image in every bundle is built on, so it
+        # is included whether or not the run recorded it by name.
+        watch = set(mods) | {'base'}
+        newer = sorted(m for m in watch
                        if m in ART and ART[m]['sqsh_mtime']
                        and ART[m]['sqsh_mtime'] > mtime(os.path.join(b, 'run.json')))
         if newer:
@@ -777,6 +908,7 @@ def build_storage():
     nosq = sorted(n for n, v in DELTAS.items() if not v['bytes'])
     source(name, os.path.join(MOD_DIR, 'base.sqsh'), 'base artefact', CAT_NOW)
 
+    EMPTY_COHORTS = []
     unknown = LARGE - set(names)
     if unknown:
         NOTES.append('declared large but not built: %s' % ', '.join(sorted(unknown)))
@@ -824,9 +956,19 @@ def build_storage():
     def cohort(label, ns):
         d = sum(sz(n) for n in ns); N = len(ns)
         stored = B + d; model = N * B + d
+        if not N:
+            # An EMPTY cohort has no ratio. The old guards (`if stored`,
+            # `if N`) stopped the ZeroDivisionError and then formatted the
+            # fallback zero as a measurement, so a cohort with no members
+            # published `0.00x` -- a claim that the monolithic baseline costs
+            # nothing. Guarding against a crash is not the same as guarding
+            # against a meaningless number, and this script's own header
+            # promises it "never prints a number it cannot name a file for".
+            EMPTY_COHORTS.append(label)
+            return [label, 0, '%.1f' % (B / W), '—', '—', '—']
         return [label, N, '%.1f' % (stored / W), '%.1f' % (model / W),
                 '%.2f×' % (model / stored if stored else 0),
-                '%.1f' % (d / N / W if N else 0)]
+                '%.1f' % (d / N / W)]
     small = [n for n in names if n not in LARGE]
     large = [n for n in names if n in LARGE]
     t = [cohort('small adversarial', small), cohort('large realistic', large),
@@ -849,38 +991,88 @@ def build_storage():
                'mean_delta_mb'], t)
 
     # ---- S2 the model checked against real monolithic builds
+    # A monolithic baseline is itself an artefact and can go stale. It is a
+    # like-for-like comparison ONLY if it was built from the same base and the
+    # same delta it is compared against -- that is, only if it is NEWER than
+    # both. Nothing else here would catch it: ART_NEWEST gates the tier-1 and
+    # tier-2 CSVs, and a `-monolithic.sqsh` carries no manifest, so the artefact
+    # inventory never sees it either. Publishing a calibration measured across a
+    # rebuild boundary is the defect STATE_OF_PLAY §5c records as "monolithic
+    # baselines two weeks stale", recurring in the REPORTING layer.
     checked = []
     for n in names:
         mono = os.path.join(MOD_DIR, n + '-monolithic.sqsh')
         if os.path.exists(mono):
             meas = os.path.getsize(mono); modl = B + sz(n)
+            mmt = mtime(mono)
+            against = []
+            if DELTAS[n]['sqsh_mtime'] and mmt < DELTAS[n]['sqsh_mtime']:
+                against.append('delta')
+            if ART['base']['sqsh_mtime'] and mmt < ART['base']['sqsh_mtime']:
+                against.append('base')
             checked.append([n, '%.1f' % (meas / W), '%.1f' % (modl / W),
                             '%+.2f %%' % (100.0 * (modl / meas - 1.0)),
-                            stamp(mtime(mono))])
+                            stamp(mmt),
+                            'ok' if not against
+                            else 'STALE: predates ' + ' and '.join(against)])
             source(name, mono, 'real monolithic build')
     body.append('\n## S2 Is the `B + d` monolithic model honest?\n\n')
     if checked:
-        errs = [float(r[3].split()[0]) for r in checked]
+        fresh = [r for r in checked if r[5] == 'ok']
+        stale = [r for r in checked if r[5] != 'ok']
+        if stale:
+            NOTES.append(
+                'STALE MONOLITHIC BASELINE -- %d of %d predate the delta or the '
+                'base they are compared against, so their model error is not a '
+                'like-for-like measurement: %s. Rebuild with '
+                './scripts/02_build_delta.sh --compare <name> <pkg>.'
+                % (len(stale), len(checked), ', '.join(r[0] for r in stale)))
         body.append('_The monolithic column above is MODELLED as `B + d` for '
                     'every module. Only %d of %d have a real monolithic build '
-                    'to check it against. Across those %d the model comes in '
-                    '%.2f–%.2f %% HIGH, because squashfs compresses one whole '
-                    'tree slightly better than a base and a delta compressed '
-                    'separately — so the model mildly OVERSTATES the saving._\n\n'
-                    % (len(checked), len(names), len(checked), min(errs), max(errs)))
+                    'to check it against._\n\n' % (len(checked), len(names)))
+        if fresh:
+            errs = [float(r[3].split()[0]) for r in fresh]
+            body.append('_Across the %d baseline(s) that are genuinely '
+                        'like-for-like the model comes in %.2f–%.2f %% HIGH, '
+                        'because squashfs compresses one whole tree slightly '
+                        'better than a base and a delta compressed separately '
+                        '— so the model mildly OVERSTATES the saving._\n\n'
+                        % (len(fresh), min(errs), max(errs)))
+        if stale:
+            body.append('_**%d of the %d baselines are STALE** — the '
+                        '`-monolithic.sqsh` was built BEFORE the delta or the '
+                        'base it is compared against, so the `model error` on '
+                        'those rows compares two different builds and cannot '
+                        'be read as a like-for-like measurement. Whether the '
+                        'rebuild actually moved those bytes is not recoverable '
+                        'from what is on disk; it needs a rebuild to settle._\n\n'
+                        % (len(stale), len(checked)))
         body.append(table(checked, ['module', 'measured MB', 'modelled MB',
-                                    'model error', 'built'],
-                          ['---', '---:', '---:', '---:', '---']))
+                                    'model error', 'built', 'baseline'],
+                          ['---', '---:', '---:', '---:', '---', '---']))
         write_csv('storage-model-check.csv',
                   ['module', 'measured_mb', 'modelled_mb', 'model_error_pct',
-                   'built_utc'],
-                  [[r[0], r[1], r[2], r[3].split()[0], r[4]] for r in checked])
-        body.append('\n**The whole-catalogue monolithic column is therefore %d '
-                    'modelled figures and %d measured ones, not %d rebuilt '
-                    'baselines.** Any sentence calling the whole-catalogue '
-                    'baseline "rebuilt like-for-like" is wrong; the SIX are '
-                    'rebuilt like-for-like and they calibrate the rest.\n'
-                    % (len(names) - len(checked), len(checked), len(names)))
+                   'built_utc', 'baseline_freshness'],
+                  [[r[0], r[1], r[2], r[3].split()[0], r[4], r[5]]
+                   for r in checked])
+        if fresh:
+            body.append('\n**The whole-catalogue monolithic column is therefore '
+                        '%d modelled figures and %d measured ones, not %d '
+                        'rebuilt baselines.** Any sentence calling the '
+                        'whole-catalogue baseline "rebuilt like-for-like" is '
+                        'wrong; the %d FRESH one(s) are rebuilt like-for-like '
+                        'and they calibrate the rest.\n'
+                        % (len(names) - len(checked), len(checked), len(names),
+                           len(fresh)))
+        else:
+            body.append('\n**The model is currently UNCALIBRATED.** All %d '
+                        'monolithic baselines on disk predate the delta or the '
+                        'base they would check, so not one is a like-for-like '
+                        'comparison. The whole-catalogue monolithic column is '
+                        '%d modelled figures and ZERO usable measured ones. No '
+                        'sentence in the thesis may call any part of that '
+                        'baseline "rebuilt like-for-like" until these are '
+                        'rebuilt.\n' % (len(checked), len(names)))
     else:
         body.append(unavailable(
             'no monolithic baselines on disk',
@@ -990,6 +1182,15 @@ def build_storage():
         body.append('\n> **Declared in the large cohort but not built:** %s. '
                     'Pending; the large-cohort ratio will move when they land.\n'
                     % ', '.join(sorted(unknown)))
+    if EMPTY_COHORTS:
+        seen = sorted(set(EMPTY_COHORTS))
+        NOTES.append(
+            'EMPTY COHORT -- %s has no members, so it has no ratio; the row is '
+            'dashed rather than reported as 0.00x.' % ', '.join(seen))
+        body.append('\n> **Empty cohort(s):** %s. A cohort with no members has '
+                    'no ratio to report, so those rows are dashed. They are not '
+                    'a measured 1.00x and must not be read as one.\n'
+                    % ', '.join(seen))
     emit('storage.md', '\n'.join(body))
 
 # =========================================================== CATALOGUE
@@ -1122,15 +1323,18 @@ def build_provenance():
                     'manifest older than artefact'
                     if (v['sqsh_mtime'] and v['manifest_mtime'] < v['sqsh_mtime'])
                     else 'ok'])
-    body.append('_The `sha256` column is the digest the manifest RECORDS, not '
-                'one recomputed here; `verify_bundle` in `lib.sh` and '
-                '`12_verify_binding.sh` are what check it against the bytes._\n\n')
+    body.append('_The `sha256` column is the digest of the **artefact** '
+                '(`<module>.sqsh`) as the manifest RECORDS it -- it is NOT the '
+                'digest of the manifest file itself, and it is not recomputed '
+                'here; `verify_bundle` in `lib.sh` and `12_verify_binding.sh` '
+                'are what check it against the bytes._\n\n')
     body.append(table(inv, ['artefact', 'bytes', 'artefact mtime',
-                            'manifest mtime', 'manifest sha256', 'freshness'],
+                            'manifest mtime', 'artefact sha256 (recorded)',
+                            'freshness'],
                       ['---', '---:', '---', '---', '---', '---']))
     write_csv('provenance-artefacts.csv',
               ['module', 'bytes', 'sqsh_mtime_utc', 'manifest_mtime_utc',
-               'manifest_sha256', 'freshness'],
+               'artefact_sha256_recorded', 'freshness'],
               [[n, ART[n]['bytes'] or '',
                 stamp(ART[n]['sqsh_mtime']) if ART[n]['sqsh_mtime'] else '',
                 stamp(ART[n]['manifest_mtime']),

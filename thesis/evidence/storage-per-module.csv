@@ -17,6 +17,7 @@ git,real,17.1,58.9,70.9
 dnsutils,real,16.0,57.7,72.3
 pipdemo,synthetic,15.5,57.2,72.9
 pgclient,real,12.1,53.8,77.6
+jq,real,10.4,52.2,80.0
 memcached,real,10.3,52.0,80.3
 pyyaml,real,10.1,51.9,80.4
 gawk,real,3.1,44.8,93.1
@@ -31,7 +32,6 @@ tmux,real,0.7,42.5,98.2
 rsync,real,0.7,42.4,98.4
 socat,real,0.6,42.3,98.5
 wget,real,0.6,42.3,98.6
-jq,real,0.6,42.3,98.7
 mta-nullmailer,real,0.5,42.2,98.9
 htop,real,0.4,42.1,99.1
 nc-openbsd,real,0.3,42.0,99.3

@@ -5738,3 +5738,620 @@ JOURNAL is two appends and ARCHITECTURE is the branch's new section 7 against
 yesterday's cost-fit supersession note. Nothing else overlaps. The branch is
 **not merged**, and the NVIDIA kernel module still has not been inserted into a
 running host — that test waits on installing and booting `6.8.0-124-generic`.
+---
+
+## 2026-09-21 — Adversarial review of the evidence generator (round 3)
+
+`scripts/16_build_evidence.sh` had never been reviewed adversarially, which is
+an odd gap: it is the only script whose output a thesis reader sees directly.
+Every table in the Evaluation chapter is one of its files. A defect in the
+pipeline shows up as a strange number someone might question; a defect *here*
+shows up as a plausible number nobody can check, because the generated tables
+are exactly what a reader would check against.
+
+The method was deliberately not "read 1,176 lines of bash". It was to treat the
+generator as a black box and **re-derive its output from its sources in
+independent code** — a separate parser, written against the CSV and JSON on
+disk, never importing or reusing the generator's own parsing. That constraint
+matters: the `alt_groups` defect of round 2 survived because the thing checking
+the number was the thing that computed it.
+
+### Stage 1 — does every published number equal what its source says?
+
+282 published table rows over 10 source files. Re-derived independently:
+
+| family | rows | source | verdict |
+|---|---:|---|---|
+| tier 1 (totals, classes, control, crosscheck, measured, nonmonotone) | 10 | `logs/combinations-gpu-full.csv` | **exact** |
+| tier 2 (by-n, checks, OLS fit) | 24 | `logs/compose-sweep.csv` | **exact** |
+| tier 3 (every run bundle) | 20 | 20 × `results/**/run.json` | **exact** |
+| storage (cohorts, model check, per-module, sensitivity) | 55 | `modules/*.sqsh` | **exact** |
+| catalogue | 40 | `specs/modules.yaml`, `specs/uid-ranges.yaml` | **exact** |
+| provenance (ledger + artefact inventory) | 41 | `modules/*.json` | one mislabel, below |
+
+Every arithmetic result reproduced to the published digit, including the four
+OLS fits (`total_ms` = 175.2 + 30.55·N, r² 0.9747) recomputed from scratch, the
+tier-1 census (C(40,2) = 780 and C(40,3) = 9880 — the sweep really is a census,
+not a sample), and all three storage cohort ratios (5.59× / 1.20× / 1.84×).
+
+`./scripts/16_build_evidence.sh --out` reproduces the committed
+`thesis/evidence/` byte for byte apart from the generation timestamp, the
+generating commit, and the absolute path of the source tree. **No number in the
+committed evidence is wrong.** That is worth stating plainly, because the rest
+of this entry is about the ways it could have been.
+
+Two things that looked like defects and were not, recorded because a clean
+result on a specific attack is evidence:
+
+- **Tier 2 covers 39 modules, not 40.** `control-oldsnap` appears in no
+  composition. That is correct and not a gap: it is the positive control, it is
+  rejected by tier 1 against every partner (39 pairs, 741 triples, all of them),
+  so it is never admitted to a composition to begin with. The generator derives
+  `catalogue_n = 39` from its own source and labels the table accordingly, which
+  is exactly the behaviour the header promises.
+- **The undeclared-large guard is inert on this catalogue, correctly.** The
+  guard added on 21 September computes a floor from the smallest *declared*
+  large module (`mysql`, 56.6 MB) and flags any undeclared module at or above
+  it. Nothing undeclared comes close — the largest is `emacs` at 37.0 MB — so
+  the guard is silent because there is nothing to say, not because it is blind.
+  Verified by recomputing the floor independently.
+
+### R3-1 — a digest column that named the wrong file
+
+`provenance-artefacts.csv` published a column headed **`manifest_sha256`**. Its
+content is `artifact.sha256` read out of the manifest: the digest of the
+**artefact**, `<module>.sqsh`. On all 41 rows the published value equals the
+artefact's digest and on **zero** rows does it equal the sha256 of the manifest
+file it is named after.
+
+The Markdown caption disclaimed the wrong thing. It said the digest is "the one
+the manifest RECORDS, not one recomputed here" — which addresses *recorded vs
+recomputed* and leaves *manifest vs artefact* untouched. And `provenance.csv`,
+the sibling file, has a `sha256` column that genuinely **is** the hash of the
+file in that row, so the two provenance files used one word for two things.
+
+The consequence is not a wrong number, it is a reader misled into thinking the
+evidence is corrupt. Someone auditing the thesis does the obvious thing —
+`sha256sum apache.json` — and gets a mismatch. They get 41 of them. The correct
+conclusion from that evidence is "this provenance table has been falsified",
+and it would be wrong.
+
+This is the round-2 `alt_groups` shape precisely: **a column header and its
+content drifted apart**, and every check pointed at the value rather than at the
+label, so every check passed. The value was never in question — all 41 recorded
+digests verify against the real bytes, which this review confirmed by hashing
+each `.sqsh`.
+
+Fixed: the CSV column is now `artefact_sha256_recorded`, the Markdown column is
+`artefact sha256 (recorded)`, and the caption says which file the digest is of
+before it says it is not recomputed. `tests/round3_evidence.py::R3-1` builds a
+fixture module tree, runs the shipped generator against it, and asserts the
+published digest equals the artefact's hash and **not** the manifest's. Against
+the pre-fix script the test fails; against the fix it passes.
+
+**Testing note.** These tests drive the real generator rather than importing
+from it, which the round-2 suite could do and this one cannot — the generator is
+a bash wrapper around an embedded Python heredoc with no importable surface.
+`config.sh` honours `MODFS_ROOT`, so a test can point the whole pipeline at a
+synthetic `modules/`, `logs/` and `results/` tree and read back what the shipped
+script wrote. That is a stronger guarantee than importing a block would give:
+it exercises argument parsing, source selection and file emission as shipped.
+
+### Stage 3 — testing the staleness claim, and R3-2
+
+The generator's header makes a strong promise:
+
+> If a source file is missing, or is OLDER than the artefacts it describes, the
+> table is replaced by a STALE/MISSING block that says which file, how old, and
+> what to re-run. A missing result is a fact; a silently stale one is a defect.
+
+That promise was tested rather than believed, by driving the shipped script
+against synthetic `$MODFS_ROOT` trees with sources removed, backdated and
+truncated. It holds for the two sources it was pointed at. It was never pointed
+at a third.
+
+What held:
+
+- **Missing source.** Remove `compose-sweep.csv` and tier 2 is replaced by a
+  MISSING block naming the file and the command. Correct.
+- **Backdated source.** Both tier 1 and tier 2 compare their CSV's mtime
+  against `ART_NEWEST`, the newest `.sqsh` on disk, and replace the whole table
+  with a STALE block naming the artefact, both timestamps and the re-run
+  command. Correct.
+- **Header-only source.** Tier 2 detects it explicitly. Tier 1 has no such
+  branch — but it does not publish a confident number either: the caption
+  machinery reports `**Catalogue: 0 modules**` and `**covers 0 of the 2 modules
+  it should — this table is not current**`, and every table prints `(no rows)`.
+  Legible failure, not silent. Left as is; adding a branch would duplicate a
+  guard that already works.
+- **Tier 3** has no table-level staleness gate and does not need one: it flags
+  staleness per bundle, marking a run `superseded` when any module in it has
+  been rebuilt since. On the real evidence that is 18 of 20 bundles, and the
+  summary says "2 of 20 describe artefacts that still exist unchanged".
+
+### R3-2 — the calibration measured across a rebuild boundary
+
+Storage §S2 is the section that answers "is the `B + d` monolithic model
+honest?". It finds every `<name>-monolithic.sqsh` on disk, computes the model
+error against `B + d`, and concluded:
+
+> Any sentence calling the whole-catalogue baseline "rebuilt like-for-like" is
+> wrong; **the SIX are rebuilt like-for-like and they calibrate the rest.**
+
+A monolithic baseline is a like-for-like comparison only if it was built from
+the same base and the same delta it is compared against — that is, only if it
+is **newer than both**. S2 did no such check. It read the file, computed the
+percentage, and printed the baseline's mtime in a column beside it without ever
+comparing that mtime to anything.
+
+On the real artefacts, all six fail:
+
+| module | delta `.sqsh` | monolithic | gap |
+|---|---|---|---|
+| curl | 09-18 22:45:18Z | 09-16 15:10:06Z | **2d 7h** |
+| jq | 09-18 22:45:38Z | 09-16 15:19:27Z | **2d 7h** |
+| emacs | 09-16 16:29:48Z | 09-16 15:33:05Z | 57 min |
+| nc-traditional | 09-16 16:31:00Z | 09-16 15:22:59Z | 68 min |
+| pytools | 09-16 16:33:12Z | 09-16 15:30:17Z | 63 min |
+| webserver | 09-16 16:31:32Z | 09-16 15:26:28Z | 65 min |
+
+Every monolithic baseline was built *before* the full catalogue rebuild of
+16 September that produced all the current deltas, and `curl` and `jq` were
+rebuilt again two days later. The published `+0.25 %` … `+0.95 %` calibration
+therefore compares a 18 September delta against a 16 September monolith and
+calls the result a measurement.
+
+**What this does and does not invalidate.** The headline ratios — 5.59× / 1.20×
+/ 1.84× — do not move. They are computed from `B + d` directly and never touch a
+monolithic baseline; Stage 1 re-derived all three independently and they are
+exact. What is invalidated is the *validation*: the claim that the model was
+checked against real rebuilt images and found to overstate the saving by under
+one percent. That claim had no support on disk. The model may well be that
+good — nothing here shows it is not — but the six numbers offered as proof were
+measured across a rebuild boundary, and whether the rebuild moved those bytes is
+not recoverable from what is retained. **It needs a rebuild to settle, which is
+outside the remit of a reporting audit.**
+
+This is `STATE_OF_PLAY` §5c's "monolithic baselines two weeks stale" — a defect
+already found once, in the *build* layer — recurring intact in the *reporting*
+layer. And it is the house shape again, in its purest form yet: **the staleness
+check only looked where it was pointed.** `ART_NEWEST` gates the tier-1 and
+tier-2 CSVs. A `-monolithic.sqsh` carries no manifest, so `artefacts()` never
+enumerates it and the artefact inventory never sees it. The one artefact class
+whose staleness the generator never modelled is the one whose whole purpose is
+to be a fixed point of comparison.
+
+Fixed: each baseline is now compared against both its delta and the base, and
+carries a `baseline_freshness` column in `storage-model-check.csv` saying `ok`
+or `STALE: predates delta and/or base`. The calibration range is computed from
+the fresh rows only. When none is fresh — which is the situation today — the
+section reports **the model is currently UNCALIBRATED** and states that no
+sentence in the thesis may call that baseline "rebuilt like-for-like" until they
+are rebuilt. An operator note is raised on stdout naming every stale baseline
+and the command to rebuild it.
+
+`tests/round3_evidence.py::R3-2` drives the shipped generator against a fixture
+whose baseline is backdated one hour behind its delta and asserts every one of
+those behaviours, and — the half that matters as much — a **CONTROL** case whose
+baseline is one hour *ahead*, asserting it is marked `ok`, raises no note, and
+still publishes its calibration range. A generator that cried stale over fresh
+evidence would send someone into a multi-hour rebuild for nothing.
+
+**Action for the operator, not for this branch.** Six monolithic baselines need
+rebuilding before the Evaluation chapter can claim the model is calibrated:
+
+    sudo ./scripts/02_build_delta.sh --compare curl curl
+    sudo ./scripts/02_build_delta.sh --compare jq jq
+    sudo ./scripts/02_build_delta.sh --compare emacs emacs
+    sudo ./scripts/02_build_delta.sh --compare nc-traditional netcat-traditional
+    sudo ./scripts/02_build_delta.sh --compare pytools python3-numpy
+    sudo ./scripts/02_build_delta.sh --compare webserver nginx
+
+(Check each package list against `specs/modules.yaml` before running; the
+module name and its requested packages are not always the same string.)
+
+### R3-3 — the tier-1 source is chosen by mtime, and the coverage guard compares names
+
+`pick_tier1()` is careful about one thing and blind to its sibling. It selects
+the tier-1 sweep **by schema** rather than by name, and its docstring explains
+exactly why:
+
+> Selecting by schema rather than by name is what keeps an older file with
+> fewer columns (`combinations-all.csv` has no `module_relation`) from being
+> silently read as if its zeros meant 'none found'.
+
+That reasoning is right, and it stops one file short. Among the files that pass
+the schema test the winner is simply the newest by mtime. The only coverage
+guard downstream is the caption, which compares the **module names** in the
+source against the catalogue and flags a shortfall.
+
+So consider a later `./scripts/09_run_combinations.sh --max-n 2` — a fast
+pairs-only re-run, 780 combinations instead of 10,660, and an entirely ordinary
+thing to do while iterating. It carries the current schema. It covers every
+module. It is newer. It wins. And the caption reads perfectly clean, because
+every module *is* present: what is missing is not a module but a **set size**.
+
+The consequence: `tier1-totals.csv` loses its `n=3` row, `tier1-classes.csv`
+loses its triples, `tier1-crosscheck.csv` and `tier1-nonmonotone.csv` are
+computed over an empty set of triples and report vacuously, and *nothing says
+so*. "9880 triples, ACCEPT 7807 / REJECT 2073" leaves the Evaluation chapter
+without a single published number visibly changing — and T1.4, the arithmetic
+cross-check that every higher-N rejection is explained by a rejecting pair
+inside it, is the integrity argument for the whole higher-N claim.
+
+**This is not hypothetical, and the margin is eight minutes.** `/srv/modfs/logs`
+holds both files right now:
+
+| file | rows | set sizes | modules | mtime |
+|---|---:|---|---:|---|
+| `combinations-gpu-full.csv` | 10,660 | **2, 3** | 40 | 09-19 01:10:29 |
+| `combinations.csv` | 780 | **2 only** | 40 | 09-19 01:02:45 |
+| `t1.csv` | 666 | 2 only | 37 | 09-16 15:39:09 |
+
+The complete sweep wins by **eight minutes**. Both cover all 40 modules, so no
+name-based check can separate them — `t1.csv` is caught only because it happens
+to predate two modules. A `touch`, a restore from backup, a copy that did not
+preserve mtimes, or one more `--max-n 2` run, and the thesis silently publishes
+the 780-row file.
+
+The shape is the one this project keeps finding: **a coverage check comparing
+name sets cannot see that half the measurement is gone.** V7 compared directory
+entry names and missed a 1 MB file replaced by a 5-byte symlink. V2 compared
+package name sets and missed five version skews. This compares module name sets
+and misses 9,880 triples. Three instances, one mistake.
+
+Fixed by comparing what was **measured** rather than what was named. The
+generator now parses every schema-matching candidate, and if one covering at
+least the same modules measures a set size the chosen file does not, it raises
+an operator note and puts a **SET-SIZE COVERAGE WARNING** block at the top of
+`tier1.md` naming the richer sweep, its row count and the set sizes that are
+missing. The `omods >= mods_seen` guard keeps an older, smaller catalogue — the
+`t1.csv` case — from being recommended, since the caption already handles that.
+
+The selection rule itself is left alone. Newest-by-mtime is the right default
+for staleness, and silently preferring a bigger file would trade this defect for
+its mirror image: an old complete sweep quietly outranking a fresh one. The fix
+makes the choice *loud and auditable* rather than making it cleverer.
+
+`tests/round3_evidence.py::R3-3` builds two schema-matching sweeps, backdates
+the complete one, and asserts the warning fires and names the right file and set
+size. The **CONTROL** case inverts the mtimes so the newest sweep is also the
+most complete — the situation on the real artefacts today — and asserts that
+nothing is reported. On the real evidence the fix is silent and
+`tier1-totals.csv` still reads 780 / 9880; verified by regenerating.
+
+### Stage 4 — row and column alignment: a clean result, and a missing guard
+
+Every CSV the generator emits was checked column by column against its own
+header: 18 files, 226 data rows, **all aligned**, no blank header cells, no
+shifted fields. The `alt_groups` column of `tier2-by-n.csv` — the one that was a
+shadowed variable in round 2 and published 42 where the truth was 10 — was
+re-derived from `compose-sweep.csv` independently and reproduces exactly, as
+does every other column in that table. **Nothing is misaligned today.** That is
+worth stating as plainly as a defect would be.
+
+What is missing is the guard. Neither `table()` nor `write_csv()` ever compared
+a row's width against its header's. Both are hand-fed lists assembled at a dozen
+call sites, and `csv.writer` will write a row of any width without a word, while
+Markdown renders a short row as a short row and drops the tail of a long one.
+
+`STATE_OF_PLAY` §5c records exactly what that costs:
+
+> Adding two columns without updating six hand-counted `printf`s put every
+> failure label in the wrong column and left `result` empty — so correct summary
+> logic that separated refusals from failures was silently defeated by a data
+> bug one layer down.
+
+A short CSV row does not read as wrong. It reads as a *different number*,
+because every field after the gap has shifted left into a column that means
+something else. And this review had its own chance to make that mistake:
+R3-2 added a sixth column to `storage-model-check.csv`, and getting it right
+depended on care rather than on anything that would have caught the slip.
+
+**R3-5 (hardening).** `table()` and `write_csv()` now refuse a row whose width
+does not match the header, and `table()` also refuses an alignment spec of the
+wrong length. The failure is `SystemExit` with the row, the header and both
+widths printed. That is safe by construction: every file is buffered in `FILES`
+and flushed only after the last table is built, so aborting writes nothing at
+all rather than leaving a half-generated evidence directory. Output on the real
+artefacts is byte-identical, and the guards do not fire.
+
+`tests/round3_evidence.py::R3-5` lifts `table()` and `write_csv()` straight out
+of the shipped script and executes them — the same technique `round2_attacks.py`
+uses on V7's block — feeding each a short row, a long row and a short alignment
+spec, with **CONTROL** cases asserting that correctly shaped rows still produce
+exactly the bytes they did before.
+
+### R3-4 — `--check` created directories
+
+`--check` is documented as "write nothing, report status". The Python does
+honour that: every file is buffered and the write is gated on `CHECK`, so no
+file content was ever at risk — confirmed by hashing `thesis/evidence/` before
+and after a `--check` run and finding it byte-identical.
+
+But the bash preamble ran `mkdir -p "$OUT"` *before* that gate, unconditionally.
+So `./scripts/16_build_evidence.sh --check --out /some/new/path` created
+`/some/new/path` and every missing parent, and left them behind.
+
+Small, and worth fixing anyway: `--check` is the one entry point whose entire
+contract is that it is safe to point at anything, including a path the operator
+only wants to ask a question about. The `mkdir` is now skipped in check mode,
+which is safe because the comparison loop already treats a non-existent path as
+"changed". `tests/round3_evidence.py::R3-4` asserts `--check` creates nothing
+and still reports, with a **CONTROL** that the writing path still writes.
+
+### Stage 5 — degenerate inputs
+
+Driven with synthetic `$MODFS_ROOT` trees: a catalogue of base alone, a
+catalogue of one module, a tier-2 sweep of a single row, and a tier-1 sweep
+truncated to its header.
+
+What held, and held well:
+
+- **The OLS fit is properly guarded on every degenerate path.** `fit()` refuses
+  fewer than three points, refuses a single distinct N, refuses `sxx == 0`, and
+  returns `nan` rather than dividing when `sst == 0`. A one-row sweep publishes
+  `tier2-fit.csv` with `-` in every coefficient and the literal word
+  `degenerate` in the `n` column. That is the right behaviour and it is a
+  genuinely nice piece of work — four separate ways to be degenerate, all four
+  named.
+- **A one-member cohort** computes correctly: `N=1` gives `ratio = (B+d)/(B+d) =
+  1.00×`, which is true and not a division artefact.
+- **A header-only tier-1 CSV** degrades to `(no rows)` with the caption flagging
+  it, as recorded under Stage 3.
+
+### R3-6 — an empty cohort published a fabricated ratio
+
+`cohort()` guards both its divisions and then formats the fallback as a
+measurement:
+
+```python
+'%.2f×' % (model / stored if stored else 0),
+'%.1f' % (d / N / W if N else 0)
+```
+
+With no members, `N = 0` and `model = 0·B + 0 = 0`, so the published row was:
+
+    large realistic,0,1.0,0.0,0.00×,0.0
+
+`0.00×` is not a blank. It is a claim — that the monolithic baseline for that
+cohort costs nothing, which would make the delta model infinitely worse than
+rebuilding. A reader skimming the storage table sees a number in a ratio column
+and reads it as a ratio.
+
+The guards are the interesting part. They are real guards, deliberately written,
+and they work: there is no `ZeroDivisionError`. They were pointed at *not
+crashing*. Nobody pointed one at *not publishing a meaningless number* — and the
+generator's own header promises that it "never prints a number it cannot name a
+file for". This is the house shape reaching all the way down into a two-line
+expression: **the check only looks where it was pointed.**
+
+Reachable whenever no declared-large module is built: an early catalogue, a
+small experimental one, or a branch where the declared name has moved — the
+script's own comment notes that the noble catalogue's driver is
+`nvidia-driver-580`, not the `nvidia-driver-535` in `LARGE`. The "declared large
+but not built" note did fire in that case, but the *table* still printed a
+ratio, and the table is what a reader reads.
+
+Fixed: an empty cohort now reports `N=0`, its stored figure (which is just the
+base, and is true), and an em dash for monolithic, ratio and mean delta. An
+operator note names every empty cohort, and `storage.md` carries a block saying
+those rows are not a measured `1.00×` and must not be read as one. The same
+`cohort()` feeds S4, so `storage-sensitivity.csv` is fixed with it — a sensitivity
+row that removes a cohort down to nothing was subject to the identical defect.
+
+Output on the real artefacts is byte-identical: both `storage-cohorts.csv` and
+`storage-sensitivity.csv` diff clean against the pre-fix run, because no cohort
+on this catalogue is empty.
+
+`tests/round3_evidence.py::R3-6` drives a catalogue holding one module that is
+in no declared cohort, and a **CONTROL** holding one that is, asserting the
+populated cohorts still report their ratios untouched and raise no note.
+
+### Stage 2 — hardcoded literals, and R3-7
+
+Every string literal in the generator naming a module was enumerated and
+accounted for. There are exactly three places where the catalogue is encoded as
+a literal:
+
+1. `LARGE` — the nine-module storage cohort, at the top of the file.
+2. `GPU = {'nvidia-driver-535', 'cuda-runtime'} & set(names)` — the storage
+   sensitivity rows, named exactly, with a comment explaining that matching on
+   the substrings `nvidia` or `cuda` would wrongly catch the synthetic
+   `fake-nvidia-driver` and `fake-cuda`.
+3. `KIND_BY_PROVOKES` — keyed to `provokes` in `modules.yaml`, not to names at
+   all, so it cannot drift as the catalogue grows. Correct by construction.
+
+The undeclared-large guard added on 21 September was re-verified independently:
+its floor is the smallest declared-large module (`mysql`, 56.6 MB), nothing
+undeclared reaches it (`emacs`, 37.0 MB, is the largest), and the guard is
+therefore silent because there is nothing to say. That is a clean result.
+
+### R3-7 — a consistency check that was only ever a comment
+
+`LARGE` is declared **twice**: once here and once in `13_storage_ratios.sh`.
+The two must agree — they split the same catalogue into the same cohorts and
+publish ratios that are read against each other. This file asserted three times
+that they were kept in step automatically:
+
+> Declared cohort for the storage split (mirrors `13_storage_ratios.sh`; kept in
+> step with it **by the consistency check below**, not by hope).
+
+> Same guard as `13_storage_ratios.sh`; **the two LARGE sets are kept in step by
+> the consistency check**, which is why the guard has to be in step as well.
+
+There is no consistency check. All four mentions of `13_storage_ratios.sh` in
+the file are comments and message text; the script never opens it. The thing at
+the place the first comment points to ("below") is the **C2 cohort table**,
+which *displays* the membership of `LARGE` — it does not compare it to anything.
+The two sets are identical today because someone typed them that way twice.
+
+This is the shape `STATE_OF_PLAY` records as having been found three times
+before — *a script documenting itself as doing something it does not do* — in
+its more dangerous direction. `10_compose_sweep.sh` **under**-claimed: its
+header advertised V1–V6 while V7 and V8 both ran, so the evidence was better
+than the document. This **over**-claimed, and the gap was in the safety
+argument: the 21 September review added the undeclared-large guard to both
+scripts precisely *because* a shared literal had already gone wrong once, and
+the comment written alongside that fix asserted a safety net that was never
+built.
+
+The stakes are already measured. The 21 September finding showed one module
+moving between cohorts takes the headline ratio from **5.59× to 2.59×**. A
+divergence between the two declarations does exactly that, to one script and not
+the other, and the two would then publish different ratios for the same
+catalogue with nothing to say why.
+
+Fixed by writing the check the comments promised. `sibling_large()` parses the
+`LARGE = {...}` declaration out of `13_storage_ratios.sh` textually — it never
+executes it — and compares. On disagreement the note names which modules are in
+which file. And the second half matters as much: if the declaration cannot be
+found at all, because the file was renamed, moved or rewritten, the generator
+reports `COHORT CONSISTENCY UNVERIFIED` rather than passing quietly. **"I could
+not check" must never read as "it agrees"** — that single confusion is the
+mechanism behind most of the twenty-odd defects in this project's history.
+
+`tests/round3_evidence.py::R3-7` copies the repo's `scripts/`, adds `emacs` to
+the sibling's `LARGE`, and asserts the divergence is reported by name; a second
+case removes the declaration entirely and asserts UNVERIFIED; a **CONTROL**
+runs the shipped pair unmodified and asserts silence.
+
+Left as UNPROVEN, not fixed: `build_tier3()` selects the GPU modules with
+`[m for m in DELTAS if 'nvidia' in m or 'cuda' in m]` — the substring match the
+comment 170 lines below it explains is wrong, and which catches `fake-cuda` and
+`fake-nvidia-driver` too. Today both selectors give the same answer, because
+every one of the four modules appears in a boot bundle and the pending list is
+empty either way, so **I could not make it produce a wrong published number.**
+The reachable failure is a false alarm — prune the 37-module bundles and
+`tier3.md` would report "GPU coverage pending: fake-cuda", calling a synthetic
+dpkg-blindness module a GPU module. Loud rather than silent, and cosmetic. It is
+recorded here rather than fixed because changing it alters no current output and
+the two selectors should be unified deliberately, with the catalogue in front of
+whoever does it.
+
+### R3-8 — the tier-3 supersession check could not see the base
+
+Tier 3 marks a run bundle **superseded** when an artefact it used has been
+rebuilt since the run. The check ran over `deltas`:
+
+```python
+deltas = [m for m in mods if m != 'base']
+...
+newer = sorted(m for m in deltas if ... ART[m]['sqsh_mtime'] > run_mtime)
+```
+
+`deltas` exists to count **N**, and N counts module deltas and excludes base by
+definition — that is correct and documented ("37 layers incl. base; N counts
+module deltas, base excluded"). Reusing the same list for the *staleness*
+question silently inherited that exclusion, and the exclusion is wrong there:
+base is the one layer every boot image in every bundle is built on. A rebuilt
+base means the image cannot be reproduced at all — more comprehensively than any
+single module being rebuilt.
+
+So a bundle whose base had been replaced underneath it, with none of its own
+modules touched, was reported as current evidence, and T3.0's headline sentence —
+"**N of M bundles describe artefacts that still exist unchanged**" — counted it
+among the good ones. Demonstrated on a fixture: base rebuilt after the run, the
+module untouched, and the generator reported `1 of 1 bundles describe artefacts
+that still exist unchanged` with a clean note.
+
+**Why it survived.** On the real artefacts it is completely masked. Every bundle
+predating the 16 September base rebuild also contains a module rebuilt since, so
+all thirteen were already flagged for another reason. The published "2 of 20" is
+correct today and stays correct after the fix — this was checked. What changes is
+that the notes now name base: thirteen bundles that said "superseded: mysql,
+postgres rebuilt since this run" now say "superseded: **base**, mysql, postgres".
+That is a more honest statement of what is wrong with them.
+
+One list, two purposes, and the second purpose silently inherited the first's
+exclusion. It is the house bug in a new coat: the check only looked where it was
+pointed, and it was pointed at a list built for counting.
+
+Fixed: the check now runs over `set(mods) | {'base'}` — base always, whether or
+not the run recorded it by name, because every bundle is a boot image on base.
+`N` still comes from `deltas` and is unchanged.
+
+`tests/round3_evidence.py::R3-8` builds a bundle with base rebuilt after the run
+and its module untouched, asserting supersession, that the note names base, and
+that T3.0 counts it as `0 of 1`. The **CONTROL** ages both artefacts before the
+run and asserts the bundle stays current at `1 of 1` — marking live evidence
+stale would retire the only tier-3 results that count.
+
+### Round 3 — what held
+
+Recorded because a clean result on a specific attack is evidence, and this
+review's most important single finding is the first line of it.
+
+- **Every published number equals its source.** All 282 rows over 10 source
+  files, re-derived in independent code: tier 1 (10 rows), tier 2 (24), tier 3
+  (20), storage (55), catalogue (40), provenance (41+31). Exact, to the last
+  digit, including the four OLS coefficients and all three headline storage
+  ratios. **No defect found in this review changes a number in the Evaluation
+  chapter.** They change what the numbers are allowed to claim.
+- **The tier-1 sweep is a census, not a sample.** C(40,2) = 780 and
+  C(40,3) = 9880, both complete. The 2145/2073/72 cross-check re-derives
+  exactly, and all 72 non-monotone admissions have `module_relation` as their
+  inner pair class, as published.
+- **`total_ms` really is `mount_ms + reconcile_ms`** on all 152 rows, which is
+  what makes `STATE_OF_PLAY` §7.8 ("verification cost is outside the published
+  model") an accurate statement rather than a guess.
+- **The `alt_groups` column is correct.** The round-2 shadowed-variable defect
+  has not returned; the column re-derives from `compose-sweep.csv` exactly.
+- **All 41 recorded artefact digests verify against the real bytes.** Hashed
+  independently. R3-1 was a mislabel, never a wrong value.
+- **The OLS fit is guarded on all four degenerate paths**, and a one-row sweep
+  publishes the word `degenerate` rather than a coefficient.
+- **`--check` never touched file content**, before or after R3-4; only empty
+  directories were at stake.
+- **The 21 September undeclared-large guard works and is correctly silent.**
+- **Tier 2's 39-module coverage is correct**, not a gap: `control-oldsnap` is
+  rejected against all 39 partners at tier 1 and never reaches a composition.
+
+### The pattern, restated
+
+Eight findings, and **not one was a composition failing**. Three prior review
+passes reported the same thing, and it holds a fourth time. Every defect here
+was a check that passed something it did not model:
+
+| # | The check | What it was pointed at | What it could not see |
+|---|---|---|---|
+| R3-1 | the digest column's label | the value | which file the digest was of |
+| R3-2 | staleness | the tier-1/tier-2 CSVs | the monolithic baselines |
+| R3-3 | tier-1 coverage | module **names** | which **set sizes** were measured |
+| R3-4 | "writes nothing" | file content | directories |
+| R3-5 | (no guard) | — | a row narrower than its header |
+| R3-6 | division by zero | crashing | publishing a meaningless number |
+| R3-7 | cohort consistency | *nothing — the check was a comment* | everything |
+| R3-8 | supersession | a list built for counting N | the base |
+
+R3-6 and R3-8 are the two worth keeping for the Discussion chapter, because
+they are the pattern at its smallest and hardest to see. R3-6 is a *correct*
+guard — `if N else 0` genuinely prevents the crash it was written for — that
+then hands its fallback to a `%` format string, and a safety value becomes a
+published measurement. R3-8 is a list that was right for its first purpose and
+silently inherited into a second where its defining exclusion was wrong.
+
+Neither is a mistake about the system. Both are mistakes about *what the check
+was for*. That is the thesis-relevant claim this project keeps earning:
+**in a system of this shape the instrumentation fails more often than the thing
+instrumented, and it fails by being narrower than its own description.**
+
+### Not done, and deliberately
+
+- `thesis/evidence/` is **not regenerated in this branch.** Regenerating here
+  bakes this worktree's path (`/home/kaptan/modfs-evidence-audit/...`) and this
+  branch's commit into `provenance.csv`, `provenance.md` and `catalogue.md`,
+  which is wrong for the canonical evidence. It must be regenerated from
+  `~/modfs` on the branch that will carry the thesis:
+
+      ./scripts/16_build_evidence.sh
+
+  The regenerated output was diffed against the committed evidence file by file.
+  **Every numeric table is byte-identical.** What changes is the four fixes
+  (`artefact_sha256_recorded`; `baseline_freshness` plus the S2 narrative;
+  thirteen tier-3 notes now naming `base`) and the generation stamp.
+- The six stale monolithic baselines need rebuilding before S2 can claim the
+  model is calibrated. Commands are in the R3-2 entry. **That is a build, and
+  builds go through the operator.**
+- The tier-3 GPU substring selector is recorded UNPROVEN in the R3-7 entry and
+  left alone; it changes no current output.

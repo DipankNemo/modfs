@@ -4,18 +4,18 @@
 
 ## T1.1 Combinations and verdicts by set size
 
-_**Catalogue: 40 modules** · measured 2026-09-18 23:10:29Z · source `/srv/modfs/logs/combinations-gpu-full.csv`_
+_**Catalogue: 40 modules** · measured 2026-09-22 22:06:27Z · source `/srv/modfs/logs/combinations.csv`_
 
-| N | combinations | ACCEPT | REJECT |
-|---|---|---|---|
-| 2 | 780 | 667 | 113 |
-| 3 | 9880 | 7807 | 2073 |
+| N | combinations | ACCEPT | BROKEN | REJECT |
+|---|---|---|---|---|
+| 2 | 780 | 667 | 0 | 113 |
+| 3 | 9880 | 7806 | 1 | 2073 |
 
 ## T1.2 Rejections by conflict class
 
 _A combination may exhibit more than one class, so the class columns do not sum to the rejection count. Class 1 (benign overlap) is accepted and measured, not a rejection reason; it is in T1.3._
 
-_**Catalogue: 40 modules** · measured 2026-09-18 23:10:29Z · source `/srv/modfs/logs/combinations-gpu-full.csv`_
+_**Catalogue: 40 modules** · measured 2026-09-22 22:06:27Z · source `/srv/modfs/logs/combinations.csv`_
 
 | N | REJECT | class 2 version skew | class 3 declared conflict | class 4 file collision | class 7 identity collision | module relation (ARCHITECTURE §5) | class 6 implicit base upgrade | precondition: not composable |
 |---|---|---|---|---|---|---|---|---|
@@ -24,18 +24,18 @@ _**Catalogue: 40 modules** · measured 2026-09-18 23:10:29Z · source `/srv/modf
 
 ## T1.3 Classes that are measured rather than rejected
 
-_**Catalogue: 40 modules** · measured 2026-09-18 23:10:29Z · source `/srv/modfs/logs/combinations-gpu-full.csv`_
+_**Catalogue: 40 modules** · measured 2026-09-22 22:06:27Z · source `/srv/modfs/logs/combinations.csv`_
 
 | N | combinations | sets with class-1 overlap | class-1 instances | sets with a suppressed class-4 collision | suppressed instances |
 |---|---|---|---|---|---|
-| 2 | 780 | 161 | 632 | 1 | 4 |
-| 3 | 9880 | 4437 | 24016 | 38 | 152 |
+| 2 | 780 | 168 | 667 | 1 | 4 |
+| 3 | 9880 | 4585 | 25346 | 38 | 152 |
 
 ## T1.4 Arithmetic cross-check: is every higher-N rejection explained by a rejecting pair inside it?
 
 _`rejecting pairs in the catalogue` = 113 of 780._
 
-_**Catalogue: 40 modules** · measured 2026-09-18 23:10:29Z · source `/srv/modfs/logs/combinations-gpu-full.csv`_
+_**Catalogue: 40 modules** · measured 2026-09-22 22:06:27Z · source `/srv/modfs/logs/combinations.csv`_
 
 | N | sets | sets containing a rejecting pair | REJECT | REJECT explained by an inner pair | REJECT **unexplained** | ACCEPT despite an inner rejecting pair |
 |---|---|---|---|---|---|---|

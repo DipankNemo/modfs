@@ -1,7 +1,7 @@
 catalogue,n,stored_mb,monolithic_mb,ratio,mean_delta_mb
-all 40 modules (headline),40,1935.6,3562.5,1.84×,47.3
-minus large realistic (31 left),31,272.8,1524.3,5.59×,7.5
-minus control + synthetic (36 left),36,1918.0,3378.1,1.76×,52.1
-minus cuda-runtime alone (39 left),39,1255.3,2840.6,2.26×,31.1
-minus nvidia-driver-535 alone (39 left),39,1704.0,3289.3,1.93×,42.6
-minus rust alone (39 left),39,1760.1,3345.4,1.90×,44.1
+all 40 modules (headline),40,1945.4,3572.4,1.84×,47.6
+minus large realistic (31 left),31,282.6,1534.2,5.43×,7.8
+minus control + synthetic (36 left),36,1927.8,3388.0,1.76×,52.4
+minus cuda-runtime alone (39 left),39,1265.2,2850.5,2.25×,31.4
+minus nvidia-driver-535 alone (39 left),39,1713.9,3299.1,1.92×,42.9
+minus rust alone (39 left),39,1770.0,3355.2,1.90×,44.3

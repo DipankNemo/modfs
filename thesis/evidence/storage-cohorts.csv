@@ -1,4 +1,4 @@
 cohort,n,stored_mb,monolithic_mb,ratio,mean_delta_mb
-small adversarial,31,272.8,1524.3,5.59×,7.5
+small adversarial,31,282.6,1534.2,5.43×,7.8
 large realistic,9,1704.5,2038.3,1.20×,184.8
-whole catalogue,40,1935.6,3562.5,1.84×,47.3
+whole catalogue,40,1945.4,3572.4,1.84×,47.6

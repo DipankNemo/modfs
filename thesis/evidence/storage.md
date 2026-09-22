@@ -8,26 +8,26 @@ _Unit: **decimal MB (10⁶)**, which is what every published figure uses; `mksqu
 
 _ratio = (N·B + Σd) / (B + Σd), B = 41.7 MB. It tends to N as deltas shrink and to 1 as they grow._
 
-_**Catalogue: 40 modules** · measured 2026-09-18 22:58:43Z · source `/srv/modfs/modules`_
+_**Catalogue: 40 modules** · measured 2026-09-22 21:46:29Z · source `/srv/modfs/modules`_
 
 | cohort | N | stored MB | monolithic MB | ratio | mean delta MB |
 |---|---:|---:|---:|---:|---:|
-| small adversarial | 31 | 272.8 | 1524.3 | 5.59× | 7.5 |
+| small adversarial | 31 | 282.6 | 1534.2 | 5.43× | 7.8 |
 | large realistic | 9 | 1704.5 | 2038.3 | 1.20× | 184.8 |
-| whole catalogue | 40 | 1935.6 | 3562.5 | 1.84× | 47.3 |
+| whole catalogue | 40 | 1945.4 | 3572.4 | 1.84× | 47.6 |
 
 ## S2 Is the `B + d` monolithic model honest?
 
-_The monolithic column above is MODELLED as `B + d` for every module. Only 6 of 40 have a real monolithic build to check it against. Across those 6 the model comes in 0.25–0.95 % HIGH, because squashfs compresses one whole tree slightly better than a base and a delta compressed separately — so the model mildly OVERSTATES the saving._
+_The monolithic column above is MODELLED as `B + d` for every module. Only 6 of 40 have a real monolithic build to check it against. Across those 6 the model comes in 0.25–1.34 % HIGH, because squashfs compresses one whole tree slightly better than a base and a delta compressed separately — so the model mildly OVERSTATES the saving._
 
 | module | measured MB | modelled MB | model error | built |
 |---|---:|---:|---:|---|
-| curl | 43.0 | 43.4 | +0.91 % | 2026-09-16 15:10:06Z |
-| emacs | 78.3 | 78.7 | +0.51 % | 2026-09-16 15:33:05Z |
-| jq | 41.9 | 42.3 | +0.95 % | 2026-09-16 15:19:27Z |
-| nc-traditional | 41.6 | 42.0 | +0.95 % | 2026-09-16 15:22:59Z |
-| pytools | 67.4 | 67.6 | +0.25 % | 2026-09-16 15:30:17Z |
-| webserver | 62.3 | 62.8 | +0.82 % | 2026-09-16 15:26:28Z |
+| curl | 43.0 | 43.4 | +0.91 % | 2026-09-22 21:35:56Z |
+| emacs | 78.3 | 78.7 | +0.51 % | 2026-09-22 21:40:57Z |
+| jq | 51.5 | 52.2 | +1.34 % | 2026-09-22 21:38:30Z |
+| nc-traditional | 41.6 | 42.0 | +0.95 % | 2026-09-22 21:48:35Z |
+| pytools | 67.4 | 67.6 | +0.25 % | 2026-09-22 21:46:11Z |
+| webserver | 62.3 | 62.8 | +0.82 % | 2026-09-22 21:43:31Z |
 
 **The whole-catalogue monolithic column is therefore 34 modelled figures and 6 measured ones, not 40 rebuilt baselines.** Any sentence calling the whole-catalogue baseline "rebuilt like-for-like" is wrong; the SIX are rebuilt like-for-like and they calibrate the rest.
 
@@ -35,7 +35,7 @@ _The monolithic column above is MODELLED as `B + d` for every module. Only 6 of 
 
 _`1 − d/(B+d)`. The thinner the module, the more the delta model wins; a module much larger than the base shares nothing to amortise._
 
-_**Catalogue: 40 modules** · measured 2026-09-18 22:58:43Z · source `/srv/modfs/modules`_
+_**Catalogue: 40 modules** · measured 2026-09-22 21:46:29Z · source `/srv/modfs/modules`_
 
 | module | kind | delta MB | monolithic MB | saving |
 |---|---|---:|---:|---:|
@@ -57,6 +57,7 @@ _**Catalogue: 40 modules** · measured 2026-09-18 22:58:43Z · source `/srv/modf
 | dnsutils | real | 16.0 | 57.7 | 72.3 % |
 | pipdemo | synthetic | 15.5 | 57.2 | 72.9 % |
 | pgclient | real | 12.1 | 53.8 | 77.6 % |
+| jq | real | 10.4 | 52.2 | 80.0 % |
 | memcached | real | 10.3 | 52.0 | 80.3 % |
 | pyyaml | real | 10.1 | 51.9 | 80.4 % |
 | gawk | real | 3.1 | 44.8 | 93.1 % |
@@ -71,7 +72,6 @@ _**Catalogue: 40 modules** · measured 2026-09-18 22:58:43Z · source `/srv/modf
 | rsync | real | 0.7 | 42.4 | 98.4 % |
 | socat | real | 0.6 | 42.3 | 98.5 % |
 | wget | real | 0.6 | 42.3 | 98.6 % |
-| jq | real | 0.6 | 42.3 | 98.7 % |
 | mta-nullmailer | real | 0.5 | 42.2 | 98.9 % |
 | htop | real | 0.4 | 42.1 | 99.1 % |
 | nc-openbsd | real | 0.3 | 42.0 | 99.3 % |
@@ -86,12 +86,12 @@ _Each row removes one cohort from the whole-catalogue figure and recomputes. The
 
 | catalogue | N | stored MB | monolithic MB | ratio | mean delta MB |
 |---|---:|---:|---:|---:|---:|
-| all 40 modules (headline) | 40 | 1935.6 | 3562.5 | 1.84× | 47.3 |
-| minus large realistic (31 left) | 31 | 272.8 | 1524.3 | 5.59× | 7.5 |
-| minus control + synthetic (36 left) | 36 | 1918.0 | 3378.1 | 1.76× | 52.1 |
-| minus cuda-runtime alone (39 left) | 39 | 1255.3 | 2840.6 | 2.26× | 31.1 |
-| minus nvidia-driver-535 alone (39 left) | 39 | 1704.0 | 3289.3 | 1.93× | 42.6 |
-| minus rust alone (39 left) | 39 | 1760.1 | 3345.4 | 1.90× | 44.1 |
+| all 40 modules (headline) | 40 | 1945.4 | 3572.4 | 1.84× | 47.6 |
+| minus large realistic (31 left) | 31 | 282.6 | 1534.2 | 5.43× | 7.8 |
+| minus control + synthetic (36 left) | 36 | 1927.8 | 3388.0 | 1.76× | 52.4 |
+| minus cuda-runtime alone (39 left) | 39 | 1265.2 | 2850.5 | 2.25× | 31.4 |
+| minus nvidia-driver-535 alone (39 left) | 39 | 1713.9 | 3299.1 | 1.92× | 42.9 |
+| minus rust alone (39 left) | 39 | 1770.0 | 3355.2 | 1.90× | 44.3 |
 
 ## S5 Every published storage figure, recomputed from the artefacts on disk today
 
@@ -99,8 +99,8 @@ _Same formula in every row: `(N.B + Sd) / (B + Sd)`, decimal MB. The only things
 
 | document | section | catalogue as described | as published | N today | recomputed today | verdict |
 |---|---|---|---|---|---|---|
-| docs/STATE_OF_PLAY_2026-09-18.md | 6 | 38 modules, 2026-09-16 | 5.59x / 1.32x / 2.51x | 38 | 5.59x / 1.32x / 2.51x | reproduces |
-| ARCHITECTURE.md | 7 "Storage depends on the catalogue" | 38 modules, 2026-09-16 | 5.59x / 1.32x / 2.51x | 38 | 5.59x / 1.32x / 2.51x | reproduces |
-| ARCHITECTURE.md | 7 re-measure block | 40 modules, 2026-09-19 | 5.59x / 1.20x / 1.84x | 40 | 5.59x / 1.20x / 1.84x | reproduces |
-| thesis/PLAN.md | ch. 6 list | 40 modules | 5.59x / 1.20x / 1.84x | 40 | 5.59x / 1.20x / 1.84x | reproduces |
+| docs/STATE_OF_PLAY_2026-09-18.md | 6 | 38 modules, 2026-09-16 | 5.59x / 1.32x / 2.51x | 38 | 5.43x / 1.32x / 2.49x | **differs** |
+| ARCHITECTURE.md | 7 "Storage depends on the catalogue" | 38 modules, 2026-09-16 | 5.59x / 1.32x / 2.51x | 38 | 5.43x / 1.32x / 2.49x | **differs** |
+| ARCHITECTURE.md | 7 re-measure block | 40 modules, 2026-09-19 | 5.59x / 1.20x / 1.84x | 40 | 5.43x / 1.20x / 1.84x | **differs** |
+| thesis/PLAN.md | ch. 6 list | 40 modules | 5.59x / 1.20x / 1.84x | 40 | 5.43x / 1.20x / 1.84x | **differs** |
 | docs/REASSESSMENT_2026-09-10.md | 8.2 | 37 modules, 2026-09-10 | 2.47x whole | - | - | NOT REPRODUCIBLE: that generation was overwritten by the 2026-09-16 full rebuild |

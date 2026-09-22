@@ -1,5 +1,5 @@
 table,chapter,path,role,exists,mtime_utc,sha256,bytes,catalogue_n
-tier1,Evaluation,/srv/modfs/logs/combinations-gpu-full.csv,tier-1 sweep results,yes,2026-09-18 23:10:29Z,e80a12f6cfd6fb168c0bf8a9aa2ce475091654c6cf6bbe535e121173209f6fac,865885,40
+tier1,Evaluation,/srv/modfs/logs/combinations.csv,tier-1 sweep results,yes,2026-09-22 22:06:27Z,eed8000e1a9a0b7d3b8c464d5ee68107e5f5babb73e3464fadeb074a2571f445,865916,40
 tier2,Evaluation,/srv/modfs/logs/compose-sweep.csv,tier-2 sweep results,yes,2026-09-18 23:15:42Z,7cde08a6d62eb2cd2be367331ef9041791af26cf98be273d64c4ec6b9d977aa6,27749,39
 tier3,Evaluation,/srv/modfs/results/boot/acct-mp-20260916T142443Z/run.json,tier-3 bundle: acct-mp-20260916T142443Z,yes,2026-09-16 14:24:43Z,928843be838390d30372f64eaea2d7e55e720c5536cd1ce6c887df632699b722,529,2
 tier3,Evaluation,/srv/modfs/results/boot/acct-pm-20260916T134737Z/run.json,tier-3 bundle: acct-pm-20260916T134737Z,yes,2026-09-16 13:47:37Z,b0e070d325b9a39520ef7d0e6e26635b5c943efa9fcce3269e52591452637536,529,2
@@ -22,11 +22,11 @@ tier3,Evaluation,/srv/modfs/results/boot/maxsub-20260916T154758Z/run.json,tier-3
 tier3,Evaluation,/srv/modfs/results/boot/maxsub-20260917T075714Z/run.json,tier-3 bundle: maxsub-20260917T075714Z,yes,2026-09-17 07:57:14Z,d585ef04cdc4ac0b4943cadb1ca063e2e59944be5de791b87b00f9cd4d7fea45,1506,36
 tier3,Evaluation,/srv/modfs/results/boot/probes-20260918T123806Z/run.json,tier-3 bundle: probes-20260918T123806Z,yes,2026-09-18 12:38:06Z,720ab48fe32dbfec13bf38cc31905de9ac1b578d61d2c59f973ecb0dcbcf907b,1506,36
 storage,Evaluation,/srv/modfs/modules/base.sqsh,base artefact,yes,2026-09-16 14:44:32Z,e4fbed70bb74f351b7ad27dd61289845dccabf54fc23d6504b2011dc8d8de6c6,41717760,40
-storage,Evaluation,/srv/modfs/modules/curl-monolithic.sqsh,real monolithic build,yes,2026-09-16 15:10:06Z,94660cd125358bc8de5fd695c6bec7037a537524fde5c71ae519d04149188a08,42967040,
-storage,Evaluation,/srv/modfs/modules/emacs-monolithic.sqsh,real monolithic build,yes,2026-09-16 15:33:05Z,997f930bf147ab6464f6fccf59066591710359854d0c322e0eee6ef9d417c252,78331904,
-storage,Evaluation,/srv/modfs/modules/jq-monolithic.sqsh,real monolithic build,yes,2026-09-16 15:19:27Z,7648b60bbe8e00221ac807d561608721bd85594dacaff69b1f2430766c99a4fe,41885696,
-storage,Evaluation,/srv/modfs/modules/nc-traditional-monolithic.sqsh,real monolithic build,yes,2026-09-16 15:22:59Z,63ba7a9ae8e427f3f6227361d0b3e00e3eaf006988e4b30e983c764eb22e5c6f,41586688,
-storage,Evaluation,/srv/modfs/modules/pytools-monolithic.sqsh,real monolithic build,yes,2026-09-16 15:30:17Z,1973a875c3449e063af2fc4b505f0dd51974e66be75058774bb05bdd0fdc30cb,67395584,
-storage,Evaluation,/srv/modfs/modules/webserver-monolithic.sqsh,real monolithic build,yes,2026-09-16 15:26:28Z,09b7875bb989dbe281d12306cf761ab2d9ec46c4279c16cd6c4513f52c3f641e,62251008,
+storage,Evaluation,/srv/modfs/modules/curl-monolithic.sqsh,real monolithic build,yes,2026-09-22 21:35:56Z,2ee4e418a0a5d1a23dab51c46de31659a443c583ee5de56c88fb8b73e5ddecfc,42967040,
+storage,Evaluation,/srv/modfs/modules/emacs-monolithic.sqsh,real monolithic build,yes,2026-09-22 21:40:57Z,689244020ed9ead6a6a48bea8c5625d5ccb33fb0ffdb2faa8e3cba24c3977169,78331904,
+storage,Evaluation,/srv/modfs/modules/jq-monolithic.sqsh,real monolithic build,yes,2026-09-22 21:38:30Z,b27cb1cb2f6d74f47796700c3cd7e587eb4b3bc6a0a21eb8294b8729550c3a1d,51462144,
+storage,Evaluation,/srv/modfs/modules/nc-traditional-monolithic.sqsh,real monolithic build,yes,2026-09-22 21:48:35Z,af93157c05df2815687d07b7b219f6113efdc52efcba516041c2be916c089d37,41586688,
+storage,Evaluation,/srv/modfs/modules/pytools-monolithic.sqsh,real monolithic build,yes,2026-09-22 21:46:11Z,93a1ac143f91b1c6a6e594e425985d5689f4b306e8096a6c5685d6641edada77,67395584,
+storage,Evaluation,/srv/modfs/modules/webserver-monolithic.sqsh,real monolithic build,yes,2026-09-22 21:43:31Z,23fa133f840ba2fbbba137a74d5d82a341708e9aade2e0c164674cb4ebe3e8fa,62251008,
 catalogue,Implementation,/home/kaptan/modfs/specs/modules.yaml,module catalogue (source of truth),yes,2026-09-20 16:07:15Z,c18fd234ff114c90728945ea24e2992123a2df8f3bf46c19b2bacdc7847db86c,22813,40
 catalogue,Implementation,/home/kaptan/modfs/specs/uid-ranges.yaml,UID window assignments,yes,2026-09-19 15:00:02Z,34527a86e4180633ab407f5d63ba80aab4bb312515e69b87064aa5a3518d682c,2424,40

@@ -4,7 +4,7 @@
 
 _40 entries: 1 control, 36 real, 3 synthetic. `base` is not a sibling and has no UID window._
 
-_**Catalogue: 40 modules** · measured 2026-09-18 22:58:43Z · source `/home/kaptan/modfs/specs/modules.yaml` · UID windows are 100 wide from 2000, append-only_
+_**Catalogue: 40 modules** · measured 2026-09-22 21:46:29Z · source `/home/kaptan/modfs/specs/modules.yaml` · UID windows are 100 wide from 2000, append-only_
 
 | module | kind | requested packages | artefact MB | packages in delta | UID window | provokes | status |
 |---|---|---|---:|---:|---|---|---|
@@ -22,7 +22,7 @@ _**Catalogue: 40 modules** · measured 2026-09-18 22:58:43Z · source `/home/kap
 | git | real | git | 17.1 | 18 | 3500–3599 | benign-overlap | built |
 | htop | real | htop | 0.4 | 3 | 3900–3999 | benign-overlap | built |
 | java | real | default-jdk-headless | 141.6 | 31 | 4900–4999 | scale | built |
-| jq | real | jq, moreutils | 0.6 | 3 | 3600–3699 | benign-overlap | built |
+| jq | real | jq, moreutils | 10.4 | 13 | 3600–3699 | benign-overlap | built |
 | llvm | real | llvm, clang | 128.2 | 47 | 5100–5199 | shared-toolchain | built |
 | memcached | real | memcached | 10.3 | 9 | 4700–4799 | benign-overlap | built |
 | mta-msmtp | real | msmtp-mta | 2.6 | 10 | 2800–2899 | virtual-provider | built |
