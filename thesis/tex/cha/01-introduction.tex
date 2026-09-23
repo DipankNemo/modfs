@@ -1,0 +1,26 @@
+\chapter{Introduction}
+\label{ch:introduction}
+
+\ac{BMaaS} provisions physical machines from prepared operating-system images. Workloads often share a distribution base while differing in their compilers, databases, web servers, or scientific libraries. Keeping every variant as an independent filesystem repeats that common content and couples each variant's maintenance to the whole image. Image construction is therefore a useful place to separate reusable operating-system content from workload-specific additions \autocite{baas,ironic,maas}.\aidnote
+
+Ordinary package installation makes this separation difficult. A package manager installs files, executes maintainer scripts, allocates numeric identities, and updates shared system databases. Two installations performed independently over the same base each produce a complete local view of those databases. Overlaying their files can select one view and silently discard the other. Package co-installability alone does not establish that their captured installation effects form a coherent root filesystem.
+
+ModFS investigates a server-side construction method using a pinned Ubuntu base and independent compressed sibling deltas. Each sibling is built directly against the same exact parent. A selected set is admitted through package and module metadata, assembled with OverlayFS, and reconciled through registry-specific rules before being flattened into a bootable image. Structural checks and virtual-machine boots observe different properties of that result. The approach retains ordinary Ubuntu packages and paths; its deployment boundary is an image supplied to the provisioning system.
+
+The research is organized around three questions:
+\begin{enumerate}
+\item \textbf{Compatibility:} Which conflicts arise when independently built package-installation deltas are composed, and which can be prevented, rejected, or reconciled?
+\item \textbf{Storage:} How much compressed server repository storage can a shared base save relative to independently retained single-workload variants, and how does workload selection affect that comparison?
+\item \textbf{Verification:} What do metadata admission, physical composition checks, and boot observations establish about the resulting system, and where do their observation boundaries lie?
+\end{enumerate}
+
+The experimental strategy follows those boundaries. A catalogue chosen to exercise conflict mechanisms supports exhaustive small-set admission, sampled larger physical compositions, and selected boot experiments. Compressed artefact inventories support a repository-storage model, calibrated against independently built monoliths. Adversarial fixtures challenge the verifiers and registry parsers with inputs that a normal workload sweep may not encounter. This combination treats the measurement instrument as something to evaluate as well as something to trust.
+
+The thesis develops the following contributions:
+\begin{enumerate}
+\item A conflict taxonomy linking package relations, shared state, filesystem markers, numeric identities, and runtime resources to explicit composition policies.
+\item A prototype that captures sibling deltas against an exact parent, binds their artefacts to metadata, and combines or regenerates shared system registries according to their semantics.
+\item An evaluation method that separates admission, structural preservation, and running-system behavior, and relates each claim to its observed predicate and evidence population.
+\end{enumerate}
+
+\Cref{ch:fundamentals} introduces package installation, filesystem layering, shared registries, and related deployment and consistency work. \Cref{ch:architecture} presents the construction, compatibility rules, reconciliation, and verification boundaries. \Cref{ch:analysis} evaluates admission, composition cost, repository storage, and boot behavior together with their limitations. \Cref{ch:conclusion} answers the research questions and identifies the remaining work.
