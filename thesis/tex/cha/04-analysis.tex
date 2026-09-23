@@ -1,0 +1,209 @@
+\chapter{Analysis}
+\label{ch:analysis}
+
+The evaluation follows the system from selected package metadata to a running machine. Compatibility requires an admission census and physical compositions; storage requires an artefact inventory and a comparison model; verification requires examining both successful observations and counterexamples to the checkers. Each experiment answers a different part of the research questions. The source files, digests, generation dates, and historical evidence identities are retained in \cref{app:provenance}.\aidnote
+
+\section{Populations and experimental scope}
+
+Throughout this chapter, $N$ counts sibling deltas, excluding the shared base. The current catalogue contains \dref{/catalogue/total} entries: \dref{/catalogue/real} real workloads, \dref{/catalogue/synthetic} synthetic modules, and \dref{/catalogue/control} deliberately incompatible control. It was assembled to exercise conflict mechanisms, rather than sampled from a deployment population. Exhaustive admission covers pairs and triples; physical composition samples larger sets and covers \dref{/catalogue/covered} distinct ordinary deltas. That coverage count excludes the control and does not identify a separate catalogue generation.
+
+The refreshed physical sweep and current storage inventory supersede the earlier physical measurements. Historical boot bundles remain a separate population: a new composition sweep does not retroactively boot its artefacts. A selected bundle's freshness identifies its relationship to rebuilt inputs, rather than certifying all current combinations. The evaluation therefore distinguishes current structural observations from historical demonstrations of runtime mechanisms.
+
+Sampling also limits inference. Small enumerable admissible spaces permit uniform draws; the larger-space seeded heuristic is reproducible without being uniform. Every proposal must still pass authoritative admission. The aggregate evidence does not retain enough sampling or timing detail to estimate a population-wide failure probability, controlled cache-state effect, or uncertainty interval. Its fitted durations describe the measured sweep.
+
+\section{Static admission: coverage and its limits}
+
+\Cref{tab:admission} reports the exhaustive census. The larger rejected share among triples can arise because adding a module introduces further incompatible relationships. It must not be interpreted as a general probability that an arbitrary user-selected system will fail: the catalogue deliberately includes adversarial cases and an incompatible control.
+
+\begin{table}[tbp]
+\centering
+\begin{tabular}{rrrr}
+\toprule
+$N$ & Sets & ACCEPT & REJECT \\
+\midrule
+\num{2} & \dref{/tier1/totals/2/combinations} & \dref{/tier1/totals/2/accept} & \dref{/tier1/totals/2/reject} \\
+\num{3} & \dref{/tier1/totals/3/combinations} & \dref{/tier1/totals/3/accept} & \dref{/tier1/totals/3/reject} \\
+\bottomrule
+\end{tabular}
+\caption{Exhaustive admission of pairs and triples from the \dref{/catalogue/total}-module catalogue, including the incompatible control.}
+\label{tab:admission}
+\end{table}
+
+\Cref{tab:causes} separates rejection conditions. Module relations include unsatisfied requirements as well as declared incompatibilities; a missing CUDA driver and mutually incompatible mail providers are therefore different mechanisms in the same column. Columns overlap because one selected set can violate several conditions. Zero observations for file collision, identity collision, and implicit base upgrade describe the constructed catalogue and implemented predicates. They do not prove that arbitrary installations cannot create those conflicts.
+
+\begin{table}[tbp]
+\centering\small
+\begin{tabular}{lrr}
+\toprule
+Condition & Pairs & Triples \\
+\midrule
+Version skew & \dref{/tier1/classes/2/version-skew} & \dref{/tier1/classes/3/version-skew} \\
+Declared conflict & \dref{/tier1/classes/2/declared-conflict} & \dref{/tier1/classes/3/declared-conflict} \\
+File collision & \dref{/tier1/classes/2/file-collision} & \dref{/tier1/classes/3/file-collision} \\
+Identity collision & \dref{/tier1/classes/2/identity-collision} & \dref{/tier1/classes/3/identity-collision} \\
+Module relation & \dref{/tier1/classes/2/module-relation} & \dref{/tier1/classes/3/module-relation} \\
+Implicit base upgrade & \dref{/tier1/classes/2/base-drift} & \dref{/tier1/classes/3/base-drift} \\
+Not composable & \dref{/tier1/classes/2/not-composable} & \dref{/tier1/classes/3/not-composable} \\
+\bottomrule
+\end{tabular}
+\caption{Overlapping rejection conditions for the \dref{/catalogue/total}-module census. These counts are not a partition of rejected sets.}
+\label{tab:causes}
+\end{table}
+
+The old-snapshot control is refused with every ordinary sibling. It accounts for \dref{/tier1/classes/2/not-composable} flagged pairs and \dref{/tier1/classes/3/not-composable} flagged triples. This rules out an all-accept checker but exercises one particular composability condition. Positive controls for other predicates must construct their own violating inputs.
+
+Admission is not monotone under set extension. Among \dref{/tier1/crosscheck/3/sets-containing-rejecting-pair} triples containing a rejecting pair, \dref{/tier1/crosscheck/3/accept-despite-rejecting-pair} are accepted. The accepted exceptions concern module relations: adding a missing provider can complete a requirement. Adding a provider does not repair a genuine incompatibility between packages already present. The census contains no rejected triple unexplained by an inner rejecting pair, but this internal cross-check remains an observation of the checker rather than an independent proof of physical correctness.
+
+Benign overlap occurs in \dref{/tier1/measured/2/sets-with-benign-overlap} pairs and \dref{/tier1/measured/3/sets-with-benign-overlap} triples. Sanctioned replacement or diversion suppresses collisions in \dref{/tier1/measured/2/sets-with-suppressed-collision} pair and \dref{/tier1/measured/3/sets-with-suppressed-collision} triples. These are sets with a condition, not necessarily accepted sets: another predicate can still reject them. The observations show that overlap is classified rather than universally forbidden; they do not measure duplicated bytes.
+
+\section{Physical composition and the cost of observation}
+
+\subsection{Sampled systems and recorded predicates}
+
+All \dref{/tier2/current/compose/n} sampled compositions pass the recorded checks. \Cref{tab:physical} gives their distribution and mean durations. Package counts vary at fixed $N$, because a sibling can contribute a thin utility or a substantial dependency closure. At the upper end only \dref{/timing/38/samples} samples contribute to the mean. Independently rounded phase means need not add exactly to the displayed composition mean.
+
+\input{tables-timing}
+
+The clean result means that each implemented predicate accepted each sampled tree. V1 is inferred from a positive reconciliation duration; it is weaker than a separately captured exit status. V2 checks installed package names and versions, V3 retained alternatives candidates, V4 the expected union of library \acp{SONAME} in the regenerated cache, and V5 the package-manager audit. V6 checks account records and membership, V7 path visibility and selected kind, size, and link properties, and V8 debconf records. Every column records \dref{/checks/V1/passing} of \dref{/checks/V1/total} passing rows.
+
+These predicates differ in strength. A regenerated linker cache need not match a layer cache byte for byte to contain the expected \acp{SONAME}. Conversely, a regular file with different bytes but the same size can satisfy V7. Registry paths exempted from ordinary visibility checks need their own semantic assertions. Passing the sweep therefore establishes neither general filesystem equivalence nor service coexistence. The later counterexamples concern the observation boundary, not a contradiction in the reported clean rows.
+
+\subsection{Scaling within the measured range}
+
+\Cref{tab:fits,fig:timing} show approximately linear phase costs over the tested layer counts. Composition comprises mounting and reconciliation; verification is timed separately. Mounting more layers adds mount and namespace work, while reconciliation processes their package and registry state. Those mechanisms are consistent with the trend, but $N$ also covaries with package and record counts. The regression alone does not isolate their individual costs or prove that payload size has no effect.
+
+\begin{table}[tbp]
+\centering
+\begin{tabular}{lrrr}
+\toprule
+Phase & $a$ (\si{\milli\second}) & $b$ (\si{\milli\second}/module) & $R^2$ \\
+\midrule
+Mount & \dref{/tier2/current/mount/intercept-ms} & \dref{/tier2/current/mount/slope-ms-per-module} & \dref{/tier2/current/mount/r2} \\
+Reconcile & \dref{/tier2/current/reconcile/intercept-ms} & \dref{/tier2/current/reconcile/slope-ms-per-module} & \dref{/tier2/current/reconcile/r2} \\
+Compose & \dref{/tier2/current/compose/intercept-ms} & \dref{/tier2/current/compose/slope-ms-per-module} & \dref{/tier2/current/compose/r2} \\
+Verify & \dref{/tier2/current/verify/intercept-ms} & \dref{/tier2/current/verify/slope-ms-per-module} & \dref{/tier2/current/verify/r2} \\
+\bottomrule
+\end{tabular}
+\caption{Fits $t(N)=a+bN$ over \dref{/tier2/current/compose/n} physical compositions covering \dref{/catalogue/covered} ordinary deltas of the \dref{/catalogue/total}-module catalogue. $N$ excludes base.}
+\label{tab:fits}
+\end{table}
+
+\input{figures-timing}
+
+Adding the composition and verification fits from the same sample gives
+\begin{equation}
+t_{\mathrm{compose+verify}}(N)=
+\bigl(\dref{/tier2/combined/intercept-ms}+\dref{/tier2/combined/slope-ms}N\bigr)\,\si{\milli\second}.
+\label{eq:combined-time}
+\end{equation}
+This sum covers the measured phases, without automatically including planning, setup, or teardown outside their timers. No combined $R^2$ is supplied: separate coefficients of determination cannot be added. At $N=\dref{/timing/38/n}$, the observed means are \dSI{/timing/38/total-ms-mean}{\milli\second} for composition and \dSI{/timing/38/verify-ms-mean}{\milli\second} for verification. Reporting only the composition mean would omit a substantial part of the structural observation cost.
+
+The previous sweep fitted composition as $\dref{/tier2/previous/compose/intercept-ms}+\dref{/tier2/previous/compose/slope-ms-per-module}N$ milliseconds. The current slope differs by \dSI{/comparison/slope-change-pct}{\percent}, while the intercept falls by \dSI{/comparison/intercept-change-pct}{\percent}. This asymmetry suggests that repeated per-layer work is more stable than fixed overhead in these observations. It does not identify the slope as an intrinsic constant of the method or the intercept solely as a machine property: artefacts, workload mix, and checking context changed together. Verification's slope also changes from \dref{/tier2/previous/verify/slope-ms-per-module} to \dref{/tier2/current/verify/slope-ms-per-module} milliseconds per module. The evidence supports descriptive agreement for composition, not a controlled causal comparison or portability guarantee.
+
+\section{Repository storage and workload dependence}
+
+\subsection{The comparison being measured}
+
+Let $B$ denote compressed base size and $d_i$ the compressed sibling sizes. Retaining a library of independent single-module variants is modelled as
+\begin{equation}
+S_{\mathrm{mono}}=NB+\sum_i d_i,\qquad
+S_{\mathrm{ModFS}}=B+\sum_i d_i,\qquad
+R=\frac{S_{\mathrm{mono}}}{S_{\mathrm{ModFS}}}.
+\label{eq:storage}
+\end{equation}
+The base is \dSI{/storage/base-mb}{\mega\byte}; units are decimal throughout. Both sides concern compressed root-filesystem artefacts, excluding disk envelopes, kernels, and firmware partitions. The model neither enumerates every possible multi-module image nor compares against a repository with cross-image deduplication. It also does not measure bytes transferred to a node.
+
+\Cref{tab:storage,fig:storage} show the cohort dependence. The small cohort benefits because repeated base copies would dominate its thin deltas. Large compilers, runtimes, and database closures retain substantial unique content, reducing the ratio. The whole-catalogue result reflects that mixture; it is not a universal storage factor for modular images.
+
+\begin{table}[tbp]
+\centering\small
+\begin{tabular}{lrrrr}
+\toprule
+Cohort & $N$ & Stored (\si{\mega\byte}) & Model (\si{\mega\byte}) & Ratio \\
+\midrule
+Small adversarial & \dref{/storage/small/n} & \dref{/storage/small/stored-mb} & \dref{/storage/small/monolithic-mb} & \dref{/storage/small/ratio}$\times$ \\
+Large realistic & \dref{/storage/large/n} & \dref{/storage/large/stored-mb} & \dref{/storage/large/monolithic-mb} & \dref{/storage/large/ratio}$\times$ \\
+Whole catalogue & \dref{/storage/all/n} & \dref{/storage/all/stored-mb} & \dref{/storage/all/monolithic-mb} & \dref{/storage/all/ratio}$\times$ \\
+\bottomrule
+\end{tabular}
+\caption{Compressed repository sizes for cohorts of the \dref{/catalogue/total}-module catalogue. Every monolithic value uses the additive model; independent builds calibrate it. Each cohort includes one shared base.}
+\label{tab:storage}
+\end{table}
+
+\input{figures-storage}
+
+CUDA illustrates the large-payload effect: its delta is \dSI{/module/cuda-runtime/delta-mb}{\mega\byte}, with a modelled marginal saving of \dSI{/module/cuda-runtime/saving-pct}{\percent}. Marginal saving assumes that the server already holds the base; an isolated one-module repository stores base plus delta and receives no sharing benefit under this model. Excluding CUDA increases the catalogue ratio to \dref{/sensitivity/3/ratio}$\times$. Excluding the control and synthetic entries instead leaves \dref{/sensitivity/2/n} real workloads at \dref{/sensitivity/2/ratio}$\times$. These changes expose workload selection as part of the result.
+
+Catalogue identity includes the requested workload, not only its name or entry count. A rebuilt utility module can grow when an omitted requested package is restored. Its old and new sizes then describe different installations even if both catalogues have the same number of entries. Bundle seals establish consistency between captured content and metadata, but an additional specification-to-installation comparison is needed to establish that the intended request was fulfilled. The storage comparison therefore uses the refreshed artefact inventory consistently and does not interpret a change between differently defined variants as an improvement in compression. This also limits transferring the cohort labels to future catalogues: adding a dependency-heavy workload can change the ratio without changing the sharing mechanism.
+
+\subsection{Calibration and baseline equivalence}
+
+\Cref{tab:calibration} compares the additive approximation with independently built monoliths. The model exceeds those measurements by \dSI{/calibration/pytools/model-error-pct}{\percent} to \dSI{/calibration/jq/model-error-pct}{\percent}. That baseline-size error biases the apparent benefit upward; it is not the same percentage-point error in every saving ratio. The headline numerator remains modelled for all catalogue entries, rather than mixing measured and modelled sizes.
+
+\input{tables-calibration}
+
+The calibration covers smaller deltas. Its largest is Emacs at \dSI{/module/emacs/delta-mb}{\mega\byte}, below the large cohort's smallest delta, MySQL at \dSI{/module/mysql/delta-mb}{\mega\byte}. It consequently supplies no measured error bound for CUDA or the other large monoliths. Their contribution dominates the uncertainty in the aggregate comparison.
+
+The independent monolithic builder also uses a separate bootstrap path. It does not reproduce the base builder's full upgrade and machine-identity normalization. A recently rebuilt comparator can therefore be fresh without being input-equivalent. The observed small size discrepancies combine compression effects with possible construction differences. A matched baseline would hold package versions, generated state, and construction policy constant. The existing calibration supports a bounded approximation, rather than a controlled estimate of the compression penalty alone.
+
+\subsection{Thin and fat bases}
+
+A historical catalogue experiment explores moving shared dependencies into a larger base. If the base grows by $\Delta B$ and each delta shrinks by $s_m$, repository storage changes by
+\begin{equation}
+\Delta S_{\mathrm{repository}}=\Delta B-\sum_{m\in M}s_m.
+\end{equation}
+The retained historical model decreases from \dSI{/fatbase/thin}{\mega\byte} to \dSI{/fatbase/fat}{\mega\byte}, a derived \dSI{/fatbase/reduction-pct}{\percent}. This concerns a \dref{/fatbase/n}-module experiment, not the current whole-catalogue total. The base increment is \dSI{/fatbase/base-increment}{\mega\byte}, whereas the largest individual delta saving is \dSI{/fatbase/best-delta-saving}{\mega\byte}, for \ac{GCC}. No single-module selection offsets that increment under the experiment's additive layer model.
+
+For a fleet whose node $k$ selects $A_k$, the analogous repeated-payload model is
+\begin{equation}
+\Delta F=K\Delta B-\sum_{k=1}^{K}\sum_{m\in A_k}s_m.
+\end{equation}
+This explains why a repository can benefit while a specialized node does not. It remains a model: flattening removes overwritten paths and changes compression, while caches and deployment protocols alter transfer costs. Summing independently compressed dependency sizes can also double-count shared content. Base selection therefore requires the fleet's workload distribution and measurements of its actual packed images; the repository result alone does not choose the best base for every node.
+
+\section{Boot observations and runtime conflicts}
+
+The retained history contains \dref{/boot/bundles} bundles: \dref{/boot/pass} PASS, \dref{/boot/fail} FAIL, \dref{/boot/broken} BROKEN, \dref{/boot/aborted} ABORTED, and \dref{/boot/no-result} without a result. These labels separate observed guest outcomes from missing observations or apparatus failures. They are not independent trials of one fixed system and must not be turned into a deployment success rate. Only the GPU pair's two bundles remain non-superseded, including one aborted attempt.
+
+\Cref{tab:boots} retains the observations needed to interpret the runtime conflict. Each web server starts alone in its historical image. In both composed orders, nginx owns port \num{80} and the Apache unit fails despite passing package audit and both command probes. The selected service set introduces contention that the lower tiers did not model. Reversing filesystem order is not equivalent to controlling service scheduling, so the observations establish a conflict without proving a universal winner.
+
+\input{tables-boots}
+
+The high-layer runs likewise record progressively more passing probes, ultimately all selected probes, while the failed Apache unit persists. Evolving artefacts and harnesses prevent interpreting the sequence as repeated trials or a failure-rate improvement. Its useful conclusion is that a probe can demonstrate command availability while leaving service health untested. Database order reversals preserve working database probes and separate listeners; their recorded system state is still \texttt{starting}, which is weaker than a fully settled \texttt{running} state.
+
+The current GPU-pair boot records successful probes and a running guest without access to GPU hardware. A separate userspace test used a provider's already installed driver. Neither observation demonstrates that the packaged kernel driver can operate a GPU. That claim requires matching hardware, the intended kernel \ac{ABI}, and the deployment's signing policy. A separate distribution-portability investigation must likewise retain its own artefact and measurement identity rather than supplementing this catalogue's results silently.
+
+The \dref{/boot/completed} completed PASS/FAIL runs span \dSI{/boot/min-s}{\second} to \dSI{/boot/max-s}{\second}. Using \cref{eq:combined-time} only as a descriptive denominator, two-module boots take approximately \dref{/gap/2/min}--\dref{/gap/2/max} times the fitted physical phases; the historical \dref{/boot/run/19/n}-module boots take approximately \dref{/gap/36/min}--\dref{/gap/36/max} times as long. These are unmatched comparisons of the refreshed physical fit with historical boot runs. They indicate the scale of the observation cost, without isolating a speedup or a hardware-independent tier ratio. No admission-to-composition timing factor is inferred from the untraceable admission durations.
+
+\section{What adversarial verification revealed}
+
+The clean physical sweep did not discover every genuine defect. Directed fixtures exposed repeated accounts with inconsistent primary groups, duplicate membership retention, and incomplete diversion records silently discarded by the merger. Earlier successful rows had not observed those conditions. The precise conclusion is that Tier \num{2} did not reject these genuine defects until its checkers were taught to see them; it is not that composition never failed.
+
+The findings fall into three qualitative groups. First, predicates can observe an insufficient property: matching package names without versions, exempting a rewritten registry without checking its records, or comparing file size without content. Second, the harness can alter or misobserve its subject: waiting for all jobs while counting its own job prevents the expected settled state, and successful version probes can conceal failed services. Third, evidence handling can misstate scope: a composition timer omits separately timed verification, a recent summary can omit sets, and a schema change can invalidate old manifests even when archive hashes still agree.
+
+Each repair requires a counterexample and a positive control. A regression expecting rejection of malformed input verifies a different behavior from one expecting a semantic merge. A passing known-open fixture can intentionally confirm that a blind spot remains reproducible. Consequently, green test summaries and counts of documentation corrections cannot substitute for a deduplicated implementation-defect inventory or a completeness argument.
+
+V7's equal-size substitution remains a concrete limitation. Hashing contested paths would strengthen content preservation, but only after defining the intended winning layer and legitimate exceptions for generated state, links, modes, and ownership. Shared parsers also create correlated errors: producer and checker can agree on the same mistaken interpretation. Independently constructed fixtures therefore remain necessary even when sharing format definitions reduces inconsistency.
+
+\subsection{Semantic preservation and order}
+
+Registry order reversals require a precise equivalence relation. The account and debconf examples preserve semantic record sets while their serialization can differ. Set membership is meaningful for supplementary groups and record owners; byte order is not the intended invariant. Other fields intentionally follow a highest-layer policy, so these examples cannot establish a byte-identical root under arbitrary permutations. An ordinary conflicting path also retains the stack's precedence. Claiming general order independence would combine several different policies into a property the system does not implement.
+
+Coverage and correctness are separate questions. Package status is semantically keyed by package and architecture, whereas the current implementation's package-name key limits multiarch handling. Diversions are deduplicated as complete triples, without independent arbitration of differing triples at the same original path. Extended automatic-installation state and diversions lack dedicated semantic predicates in the numbered check list. Trigger registrations remain outside the merged inventory. These are concrete reasons to treat the eight registry groups as an implemented boundary and to repeat discovery when adding new package families.
+
+The opaque-directory example illustrates a further observation gap. Two packages need not claim the same path for a directory marker to hide another sibling's descendants. Ownership-intersection checks therefore cannot replace visibility checks. Stripping the marker is justified by the direct-base, additive build policy and its rejection of whiteout-bearing upperdirs. Generalizing the repair to arbitrary deleting layers would require a different argument about intended removals.
+
+\section{Reproducibility, lifecycle, and validity}
+
+Archive pinning constrains package resolution without making installation pure. Independent rebuilds exposed generated password-change dates, host-dependent mail configuration, ordering-sensitive indices, Java cache and certificate state, database initialization, external package inputs, and overlay copy-up attributes. The rebuild contexts also differed in builders and host tools. These observations identify mechanisms of byte variation, without supplying a controlled decomposition of every difference or a quantitative cross-machine claim within the permitted evidence.
+
+Equal package metadata, equal installed trees, and equal compressed bytes are distinct properties. A digest identifies an existing artefact; it does not cause another builder to reproduce it or authenticate the publisher. Normalization also has semantic costs: erasing application identifiers or cryptographic state to stabilize bytes can duplicate identities or change behavior. Generated state must be classified according to whether it belongs in an image or at first boot.
+
+Updating a sibling against the same exact base limits rebuilding scope, but affected compositions still require validation. Moving the archive pin creates a new generation and requires coherent publication of its base and siblings. The prototype has no transactional remote publisher or node update client. It delivers a flattened image, so repository savings cannot be converted into reduced node-update traffic. Redeploying a retained image also does not roll back persistent application data or establish database-schema compatibility.
+
+Schema compatibility also belongs to experimental identity. Retained manifests once matched their artefact hashes but lacked a generation field required by a newer validator. Rechecking a formerly accepted set could then fail even though its compressed bytes had not changed. Explicit adoption restored schema compatibility without reconstructing missing historical proof. This example is a reason to record checker and schema versions alongside inputs; it is not evidence that the refreshed catalogue still has the same defect.
+
+The execution boundary limits deployment scope independently of those hashes. Reconciliation and packing invoke tools from composed roots with host-side privileges before the virtual machine is started. The evaluated catalogue is therefore trusted build input. An internally consistent bundle supplied by an adversary can still contain hostile code. Content binding verifies identity and consistency within its declared scope; isolation and publisher authentication require additional mechanisms.
+
+These limits define the validity of the findings. Construct validity depends on naming what was observed: visibility, content identity, command execution, service health, and reproducibility cannot stand in for one another. Internal validity is limited by changing artefacts, schemas, harnesses, and uncontrolled timing environments. External validity is limited by the adversarial catalogue, modelled large monoliths, virtualization, and the absence of long-lived deployments or a paired bare-metal comparison.
+
+Within those boundaries, the evidence supports useful server-side sharing and semantic composition of the selected workloads. The taxonomy explains why different failures need different policies; the registry mechanism supplies those semantics for a defined set of databases. The most consequential remaining experiments are matched boot observations of the refreshed artefacts, content-preservation counterexamples, controlled rebuilds, large-workload calibration, hardware-driver operation, and a complete deployment lifecycle. Each extends a particular claim rather than converting a clean lower-tier verdict into general correctness.
