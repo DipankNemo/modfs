@@ -6435,3 +6435,37 @@ check gives that omission a visible warning.
 Regressions: R4-8 is in `tests/round4_attacks.py`; R4-9 runs the **full**
 `05_check.sh` on sealed synthetic manifests and sidecars in
 `tests/round4_class7.py`. These tests use scratch directories and need no root.
+
+## 2026-09-23 (recording the NVIDIA insmod result, which existed only in a run bundle)
+
+Two independent thesis-writing agents were asked to source the claim that the
+ModFS NVIDIA module "loads, links and initialises in its target kernel, failing
+only at hardware enumeration". One reported it **found nowhere** -- no document,
+no journal entry, no commit message on any branch. That was correct: the result
+was read off a serial console during a session and never written down.
+
+Recording it now from the retained bundle, which is the only place it exists.
+
+Run `gpu-insmod5-20260922T224408Z`, verdict **PASS**, exit 0, 175 s, guest kernel **6.8.0-124-generic**, modules base + nvidia-driver-580 + cuda-runtime.
+Bundle: `/srv/modfs-noble/results/boot/gpu-insmod5-20260922T224408Z`.
+
+The two lines that carry the result, in this order:
+
+```
+[    7.406851] NVRM: No NVIDIA GPU found.
+MODFS-INSMOD NO-GPU-IN-GUEST rc=1
+```
+
+`NVRM:` is the NVIDIA driver's own kernel log prefix. For that message to be
+emitted the module must have been accepted by the kernel (vermagic matched),
+linked (every symbol resolved) and had its init function run far enough to
+enumerate PCI devices and find none. The guest kernel is the exact ABI the
+module targets, so this is not an environment mismatch.
+
+**What it establishes:** the module loads, links and initialises in its target
+kernel. **What it does not:** that it drives a GPU. It fails at hardware
+enumeration inside QEMU, which has no card. Passthrough would be needed, and the
+host's only GPU drives the display.
+
+Scope caveat: this is the **noble** module `nvidia-driver-580` on the unmerged
+`experiment/noble-generation`, not a jammy catalogue result.
