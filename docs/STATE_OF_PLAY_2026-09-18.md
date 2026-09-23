@@ -243,6 +243,17 @@ build**; the thesis must state which it claims.
 
 ## 9. The one sentence worth keeping
 
+> **Corrected 23 September.** An earlier summary of this section, and the brief
+> given to the thesis writers, compressed it to "not one defect was a composition
+> failing". **Two independent readings rejected that.** Round 4 fixed defects in
+> `reconcile.py` itself — a primary-GID disagreement merged silently, a truncated
+> diversions file merged as a success — and those are defects in the MERGER, not
+> in a checker. The historical record holds more: the UID collision, account
+> last-wins, class 9, debconf last-wins and the `extended_states` manual flag were
+> each real composition defects that passed every check of their time. The
+> defensible claim is the one below, unchanged since it was written, and it is
+> about the limits of observation rather than the absence of bugs.
+
 Across three review passes, **the checkers were wrong more often than the system
 under test.** Tier 2 has never failed a composition for a genuine composition
 defect that a checker did not first have to be taught to see — and every time a

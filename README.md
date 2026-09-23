@@ -10,10 +10,14 @@ storage and assembly**, and a provisioned node receives an ordinary image.
 
 ## What is verified, and how
 
-Three tiers of increasing cost. The gaps are **not** uniform, and saying "two
-orders of magnitude at each step" overstates the first one by more than tenfold:
-tier 1 → tier 2 is **5–7×**, tier 2 → tier 3 is **68–414×** (the spread is
-because tier 3 barely depends on N while tier 2 grows with it).
+Three tiers of increasing cost. The gaps are **not** uniform, and "two orders of
+magnitude at each step" is wrong. Tier 2 → tier 3 is **62–686×** depending on N,
+because tier 3 barely depends on N while tier 2 grows with it. The tier 1 → tier
+2 gap **cannot be stated**: the retained tier-1 timings are marked UNTRACEABLE in
+`thesis/evidence/claims.md`, and ARCHITECTURE §6 records that the fit predates
+correction H1 and "is not a performance claim about the corrected checker".
+Quoting a ratio built on it — as an earlier version of this file did — gives a
+number no file supports.
 
 | tier | what it does | cost |
 |---|---|---|
