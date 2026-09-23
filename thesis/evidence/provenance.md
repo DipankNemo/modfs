@@ -2,14 +2,14 @@
 
 **Chapter: Evaluation (appendix)**
 
-_Generated 2026-09-22 23:05:49Z from `/srv/modfs/results` at commit `58e926b515dd1c8537a1dde24a435bf210329e11` (branch `main`, working tree DIRTY). The commit is the state of the PIPELINE when this table was generated, which is not necessarily the commit the measurement was taken at — where a run bundle records its own commit, that file is the authority._
+_Generated 2026-09-23 12:04:28Z from `/srv/modfs/results` at commit `2b672b2cee025cb89408a4fcafc1d42edfd1ab99` (branch `main`, working tree clean). The commit is the state of the PIPELINE when this table was generated, which is not necessarily the commit the measurement was taken at — where a run bundle records its own commit, that file is the authority._
 
 _Catalogue today: **40 modules** (40 with artefacts). Newest artefact: `nc-traditional` at 2026-09-22 21:46:29Z._
 
 | table | chapter | source file | role | exists | mtime (UTC) | sha256 (first 16) | catalogue size at the time |
 |---|---|---|---|---|---|---|---|
 | tier1 | Evaluation | `/srv/modfs/logs/combinations.csv` | tier-1 sweep results | yes | 2026-09-22 23:05:49Z | 8d1e4bd23a62c360… | 40 |
-| tier2 | Evaluation | `/srv/modfs/logs/compose-sweep.csv` | tier-2 sweep results | yes | 2026-09-18 23:15:42Z | 7cde08a6d62eb2cd… | 39 |
+| tier2 | Evaluation | `/srv/modfs/logs/compose-sweep.csv` | tier-2 sweep results | yes | 2026-09-23 12:04:27Z | 029faca9f3853f85… | 39 |
 | tier3 | Evaluation | `/srv/modfs/results/boot/acct-mp-20260916T142443Z/run.json` | tier-3 bundle: acct-mp-20260916T142443Z | yes | 2026-09-16 14:24:43Z | 928843be838390d3… | 2 |
 | tier3 | Evaluation | `/srv/modfs/results/boot/acct-pm-20260916T134737Z/run.json` | tier-3 bundle: acct-pm-20260916T134737Z | yes | 2026-09-16 13:47:37Z | b0e070d325b9a395… | 2 |
 | tier3 | Evaluation | `/srv/modfs/results/boot/acct-pm-20260916T135532Z/run.json` | tier-3 bundle: acct-pm-20260916T135532Z | yes | 2026-09-16 13:55:32Z | f632d0243464e177… | 2 |

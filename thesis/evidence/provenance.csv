@@ -1,6 +1,6 @@
 table,chapter,path,role,exists,mtime_utc,sha256,bytes,catalogue_n
 tier1,Evaluation,/srv/modfs/logs/combinations.csv,tier-1 sweep results,yes,2026-09-22 23:05:49Z,8d1e4bd23a62c360387ef99ff64796522d21569cecb652fbf4f232040e2750c5,865916,40
-tier2,Evaluation,/srv/modfs/logs/compose-sweep.csv,tier-2 sweep results,yes,2026-09-18 23:15:42Z,7cde08a6d62eb2cd2be367331ef9041791af26cf98be273d64c4ec6b9d977aa6,27749,39
+tier2,Evaluation,/srv/modfs/logs/compose-sweep.csv,tier-2 sweep results,yes,2026-09-23 12:04:27Z,029faca9f3853f85e496b5d686eb27e6a625b83cb35c106219bb918ff9998dfa,27714,39
 tier3,Evaluation,/srv/modfs/results/boot/acct-mp-20260916T142443Z/run.json,tier-3 bundle: acct-mp-20260916T142443Z,yes,2026-09-16 14:24:43Z,928843be838390d30372f64eaea2d7e55e720c5536cd1ce6c887df632699b722,529,2
 tier3,Evaluation,/srv/modfs/results/boot/acct-pm-20260916T134737Z/run.json,tier-3 bundle: acct-pm-20260916T134737Z,yes,2026-09-16 13:47:37Z,b0e070d325b9a39520ef7d0e6e26635b5c943efa9fcce3269e52591452637536,529,2
 tier3,Evaluation,/srv/modfs/results/boot/acct-pm-20260916T135532Z/run.json,tier-3 bundle: acct-pm-20260916T135532Z,yes,2026-09-16 13:55:32Z,f632d0243464e177d0ee564ca3c6e714717317250198007f8cdacfafeb6faca5,529,2

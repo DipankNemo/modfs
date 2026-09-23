@@ -927,6 +927,35 @@ in counters are recorded separately in JOURNAL.md.
 > equals `mount_ms + reconcile_ms` on all 152 rows, so the composition fit above
 > remains composition-only and `verify_ms` is a separate column, not folded in.
 
+> **A fourth generation, 2026-09-23, and this one says something the others could
+> not.** Six deltas were rebuilt on 22 September so their monolithic baselines
+> would be genuine like-for-like, which made the retained sweep older than the
+> artefacts it described; `16_build_evidence.sh` withheld the tier-2 table rather
+> than publish it, and the sweep was re-run over the same plan shape:
+>
+>     total     =  92.0 ms + 30.53 ms × N     (R² = 0.981)
+>     mount     =  17.4 ms + 11.73 ms × N     (R² = 0.975)
+>     reconcile =  74.5 ms + 18.80 ms × N     (R² = 0.963)
+>     verify    =  96.1 ms + 39.08 ms × N     (R² = 0.965)
+>
+> **152 compositions, N=2→38, 152 PASS**, every V1–V8 column clean at 152/152.
+>
+> **The slope reproduced; the intercept did not.** Composition's marginal cost
+> per module moved from 30.55 to **30.53 ms — 0.1 %** — across a generation in
+> which six artefacts were rebuilt. The intercept nearly halved, 175.2 → 92.0,
+> and verify behaved the same way: slope 41.80 → 39.08 (−6.5 %), intercept
+> 161.3 → 96.1 (−40 %).
+>
+> That separation is the useful result. The **per-layer cost is a property of the
+> method** and reproduces across generations; the **fixed overhead is a property
+> of the machine on the day** — disk pressure, page-cache warmth, what else was
+> running. Earlier text warned that fits from different generations "must not be
+> differenced"; this pair shows *which half* of a fit is worth comparing and which
+> is not. Only the slope should carry an argument.
+>
+> True tier-2 cost, compose plus verify over the same 152 rows:
+> **188.1 + 69.61 ms × N**.
+
 ---
 
 ## 8. Pipeline

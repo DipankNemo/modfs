@@ -22,7 +22,7 @@ number no file supports.
 | tier | what it does | cost |
 |---|---|---|
 | 1 | metadata only, no mounts (`05_check.sh`) | 89 ms at N=2 → 398 ms at N=36 |
-| 2 | compose for real and verify V1–V8 (`10_compose_sweep.sh`) | compose 175.2 + 30.55 ms × N; verify 161.3 + 41.8 ms × N |
+| 2 | compose for real and verify V1–V8 (`10_compose_sweep.sh`) | compose 92.0 + 30.53 ms × N; verify 96.1 + 39.08 ms × N |
 | 3 | pack a UEFI image and boot under QEMU (`11_boot_test.sh`) | 183–331 s, median 199 s |
 
 Every command, in order, from an empty machine to regenerated thesis tables:

@@ -57,11 +57,24 @@ class ClaimTests(unittest.TestCase):
         # "161.3 ms + 41.80 ms × N" and a literal-substring test called that a
         # violation. A brittle matcher that fires on correct content is the same
         # defect as a check that misses -- both report something that is not so.
-        _verify = re.compile(r'161\.3\s*(?:ms)?\s*\+\s*41\.8')
+        # The verify figures were HARDCODED here as 161.3 + 41.8, and the
+        # 23 September re-measurement moved them to 96.1 + 39.08, so this test
+        # started failing on documents that were correct. A test that hardcodes
+        # the number it is guarding against is the same staleness it exists to
+        # catch, one level up. Read them from the regenerated evidence, exactly
+        # as test_cost_fit_is_the_current_generation does.
+        import csv as _csv
+        _fit = ROOT/'thesis'/'evidence'/'tier2-fit.csv'
+        if not _fit.exists():
+            self.skipTest('run scripts/16_build_evidence.sh to regenerate the fit')
+        _v = next(r for r in _csv.DictReader(_fit.open())
+                  if r['quantity'] == 'verify')
+        _i, _s = _v['intercept_ms'], _v['slope_ms_per_module']
+        _verify = re.compile(re.escape(_i) + r'\s*(?:ms)?\s*\+\s*' + re.escape(_s))
         half = [n for n, t in CLAIM_DOCS.items()
                 if '148 + 27.2' in t and not _verify.search(t)]
         self.assertEqual(half, [], 'quotes the compose fit without the verify fit '
-                                   '(161.3 + 41.8 N): %s' % ', '.join(half))
+                                   '(%s + %s N): %s' % (_i, _s, ', '.join(half)))
         self.assertIn('| 2 | Compose only |', DOC)
     def test_cost_fit_is_the_current_generation(self):
         """A cost claim must quote the CURRENT sweep, not merely be labelled.

@@ -97,7 +97,7 @@ merged registry rather than content in their own right.
 | Tier | What it does | Cost |
 |---|---|---|
 | 1 | Metadata only, no mounts (`05_check.sh`) | 89 ms at N=2 → 398 ms at N=36 |
-| 2 | Compose (`10_compose_sweep.sh`) | compose 175.2 + 30.55 ms × N; verify 161.3 + 41.8 ms × N — **corrected 21 September**; `148 + 27.2` was the pre-round-2 CSV |
+| 2 | Compose (`10_compose_sweep.sh`) | compose 92.0 + 30.53 ms × N; verify 96.1 + 39.08 ms × N — **re-measured 23 September** on the rebuilt catalogue; earlier `175.2 + 30.55` and `148 + 27.2` are superseded sweeps |
 | 3 | Pack a UEFI image, boot under QEMU (`11_boot_test.sh`) | 183-331 s over 15 completed runs, median 199 s; 2 aborts excluded |
 
 Tier-2 checks, in `verify_compose.py`:
@@ -175,7 +175,7 @@ column is regenerated; take it, not the left, into the thesis.
 | Smoke | 75 passed, 0 failed, 1 skipped over the 36-module set (37 layers incl. base; N counts module deltas, base excluded) | unchanged |
 | Regression | `v7_attacks.py` 4/4, `round2_attacks.py` 11/11 | unchanged, plus `review_verification.py` 29/29 and `review_binding.py` 8/8 |
 | Storage | 5.59× small / 1.32× large / **2.51× whole catalogue** | **5.59× small / 1.20× large / 1.84× whole catalogue** — `storage.md` |
-| Cost | tier 2 compose = 148 + 27.2 ms × N; verify = 161.3 + 41.8 ms × N | **compose = 175.2 + 30.55 ms × N**; verify unchanged — `tier2-fit.csv` |
+| Cost | tier 2 compose = 148 + 27.2 ms × N; verify = 161.3 + 41.8 ms × N | **compose = 92.0 + 30.53 ms × N, verify = 96.1 + 39.08 ms × N** — `tier2-fit.csv`, re-measured 23 Sep. The SLOPE is stable across all three sweeps (30.55 → 30.53); the intercept is not |
 
 `storage.md` §S5 recomputes **every** published storage figure from the
 artefacts on disk and shows each one reproduces for the catalogue it names. The

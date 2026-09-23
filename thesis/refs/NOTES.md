@@ -741,7 +741,7 @@ reproducibility, a different property from the build reproducibility of
 `lamb2022reproducible` and ARCHITECTURE §8; the two must not be conflated in the
 thesis. The shared concern is experimental method for the timing claims in
 ARCHITECTURE §6/§7: the tier-1 and tier-2 cost figures (89 ms at N=2 → 398 ms at
-N=36; compose 175.2 + 30.55 ms × N, R² = 0.975, on the current 152-row sweep) and the build wall times in §13. The concrete
+N=36; compose 92.0 + 30.53 ms × N, R² = 0.981, on the current 152-row sweep) and the build wall times in §13. The concrete
 difference is the environment: ModFS measures a single fixed host with no
 multi-tenancy, so the particular cause Uta et al. characterise — provider QoS,
 token buckets, co-tenant contention — does not apply, and their strongest finding
