@@ -1,0 +1,157 @@
+\chapter{Fundamentals}
+\label{ch:fundamentals}
+
+A filesystem layer supplies names and bytes, whereas an installed operating system also contains relationships among packages, identities, and persistent administrative records. This chapter develops that distinction from the underlying mechanisms. It first describes the execution environment and package installation, then explains the shared state and filesystem primitives that independent builds reuse. The related-work sections ask which of these consistency problems earlier systems solve and which remain for sibling-delta composition.\aidnote
+
+\section{Execution and provisioning environment}
+The evaluated system targets Ubuntu \num{22.04} on the x86-64 architecture. Its packages use \ac{APT} and dpkg, its build and composition mounts use Linux OverlayFS, and its stored artefacts use SquashFS. A separate Ubuntu \num{24.04} investigation tests portability; results from that environment must retain their own identity. Distribution release and architecture matter because package names, maintainer scripts, default base contents, and kernel interfaces are inputs to the construction.
+
+The prototype assembles roots on a Linux server and tests images in \ac{QEMU} using \ac{OVMF} for \ac{UEFI} firmware. Virtualisation supplies a running kernel and service manager that a directory or chroot does not. It also introduces virtual devices and a particular firmware environment. A successful virtual-machine boot consequently supports a more specific claim than successful operation on every physical server. Hardware drivers retain an \ac{ABI} dependency on their target kernel, and a guest without an accessible \ac{GPU} cannot test that device's operation.
+
+\ac{BMaaS} platforms provide the wider provisioning workflow: selecting machines, controlling their lifecycle, and deploying operating-system images. BAAS, Ironic, and MAAS locate the image-construction problem in that setting \autocite{baas,ironic,maas}. ModFS supplies a server-side method of preparing image content. It does not replace hardware inventory, power control, network provisioning, or a deployment service. This boundary also separates storing a reusable catalogue from sending a complete image to one node.
+
+\section{Why package installation changes a filesystem}
+
+The evaluated system uses Ubuntu \ac{APT} and dpkg packages without introducing a new package format. \ac{APT} resolves requested names against repository indices and chooses a package set. \texttt{dpkg} unpacks package-owned files, records their installed state, executes maintainer scripts, and runs triggers. These scripts can create users, register alternatives, write debconf answers, or regenerate caches. The dependency and conflict fields are declarative inputs to installation; their presence does not describe every write made during installation \autocite{man-deb-control,man-dpkg,man-deb-triggers}. This distinction explains why a package set that is co-installable in metadata can still yield an incoherent composed filesystem.
+
+A normal installation has several interacting stages. \ac{APT} chooses candidates and dependencies; dpkg unpacks archives, invokes maintainer scripts at their specified lifecycle points, and processes deferred triggers. An unpacked package is not necessarily configured successfully. Accordingly, the status database records state as well as version, and a list of requested packages is not an inventory of everything installed. Dependencies and script-created state must be observed in the resulting tree \autocite{man-dpkg,man-deb-triggers}.
+
+Package relations also have different meanings. \texttt{Depends} and \texttt{Pre-Depends} impose requirements; alternatives in a dependency offer choices. \texttt{Conflicts} excludes coexistence, while \texttt{Breaks} constrains compatible package states and versions. \texttt{Provides} allows a package to satisfy a virtual name; an unversioned provision does not satisfy an arbitrary versioned dependency. \texttt{Replaces} permits specified file replacement and is not, by itself, a blanket assertion that two installations are compatible \autocite{debian-policy-relationships}. These distinctions matter when admission checks the installed union of prebuilt siblings rather than asking \ac{APT} to choose a fresh installation from a repository.
+
+For the ModFS problem, installation can be written schematically as $I(B,Q,E)$: the result of installing request $Q$ over base $B$ in environment $E$. Capturing the filesystem changes preserves what that installation did. It does not imply that overlaying $I(B,Q_1,E)$ and $I(B,Q_2,E)$ equals a sequential installation of $Q_1$ and $Q_2$. Both independent runs begin with the base's registry contents and may replace the same database with different complete views. This is the central gap between mutation capture and semantic composition.
+
+ModFS builds a common base and independent siblings from one pinned archive view. Each sibling installation sees the base packages as already present, and its OverlayFS upperdir captures subsequent filesystem mutations. The archive pin stabilizes which package versions \ac{APT} can resolve; it does not constrain every maintainer-script output. The project's current measured catalogue is for Ubuntu \num{22.04}; Ubuntu \num{24.04} is a separate portability context.
+
+\section{The eight unowned system registry groups}
+
+A package's \texttt{.list} file identifies paths it owns. Many system databases are instead modified by package tools without being owned by one package. Each sibling may therefore contain a complete copy of the same path, and ordinary OverlayFS lookup shows only the uppermost copy. The resulting loss is silent: the files installed by a lower sibling can remain visible while the system database forgets them. ModFS treats the following \textbf{eight groups} as shared state. The first six are parsed and reconciled; the last two are regenerated from the merged state. ``Unowned'' distinguishes shared administrative state from ordinary package payload; it does not mean that every package rewrites every registry or that all possible installation side effects have been enumerated.
+
+\subsection{Package status: \texttt{/var/lib/dpkg/status}}
+
+This \ac{RFC}~\num{822}-style database records package installation state. A record is identified by package name and architecture; version and installation status are among its fields. Taking one sibling's whole file loses the other sibling's package records. A union of compatible installed records is meaningful, whereas different versions for one effective package cannot be combined into a truthful record \autocite{man-dpkg}. A multiarch installation therefore requires an architecture-aware key; the narrower implementation scope is addressed in \cref{ch:architecture}.
+
+\subsection{Alternatives registry: \texttt{/var/lib/dpkg/alternatives/*}}
+
+Each generic name has a positional record of candidate paths, priorities, and slave links. In the catalogue, \texttt{vim} offers \texttt{/usr/bin/vim.basic} as an \texttt{editor} candidate at priority \num{30} and \texttt{emacs} offers \texttt{/usr/bin/emacs} at priority \num{0}. The candidate records must be united before the chosen link is computed. Taking one module's file discards a candidate. The corresponding \texttt{/etc/alternatives/*} symlinks are a \emph{derived output} discussed below \autocite{man-update-alternatives,debian-policy-alternatives}.
+
+\subsection{Diversions: \texttt{/var/lib/dpkg/diversions}}
+
+\texttt{dpkg-divert} records an original path, its diverted target, and the responsible package as consecutive line triples. Diversions permit a package to redirect a path legitimately used by another. Losing a lower layer's diversion leaves the merged files and dpkg's account of them inconsistent. A partial triple is malformed, not an empty record that may be ignored \autocite{man-dpkg-divert}.
+
+\subsection{\ac{APT} extended state: \texttt{/var/lib/apt/extended\_states}}
+
+\ac{APT} records whether a package was automatically installed as a dependency or deliberately requested. This matters for later \texttt{autoremove}. On a union, explicit manual intent must dominate an automatic mark: otherwise the composed system might consider a requested package disposable \autocite{man-apt-mark}. Manual state need not appear as an explicit \texttt{Auto-Installed: 0} record: absence of an automatic mark can encode it. Reconciliation therefore needs the installed-package set and the layer's inherited state, not just a union of the stanzas that happen to exist.
+
+\subsection{Account databases: \texttt{/etc/passwd}, \texttt{group}, \texttt{shadow}, \texttt{gshadow}, \texttt{subuid}, \texttt{subgid}}
+
+These files map names to numeric identities, membership, password state, and subordinate ranges. An independent \texttt{postgres} build adds its account; an independent \texttt{mysql} build adds another. One top-layer \texttt{/etc/passwd} cannot represent both. The merger unions records and membership lists while preserving modes on sensitive files. A user's \ac{UID} and primary \ac{GID} are both identity-bearing fields; supplementary group membership is a set. Subordinate-ID files may assign several ranges to the same name, so their records cannot be reduced to one row per username. Numeric \ac{UID}/\ac{GID} conflicts require an earlier build-time prevention policy because files are already owned by numbers when compressed. In particular, a union of names cannot change those owners \autocite{debian-policy-users,man-adduser-conf,man-login-defs}.
+
+\subsection{Debconf configuration databases}
+
+Debconf's three databases contain question records identified by \texttt{Name}; \texttt{Owners} is a set of packages that asked a question. Independent installations can extend that set. The records must be merged by question and the owners united, while incompatible values are conflicts. The \texttt{passwords.dat} file follows the same record logic and requires its sensitive file mode to survive. The file backend uses record-oriented text stanzas, including continuation lines; it cannot safely be merged as arbitrary lines. Omitting the password database would leave a shared-state path outside the declared rule \autocite{man-debconf,man-debconf-devel}.
+
+\subsection{Alternative symlinks: \texttt{/etc/alternatives/*}}
+
+These links are \textbf{regenerated, not merged}. Once candidate records and priorities have been united, \texttt{update-alternatives --auto} computes the selected target. Merging old symlinks would preserve a result from one sibling's incomplete candidate set \autocite{man-update-alternatives}.
+
+\subsection{Dynamic linker cache: \texttt{/etc/ld.so.cache}}
+
+This binary index is also \textbf{regenerated, not merged}. \texttt{ldconfig} scans the libraries and configuration visible in the composed tree and writes the cache for that tree. The old cache from either sibling indexes only its own build view \autocite{man-ldconfig}. The distinction between the six merged and two regenerated groups is semantic: records represent persistent facts to combine; these outputs are functions to recompute.
+
+\section{OverlayFS capture and the meaning of a layer}
+
+OverlayFS presents a merged view of read-only lower directories and a writable upperdir. Reading a path follows layer priority; writing a lower file first copies it up; deleting it creates a whiteout. An opaque directory stops lower-directory lookup at that path \autocite{overlayfs-kernel}. ModFS uses this behavior twice: during a sibling build to capture package installation changes in an upperdir, and during server-side composition to present selected read-only siblings plus a top reconciliation layer. The same marker can have different meaning in those contexts. A directory marked opaque against the base during build can later hide unrelated sibling files, which motivates ModFS's explicit opaque-marker policy in \cref{ch:architecture}.
+
+\subsection{Build layers and composition layers}
+
+An upperdir is relative to the lower tree against which it was produced. A whiteout can express removal of one lower path; an opaque directory suppresses lower directory contents. Moving either into a different set of siblings can therefore change which files disappear. The upperdir and workdir must also share a filesystem for a writable OverlayFS mount \autocite{overlayfs-kernel}. These are input requirements for a correct builder, not problems compression can repair. ModFS consequently names the exact parent and restricts the sibling topology; its current builder rejects whiteout-bearing deltas and removes opaque-directory markers according to the policy in Chapters \num{4} and 5.
+
+\section{Immutable compressed storage and image construction}
+
+SquashFS stores the captured tree as a compressed, read-only filesystem that the kernel can mount directly \autocite{squashfs-kernel,man-mksquashfs}. It can retain whiteouts and extended attributes, but compression and faithful storage alone do not establish that independent layers compose correctly. Package-owned path collisions, unowned registries, and runtime service resources each need a separate policy. A filesystem delta here is a captured tree of changed objects and metadata, not a binary patch to a disk image. A copied-up file can occupy space even when much of its content duplicates the base. Independently compressed deltas can also duplicate dependencies shared by several siblings. SquashFS compression operates within an artefact; the storage evaluation must not assume automatic cross-artefact deduplication.
+
+During assembly the server can mount these immutable artefacts, generate a writable reconciliation layer, and inspect the resulting root. Producing a machine requires further work: the root must be copied into a bootable image with a kernel and boot configuration. ModFS's measured node boots that flattened image, so server-side layer sharing does not imply a persistent layer manager or incremental module transfer on the node.
+
+The mechanisms above establish why independently captured changes need semantic interpretation. The following comparisons distinguish namespace lookup, package satisfiability, deployment identity, and distributed consistency. Those properties are related, but a guarantee about one does not automatically establish the others.
+
+\section{Union mounts and namespace composition}
+
+\subsection{Priority, whiteouts, and opaque directories}
+
+Pendry and McKusick's 4.4BSD union mounts combine directory trees while giving one layer precedence over another \autocite{pendry1995union}. Their treatment includes copy-on-write behavior, whiteouts for deletion, and opaque directories. An opaque directory is necessary when deleting and recreating a directory should not make its old lower contents reappear. The paper also explains that changing layer order changes the effect of stored deletion markers. Neither the marker nor the general hazard of interpreting it under a different stack originates with ModFS.
+
+The ModFS-specific failure is the separation between the build stack and the composition stack. A package installation creates its upperdir against the base alone. At composition time the same layer is placed over independent siblings that were absent during that installation. A directory marker can then hide another sibling's files without a conventional file-ownership collision. Class \num{9} applies established union semantics to this mismatch and gives it an explicit build policy; it should be presented as a discovered failure of this construction, not a new filesystem primitive.
+
+Wright and colleagues' Unionfs provides a broader treatment of namespace unification and Unix semantics \autocite{wright2006namespace}. It includes branch priority, copy-up, duplicate-name handling, and dynamic branch management. The paper explicitly distinguishes a merged directory namespace from the single data stream, permissions, and owner that an application sees at a regular-file path. Selecting one visible \texttt{/etc/passwd} is therefore normal union behavior. ModFS's additional task is to identify that file as structured system state and compute a record-level result before it is used.
+
+\subsection{Per-process namespaces and image layers}
+
+Plan \num{9} lets processes construct namespaces from services using binding and mounting operations; its union directories make several sources accessible through a chosen naming environment \autocite{pike1993namespaces,pike1995plan9}. This offers useful conceptual separation between where a resource resides and how a program names it. ModFS also assembles separately maintained content into one namespace, but targets a conventional Ubuntu root with shared package and account databases. It does not provide Plan \num{9}'s per-process service namespace or replace Linux interfaces with its file protocol.
+
+\ac{OCI} image layers serialize filesystem changes as ordered changesets, including additions, modifications, and whiteout-encoded removals \autocite{oci-image-spec}. This is relevant prior art for distributing layered filesystem content. \ac{OCI}'s changeset semantics describe how a layer is applied to its predecessors; the format does not establish that independently installed dpkg registries can be combined by arbitrary layer selection. ModFS adds sibling-generation constraints, admission, and reconciliation for that use case. Conversely, ModFS's use of SquashFS does not implement \ac{OCI} image interoperability or establish an advantage over its distribution tools.
+
+The common lesson is that namespace composition answers which object is visible. Whether that object truthfully describes the selected installed system requires application-specific semantics. ModFS keeps union lookup as the underlying mechanism and adds policies around its inputs and outputs.
+
+\section{Package co-installability and physical installation}
+
+\subsection{What the formal models establish}
+
+Mancinelli and colleagues model package repositories through packages, dependencies, and conflicts and show how satisfiability methods support distribution-wide analysis \autocite{mancinelli2006managing}. Treinen and Zacchiroli describe the progression from EDOS to Mancoosi, including installability checking and the broader upgrade problem \autocite{treinen2008solving}. Vouillon and Di Cosmo develop transformations that preserve co-installability while reducing the repository to a simpler representation; the paper's proofs are machine checked \autocite{vouillon2013coinstallability}. These works provide the appropriate foundation for declared dependency and conflict reasoning.
+
+General installability asks whether a repository contains a suitable installation satisfying a request. ModFS's admission task is narrower: selected modules already contain installed package sets, so the checker evaluates that proposed union and its module requirements. Pinning reduces version variation but does not prove that every combination is valid or turn general package solving into a trivial problem. Likewise, an empirical approximately linear physical-composition fit says nothing about the worst-case complexity of repository solving.
+
+A further distinction concerns adding modules to a selected set. A pair may fail because it lacks a required provider; a third module can supply it. A genuine incompatibility between two packages already present is different. The admitted triples containing rejected pairs in \cref{ch:analysis} illustrate this distinction. A sampler cannot turn every pair rejection into an unconditional exclusion edge. Nor does checking all pairs and triples constitute a general completeness proof for larger sets.
+
+\subsection{File-conflict analysis is also prior art}
+
+It would be incorrect to describe earlier package research as uniformly blind to physical files. Treinen and Zacchiroli's §2.2.5 constructs candidate file conflicts from Debian's path-ownership index, filters them using co-installability, and discusses \texttt{Replaces} and diversions. Because diversion behavior depends on executed maintainer scripts, the remaining pairs are actually installed in a chroot and their logs inspected \autocite[\S~2.2.5]{treinen2008solving}. The combination of a metadata filter and a physical experiment thus has a direct predecessor.
+
+ModFS applies that pattern to prebuilt module artefacts rather than fresh package-pair installations. It uses extracted file sidecars, constrained replacement/diversion policy, and a reconciled tree assembled from independent installation results. In particular, its registry problem arises because several successful installations each wrote their own complete view of shared state. Co-installability remains necessary for its package policy, but cannot prove that the composed status database contains the expected records or that numeric file ownership agrees with the merged account database.
+
+The contribution is therefore not ownership intersection, version-conflict detection, or tiering alone. It is their integration with a sibling-delta construction and explicit registry, identity, marker, and runtime boundaries. The cited formal proofs concern their stated repository models; they cannot be inherited as a correctness proof for ModFS's additional parsers or verifiers.
+
+\section{Functional deployment and reproducibility}
+
+\subsection{Nix and NixOS}
+
+Nix uses hashes of build inputs to give component instances distinct store paths and records dependency relationships so that multiple variants can coexist \autocite{dolstra2004nix}. These input-derived names should not be described as simply hashes of the resulting file bytes. The deployment model supports retaining earlier components and assembling environments without overwriting one global package location.
+
+NixOS extends this approach to the static parts of system configuration, constructing packages, configuration files, and startup information from a functional specification \autocite{dolstra2008nixos}. Its activation process and running services still manage mutable state. It would overstate the comparison to say that NixOS makes every system file immutable or eliminates the need to handle account and application state.
+
+ModFS makes a different compatibility choice: it executes ordinary Ubuntu package installations at their conventional paths, captures their effects, and reconciles selected global registries. A digest identifies the resulting artefact, while a generation binds it to an exact parent. This does not provide Nix's model of explicitly identified build inputs, dependency closures, or system generations. ModFS's missing transactional publisher and deployment client are substantive lifecycle gaps, not features supplied automatically by immutable SquashFS storage.
+
+The NixOS paper also reports independent builds with residual differences caused largely by timestamps and other impurities \autocite[\S~6.2]{dolstra2008nixos}. This anticipates the shape of ModFS's negative byte-reproducibility result. Describing a build functionally or selecting the same package versions is a design intention that must still be tested against the actual build environment.
+
+\subsection{Reproducible builds and measurement reproducibility}
+
+Lamb and Zacchiroli distinguish source review from confidence in the executable artefact and explain the role of independently obtaining identical build outputs \autocite{lamb2022reproducible}. Timestamp normalization, stable ordering, and controlled build inputs are established techniques in this work. \texttt{SOURCE\_DATE\_EPOCH} supplies a standard timestamp interface to cooperating tools; setting it does not force arbitrary maintainer scripts or database initialization to become deterministic \autocite{source-date-epoch}.
+
+ModFS's pin fixes an \ac{APT} archive view, while its hashes verify existing outputs. The rebuild observations in \cref{ch:analysis} show why neither property entails byte identity across machines. A digest also cannot by itself authenticate the party that supplied it. The thesis consequently separates package resolution, archive identity, and independent reproduction rather than using ``deterministic'' for all three.
+
+Performance reproducibility is a further question. Uta and colleagues investigate variability in cloud networks and its effect on big-data experiments \autocite{uta2020reproducible}. Their workload does not predict ModFS composition times. It does support the methodological need to report environment, repetitions, and variability rather than treating a fitted mean as a portable performance guarantee. \cref{ch:analysis}'s retained timing summary lacks the controlled repetitions needed for that stronger claim.
+
+\subsection{Filesystem-tree deployment}
+
+OSTree versions filesystem trees in a content-addressed repository and supports deployment of coherent operating-system snapshots \autocite{ostree}. It is therefore relevant to the lifecycle surrounding ModFS, not only to storage format. ModFS's specific experiment concerns constructing a root from selected independent \ac{APT}-installation deltas. Transactional deployment and retaining older trees address what happens after such a root has been constructed. A comparison would need to account for both stages; the current thesis does not implement or measure an OSTree-backed ModFS deployment.
+
+\section{Distributed filesystems and release consistency}
+
+\ac{AFS} uses client caching and server coordination to support shared files at scale \autocite{howard1988afs,howard1988scale}. Kazar's account explains the synchronization and caching issues, including callbacks used to maintain cache validity \autocite{kazar1988synchronization}. The relevant property is the consistency of changing shared data across clients. ModFS's current node has no corresponding cache-coherence protocol: its selected immutable modules are assembled into an image before provisioning.
+
+\ac{AFS} also uses read-only volume clones for software releases and administrative operations \autocite{howard1988afs}. Thus retaining a coherent release and returning to an older release are established deployment ideas. ModFS's use of compressed installation deltas changes the construction unit, but does not originate the general idea of snapshot-based release management. In the present implementation, retaining an older packed image permits redeployment; it does not supply an operational rollback service.
+
+Coda extends the \ac{AFS} lineage with optimistic replication and disconnected operation \autocite{satyanarayanan1990coda}. Kistler and Satyanarayanan explain the transition between hoarding useful cached data, emulating service while disconnected, and reintegrating logged changes after reconnection \autocite{kistler1992disconnected}. Conflicts arise from independently evolving mutable state. ModFS instead combines independent installation results before a node runs, under a common-parent restriction. Its reconciliation is not a replay protocol for edits made by provisioned machines.
+
+These comparisons locate the consistency work. \ac{AFS} and Coda coordinate or reconcile clients over time; ModFS moves package and filesystem checks into image construction, leaving runtime resources to boot observation. There is no measured common workload from which to claim lower latency, bandwidth, or operational complexity than either distributed filesystem.
+
+\section{From a filesystem tree to an operating system}
+A bootable image includes more than the packages visible in a merged directory. Firmware needs a boot entry; a kernel and initial userspace must find and mount the root; the service manager must load unit definitions and order their startup. A chroot executes a command with a different root directory while continuing to use the host kernel. It can expose missing libraries or commands without reproducing guest device discovery, service ordering, or contention between started daemons. These distinct environments explain why admission, composition, and boot have separate roles in the verification design.
+
+A service probe is itself a specification. Printing a version demonstrates that a binary can execute far enough to produce that output. It does not establish that a daemon owns its intended listening socket or can serve a client request. Similarly, a package-manager audit observes the installation database rather than proving every package's application semantics. The later analysis therefore treats probes, service-manager state, and listener ownership as separate observations.
+
+\section{Positioning the composition problem}
+The prior systems establish the foundations rather than competitors with an assumed common benchmark. Union filesystems implement precedence and deletion semantics; package analysis reasons about declared constraints and can direct physical installation tests. Nix and NixOS change component identity and configuration construction, while reproducible-build work asks whether independently generated artefacts have identical bytes. AFS and Coda coordinate mutable shared data and retain or reconcile versions over time.
+
+The distinction between typed and opaque state is particularly useful. Coda can reason about directory operations using their known semantics, while arbitrary file contents may require application knowledge or repair \autocite{satyanarayanan1990coda,kistler1992disconnected}. ModFS's registry parsers make the analogous choice at image-construction time: package stanzas, group members, and configuration owners have different keys and union rules. Treating every database as an uninterpreted file would discard precisely the information needed to combine it. This comparison motivates semantic parsing without claiming that ModFS implements disconnected operation or Coda's reintegration protocol.
+
+For the present problem, the missing link is a policy connecting independent package-installation results to one coherent conventional root. A selected set must agree about its parent, package versions, path ownership, account identities, and shared registries. Execution then tests behavior that these representations cannot directly observe. \Cref{ch:architecture} develops that policy while retaining the ordinary Ubuntu package layout. Its contribution lies in the integration and explicit boundaries of these mechanisms, rather than in introducing layering or immutable release management.
