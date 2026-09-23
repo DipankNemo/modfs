@@ -1,47 +1,280 @@
 # 6 Evaluation
 
-## 6.1 Questions, artefacts, and scope
+## 6.1 Research questions and experimental method
 
-The evaluation asks whether metadata admission identifies incompatible module sets, whether admitted deltas can be physically composed and checked, whether a catalogue of deltas reduces server storage, and which properties survive a boot. The original draft's three research questions remain useful: conflict handling, storage efficiency, and verification. The answer to each must distinguish a current artefact measurement from an older run. All numerical results in this chapter come from `thesis/evidence/`; its generated tables name their source artefacts and catalogue size. The current catalogue contains 40 sibling modules: 36 real workloads, three synthetic boundary cases, and one intentionally incompatible control (`thesis/evidence/catalogue.md` C1–C2). This is an adversarial workload, assembled to exercise specific conflict classes, not a random sample of Bare Metal as a Service deployments.
+The evaluation follows the system from package metadata to a running machine. RQ1 asks which conflicts can be identified or reconciled, RQ2 asks what server repository storage is saved, and RQ3 asks how much the verification tiers establish about the delivered system. These questions require different experiments: a census of selected package combinations, a sample of physical compositions, a storage inventory with monolithic calibration, and a causal boot matrix. A result from one experiment is not a substitute for the others.
 
-Three tiers have different powers. Tier 1 reads manifests and path ownership sidecars to decide admission without a mount. Tier 2 mounts actual SquashFS layers, reconciles registries, and runs structural assertions. Tier 3 packs and boots a composed tree in QEMU/UEFI and tests services. Passing an earlier tier is a precondition for a later one, not evidence that the later property holds. The current tier-1 and storage tables describe the 40-module catalogue. The retained tier-2 sweep predates rebuilt artefacts and describes an earlier 39-module generation; the generator therefore withholds a current tier-2 table (`thesis/evidence/tier2.md`; `provenance.md` P1). Most boot bundles are likewise superseded. This distinction limits the present end-to-end claim.
+All measurements below are taken from the retained `thesis/evidence/` snapshot documented in `provenance.md`, generated on 22 September 2026. Here, **N counts sibling deltas, excluding the shared base**. The current catalogue has 40 entries: 36 real workloads, three synthetic modules, and one deliberately incompatible control (`catalogue.md`). The control is counted in admission and storage; it is excluded from ordinary physical composition. The large storage cohort comprises `cuda-runtime`, `nvidia-driver-535`, `rust`, `java`, `llvm`, `gcc`, `docker`, `postgres`, and `mysql`. The other 31 entries form the small adversarial cohort (`catalogue.md` C2; `storage.md` S1). “Large realistic” describes the declared workload types, not statistical representativeness. The catalogue was assembled to exercise conflict mechanisms.
 
-## 6.2 Static admission
+### 6.1.1 Measurement identity and freshness
 
-The exhaustive 40-module pair and triple sweep contains all $\binom{40}{2}=780$ pairs and $\binom{40}{3}=9,880$ triples. Tier 1 accepted 667 pairs and 7,807 triples, rejecting 113 and 2,073 respectively (`thesis/evidence/tier1.md` T1.1; `tier1-totals.csv`). Rejection categories overlap: a set can trigger multiple conditions, so their column totals must not be added. At pair size, 75 rejections carry a module relation, seven version skew, one a declared package conflict, and 39 the incompatible-control precondition. There were no observed file-path, numeric-identity, or implicit-base-upgrade rejections in this *built catalogue*. Zero is an observation under the present build and checker, not a proof that those classes are impossible (`tier1.md` T1.2).
+| Evidence family | Population and identity | Interpretation |
+|---|---|---|
+| Static admission | Current 40-module catalogue; `tier1.md` and `tier1-*.csv` | Exhaustive pairs and triples at the retained evidence snapshot. |
+| Physical composition | Retained 152-row sweep; 39 distinct deltas covered; `tier2-*.csv` | Historical measurements, superseded by later artefact rebuilds. |
+| Storage | Current 40-module artefact inventory; `storage.md` and `storage-*.csv` | Compressed repository sizes and a calibrated model of monoliths. |
+| Boot | 20 retained bundles; `tier3.md` and `tier3.csv` | A history of selected sets, with per-bundle freshness and verdicts. |
 
-The positive control `control-oldsnap` is built against a different archive snapshot. It appeared in 39 pairs and 741 triples, and every such set was flagged not composable, matching the combinatorial prediction (`tier1.md` T1.5; `tier1-control.csv`). That control detects a sweep that accepts everything, but it does not validate every conflict predicate. For benign overlap, 168 pairs contain 667 overlap instances; 4,585 triples contain 25,346. One pair and 38 triples contain collisions suppressed under explicit diversion or replacement rules (`tier1.md` T1.3). Those are accepted cases that a count of rejections alone would hide.
+Table 6.1: Evidence populations. Sources: `thesis/evidence/provenance.md`, `tier1.md`, `tier2-fit.csv`, and `tier3.md`.
 
-All 2,073 rejected triples contain a rejecting pair. Yet 72 accepted triples also contain a rejecting pair (`tier1.md` T1.4; `tier1-nonmonotone.csv`). These are module-relation failures: a pair can lack a required provider, and its third member can supply it. Therefore a rejecting pair cannot automatically become an exclusion edge when sampling larger sets. The independent cross-check establishes that the observed triple rejections are explained by the pair model; it does not prove the model exhausts all future conflict types.
+The number 39 in the tier-2 provenance row counts distinct deltas appearing in the CSV. It is compatible with coverage of the 40-module catalogue after excluding `control-oldsnap`; it does **not** identify a separate 39-module catalogue or an exact parent generation. The evidence generator derives this count from module names and explicitly treats the control's exclusion as intentional (`scripts/16_build_evidence.sh`, `build_tier2`). The reason this sweep is historical is different: its recorded timestamp precedes rebuilt artefacts. Accordingly, `tier2.md` withholds a current table while the companion CSV summaries retain the older results. They are used below with that qualification.
 
-Figure 6.1: Tier-1 admissions and overlapping rejection causes for pairs and triples. Source: `thesis/evidence/tier1-classes.csv`. Show acceptance and rejection totals separately from overlapping class counts; do not stack the class counts as if they partitioned rejections.
+The generated summaries do not provide a complete timing environment, repetitions under controlled host load, or residual distributions. The regression results therefore describe this retained sweep, not a hardware-independent performance guarantee. They also predate later verifier changes. The boot table reports machine observations separately from harness failures and missing observations.
 
-## 6.3 Physical composition and verification
+## 6.2 Tier 1: exhaustive static admission
 
-The retained tier-2 CSV contains 152 compositions across layer counts from 2 to 38, but it predates the newest module artefacts (`thesis/evidence/tier2.md`; `provenance.md` P1). It is useful for describing the earlier apparatus and indicative costs, not as a current result for all 40 modules. Its eight recorded checks pass on all 152 rows (`tier2-checks.csv`). They test reconciliation completion (V1), exact package status union (V2), alternatives candidates (V3), linker-cache result (V4), `dpkg --audit` (V5), account record union (V6), path visibility (V7), and debconf record union (V8). These are properties of what the checks model. In particular, V7 compares path kind and size, so equal-size content substitution can pass.
+### 6.2.1 Verdicts and overlapping causes
 
-The historical regression fits are $t_{compose}=175.2+30.55N$ ms and $t_{verify}=161.3+41.80N$ ms, with $R^2=0.9747$ and $0.9605$ respectively (`tier2-fit.csv`). The CSV's `total_ms` is exactly `mount_ms + reconcile_ms` in every retained row; it excludes `verify_ms` (`thesis/evidence/inconsistencies.md`, I-10). The combined fitted cost is therefore $336.5+72.35N$ ms, derived by adding coefficients from the **same sweep**. The older draft presents 1.36 seconds at its highest layer count as if that were full verification; the generated row gives 1,360 ms for composition and 1,730 ms for verification at that count (`tier2-by-n.csv`). No current tier-2 timing or clean-pass rate is asserted until the sweep is rerun against today's artefacts.
+The sweep evaluates every pair and triple of the 40-module catalogue. Its cardinalities follow directly from $\binom{40}{2}=780$ and $\binom{40}{3}=9,880$.
 
-Figure 6.2: Historical composition and verification time against layer count, with separate fits and an explicit 39-module-generation label. Source: `thesis/evidence/tier2-by-n.csv` and `thesis/evidence/tier2-fit.csv`. A current-generation version needs a fresh composition sweep.
+| N | Sets | ACCEPT | REJECT |
+| --- | --- | --- | --- |
+| 2 | 780 | 667 | 113 |
+| 3 | 9880 | 7807 | 2073 |
 
-## 6.4 Server-side storage
+Table 6.2: Tier-1 census for the 40-module catalogue. Source: `thesis/evidence/tier1-totals.csv`.
 
-Let $B$ be the compressed shared base and $d_i$ each compressed sibling delta. Storing the catalogue as ModFS costs $B+\sum_i d_i$. The modelled monolithic comparison costs $NB+\sum_i d_i$, yielding $R=(NB+\sum_i d_i)/(B+\sum_i d_i)$. This counts repository copies, not bytes installed on each node. The base is 41.7 decimal MB (`thesis/evidence/storage.md` S1). Table 6.1 uses that file's current, 40-module data.
+| N | Version skew | Declared conflict | File collision | Identity collision | Module relation | Base upgrade | Not composable |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| 2 | 7 | 1 | 0 | 0 | 75 | 0 | 39 |
+| 3 | 245 | 38 | 0 | 0 | 1370 | 0 | 741 |
 
-| Cohort | Modules | ModFS stored, decimal MB | Monolithic comparison, decimal MB | Ratio |
-|---|---:|---:|---:|---:|
-| Small adversarial | 31 | 282.6 | 1,534.2 | 5.43× |
-| Large realistic | 9 | 1,704.5 | 2,038.3 | 1.20× |
-| Whole catalogue | 40 | 1,945.4 | 3,572.4 | 1.84× |
+Table 6.3: Rejection conditions observed in the same census. Source: `thesis/evidence/tier1-classes.csv`. Columns overlap: a set can violate several conditions.
 
-Table 6.1: Server repository storage by declared cohort. Source: `thesis/evidence/storage-cohorts.csv`; catalogue: 40 modules. The draft's 5.59× small-cohort value used a `jq` artefact inconsistent with its `jq, moreutils` specification. After rebuilding that module, its delta is 10.4 MB and the current small-cohort ratio is 5.43× (`storage.md` S3, S5; `catalogue.md` C1).
+The module-relation column includes unsatisfied requirements as well as declared module incompatibilities. It is broader than conflicts between virtual-package providers. In particular, an unsatisfied CUDA-to-driver requirement is not the same condition as mutually incompatible mail providers. Version-skew and composability counters also describe different checks, even when a set triggers both. The lack of file-collision, identity-collision, or base-upgrade rejections is evidence about this built catalogue and these predicates. It does not establish that arbitrary package installations cannot construct those failures.
 
-The ratio is highly sensitive to catalogue composition. Excluding the large cohort leaves the 5.43× small result; excluding only `cuda-runtime` raises the full-catalogue ratio from 1.84× to 2.25× (`storage.md` S4; `storage-sensitivity.csv`). The 680.2 MB CUDA runtime delta individually saves only 5.8% against its modelled monolith, while a 0.3 MB `nc-traditional` delta saves 99.4% (`storage.md` S3). These figures explain the mechanism's direction: the shared base dominates small modules, while large application payloads dominate their own images. They do not justify calling the small cohort representative of production fleets.
+### 6.2.2 Positive control and non-monotonic admission
 
-The monolithic denominator is a model for 34 of the 40 modules. Six matching monolithic images were actually built. Their modelled sizes are 0.25–1.34% above the measured images, so this model mildly overstates the saving on those cases (`storage.md` S2; `storage-model-check.csv`). The remaining modules, especially the large tail, lack direct monolithic calibration. Figure 6.3: Per-module delta size and modelled saving, ordered by delta size. Source: `thesis/evidence/storage-per-module.csv`. Figure 6.4: Cohort exclusion sensitivity of repository storage ratio. Source: `thesis/evidence/storage-sensitivity.csv`.
+`control-oldsnap` uses a different archive snapshot and must be refused with every ordinary sibling. There are $\binom{39}{1}=39$ pairs and $\binom{39}{2}=741$ triples containing it; all are flagged not composable (`tier1-control.csv`). These counts are sets with a positive flag, not the sum of diagnostics within a set. The control rules out an all-accept implementation but does not exercise every rejection predicate.
 
-## 6.5 Boot results and answer to the research questions
+The cross-check in `tier1-crosscheck.csv` finds 2,145 triples containing a rejecting pair. Of these, 2,073 are rejected and 72 admitted; no rejected triple is unexplained by an inner rejecting pair. The accepted exceptions all concern module relations (`tier1-nonmonotone.csv`). If a pair lacks a required driver module, adding that driver can complete the requirement. This does not mean that adding a provider repairs a genuine declared incompatibility between two already present packages. It means that “this selected set lacks something” is not a monotone exclusion rule.
 
-The retained boot history has 20 bundles, of which only two describe artefacts still present unchanged (`thesis/evidence/tier3.md` T3.0; `provenance.md` P1). One is an aborted GPU-stack attempt; the other boots the GPU stack, reports `running`, no failed unit, and two passing probes (`tier3.md` T3.1). Earlier, now-superseded runs of the nginx and apache combination fail with `apache2.service` while nginx holds port 80. A superseded 36-module probe run reports 36/36 probes passing but still one failed unit, `apache2.service`. The failed unit and passing probes are compatible: a probe can see its intended condition while the whole system is degraded. They are historical evidence for the runtime-resource class, not a current 40-module boot certificate.
+The cross-check compares outputs within the admission experiment. It is a useful consistency test, but it is not an independent filesystem oracle or a proof of the checker's completeness. The physically sampled sets must still pass the authoritative admission checker rather than relying on exclusions inferred from pair counts.
 
-The first research question is answered for the measured catalogue by exhaustive pair/triple admission and explicit reconciliation checks in the older sweep, with current physical verification pending. The second has a current, bounded server-side answer: 1.84× for all 40 catalogue modules, conditioned on a mostly modelled monolithic baseline and adversarial cohort. The third is narrower than the draft claimed: the tiered procedure exposed a real runtime service conflict that package and filesystem checks could not see, and the surviving GPU bundle demonstrates one current successful boot. A fresh tier-2 sweep and boot of rebuilt high-layer sets are needed before a current full-catalogue reliability claim.
+### 6.2.3 Benign overlap and collision suppression
+
+| N | Sets with benign overlap | Overlap instances | Sets with suppression | Suppressed instances |
+| --- | --- | --- | --- | --- |
+| 2 | 168 | 667 | 1 | 4 |
+| 3 | 4585 | 25346 | 38 | 152 |
+
+Table 6.4: Non-rejecting overlap conditions in the 40-module census. Source: `thesis/evidence/tier1-measured.csv`.
+
+The counts show how often benign overlap or a sanctioned replacement/diversion occurs. They are not a count of wholly accepted sets: a set with harmless overlap can still be rejected for a different reason. Nor do path-instance counts directly quantify duplicated storage bytes. They establish that the checker distinguishes permitted overlap from a rejection condition.
+
+Figure 6.1: Admission totals and overlapping rejection conditions for the 40-module pair and triple census. Source: `thesis/evidence/tier1-totals.csv` and `thesis/evidence/tier1-classes.csv`. Use separate panels for verdict totals and rejection conditions; the latter must not be stacked into an apparent partition.
+
+## 6.3 Tier 2: physical compositions and their cost
+
+### 6.3.1 Sample and structural observations
+
+The retained sweep contains 152 compositions across 39 covered deltas, excluding the control. Table 6.5 gives the breakdown by layer count. Higher-order compositions are sampled rather than exhaustively enumerated: the sampler respects known constraints, resolves requirements, and submits every proposal to Tier 1 (`docs/SAMPLING_AND_BOOT.md`). At small enumerable spaces its draw is uniform over admissible sets; its larger-space seeded heuristic is not uniform. The aggregate tables do not preserve enough sampling detail to estimate population-wide failure probabilities.
+
+| N | Samples | Installed packages | Mount ms | Reconcile ms | Compose ms | Verify ms |
+| --- | --- | --- | --- | --- | --- | --- |
+| 2 | 30 | 117–178 | 39 | 192 | 231 | 245 |
+| 3 | 30 | 120–187 | 50 | 206 | 256 | 277 |
+| 5 | 20 | 131–216 | 68 | 258 | 325 | 381 |
+| 10 | 10 | 174–271 | 122 | 389 | 512 | 550 |
+| 15 | 10 | 224–300 | 161 | 496 | 658 | 783 |
+| 20 | 10 | 225–346 | 204 | 599 | 803 | 1034 |
+| 25 | 10 | 302–371 | 253 | 711 | 964 | 1243 |
+| 27 | 10 | 325–378 | 277 | 744 | 1021 | 1349 |
+| 30 | 10 | 334–376 | 296 | 767 | 1063 | 1372 |
+| 33 | 6 | 362–390 | 334 | 806 | 1139 | 1482 |
+| 35 | 4 | 383–403 | 362 | 844 | 1207 | 1601 |
+| 38 | 2 | 401–408 | 408 | 952 | 1360 | 1730 |
+
+Table 6.5: Historical composition sample and mean durations. Source: `thesis/evidence/tier2-by-n.csv`. N excludes base; durations are milliseconds. The 39 covered deltas do not include the intentionally incompatible control. Individual columns are rounded independently, so displayed component means need not sum exactly.
+
+The package ranges are an additional measure of composition size: the number of deltas alone does not determine how many packages, paths, or registry records must be checked. At the upper end, only two samples contribute to the N=38 mean. The table supports a descriptive scaling model within the observed range, not a uniform estimate of cost for every module set of that size.
+
+| Check | Observed predicate | Historical passing rows |
+|---|---|---:|
+| V1 | A reconciliation duration was recorded. | 152/152 |
+| V2 | Installed package names and versions match the expected union. | 152/152 |
+| V3 | Alternatives groups retain offered candidates. | 152/152 |
+| V4 | The regenerated cache contains the expected union of layer SONAMEs. | 152/152 |
+| V5 | `dpkg --audit` reports no inconsistency. | 152/152 |
+| V6 | Account records and membership satisfy the semantic merge check. | 152/152 |
+| V7 | Expected paths remain visible with the checked kind, size, and link properties. | 152/152 |
+| V8 | Debconf records satisfy the semantic merge check. | 152/152 |
+
+Table 6.6: Recorded structural outcomes. Source: `thesis/evidence/tier2-checks.csv`. V1 is weaker evidence than a separately captured exit status: the evidence generator infers it from a positive `reconcile_ms`. Later regression tests must not be retrospectively counted as having run in these rows.
+
+These clean rows show that the then-implemented predicates accepted the sampled compositions. They cannot establish properties the predicates did not observe. V7's regular-file comparison is `(kind, size)` rather than a content hash, for example; equal-size substitution remains a known blind spot. This distinction becomes the central verification finding in Chapter 7.
+
+### 6.3.2 Regression and the full tier cost
+
+| Phase | a, ms | b, ms/module | R² | Rows |
+| --- | --- | --- | --- | --- |
+| mount | 20.8 | 9.46 | 0.9845 | 152 |
+| reconcile | 154.4 | 21.09 | 0.9577 | 152 |
+| total (compose only) | 175.2 | 30.55 | 0.9747 | 152 |
+| verify | 161.3 | 41.80 | 0.9605 | 152 |
+
+Table 6.7: Ordinary least-squares fits over the retained 152-row sweep. Source: `thesis/evidence/tier2-fit.csv`. Each row fits $t(N)=a+bN$ in milliseconds; these are historical results for the same sweep.
+
+`total_ms` equals `mount_ms + reconcile_ms` on all 152 rows, while verification is recorded separately (`thesis/evidence/inconsistencies.md` I-11). Thus the relevant fitted costs are
+
+$$
+t_{compose}(N)=175.2+30.55N\ \mathrm{ms},\qquad
+t_{verify}(N)=161.3+41.80N\ \mathrm{ms}.
+$$
+
+Adding coefficients from the same sample gives
+
+$$
+t_{compose+verify}(N)=336.5+72.35N\ \mathrm{ms}.
+$$
+
+This sum is the fitted duration of the measured composition and verification phases. It does not automatically include sampler planning, process setup, or teardown outside their timing scopes. No $R^2$ for the combined duration is provided; it cannot be obtained by adding the individual $R^2$ values. At N=38 the observed mean is 1,360 ms for composition plus 1,730 ms for verification, giving approximately 3,090 ms for these phases, derived from Table 6.5. The often quoted 1.36 seconds accounts for composition only.
+
+The historical fits are approximately linear in the tested range. That does not prove that compressed payload size has no effect on composition, nor that GPU modules have a measured zero marginal cost: those claims require matched sets and a controlled comparison. Differences from a superseded sweep also mix catalogue and checker changes and cannot isolate a causal effect. Current Tier-1 timing and directly comparable cross-tier latency data are absent from the permitted evidence; no current tier-gap factor is inferred.
+
+Figure 6.2: Historical mean composition and verification time against N, with the fits from the same sweep. Source: `thesis/evidence/tier2-by-n.csv` and `thesis/evidence/tier2-fit.csv`. Show means and sample counts, and identify the 39 covered ordinary deltas of the 40-module catalogue. Per-composition scatter and uncertainty bands require row-level or dispersion data beyond these summary CSVs; a current-generation plot additionally requires a new sweep.
+
+## 6.4 Server-side storage and sensitivity
+
+### 6.4.1 Comparison model
+
+Let B denote the compressed base and $d_i$ each compressed sibling delta. A repository storing each single-module variant independently is modelled as
+
+$$
+S_{mono}=NB+\sum_i d_i,\qquad S_{ModFS}=B+\sum_i d_i,\qquad
+R=\frac{S_{mono}}{S_{ModFS}}.
+$$
+
+The base is 41.7 decimal MB; the evidence uses decimal MB throughout (`storage.md` S1). The numerator and denominator both concern compressed root-filesystem artefacts, not bootable disk envelopes with a kernel and EFI partition. This comparison models a library of single-module variants. It does not quantify storage for every possible combination, a deduplicating image store, or the bytes sent to one node.
+
+| Cohort | N | Stored MB | Modelled monolithic MB | Ratio | Mean delta MB |
+| --- | --- | --- | --- | --- | --- |
+| small adversarial | 31 | 282.6 | 1534.2 | 5.43× | 7.8 |
+| large realistic | 9 | 1704.5 | 2038.3 | 1.20× | 184.8 |
+| whole catalogue | 40 | 1945.4 | 3572.4 | 1.84× | 47.6 |
+
+Table 6.8: Current 40-module repository comparison. Source: `thesis/evidence/storage-cohorts.csv`. The monolithic column uses the $B+d$ model for every entry; independently measured monoliths calibrate it below.
+
+The current small-cohort ratio is 5.43×, not the older 5.59×. The rebuilt `jq` artefact now contains both requested packages, `jq` and `moreutils`, making its delta 10.4 MB (`catalogue.md`; `storage.md` S3, S5). This is a changed artefact definition as well as an illustration of catalogue sensitivity. An unchanged catalogue count is insufficient to identify the same storage experiment.
+
+### 6.4.2 Individual modules and the shared-base assumption
+
+| Module | Kind | Delta MB | Modelled monolith MB | Marginal saving % |
+| --- | --- | --- | --- | --- |
+| cuda-runtime | real | 680.2 | 721.9 | 5.8 |
+| nvidia-driver-535 | real | 231.6 | 273.3 | 15.3 |
+| rust | real | 175.5 | 217.2 | 19.2 |
+| java | real | 141.6 | 183.3 | 22.8 |
+| llvm | real | 128.2 | 169.9 | 24.6 |
+| gcc | real | 84.0 | 125.7 | 33.2 |
+| docker | real | 83.1 | 124.8 | 33.4 |
+| postgres | real | 82.1 | 123.9 | 33.7 |
+| mysql | real | 56.6 | 98.3 | 42.4 |
+| emacs | real | 37.0 | 78.7 | 53.0 |
+| apache | real | 28.1 | 69.8 | 59.7 |
+| pytools | real | 25.8 | 67.6 | 61.7 |
+| webserver | real | 21.0 | 62.8 | 66.5 |
+| vim | real | 18.1 | 59.8 | 69.7 |
+| git | real | 17.1 | 58.9 | 70.9 |
+| dnsutils | real | 16.0 | 57.7 | 72.3 |
+| pipdemo | synthetic | 15.5 | 57.2 | 72.9 |
+| pgclient | real | 12.1 | 53.8 | 77.6 |
+| jq | real | 10.4 | 52.2 | 80.0 |
+| memcached | real | 10.3 | 52.0 | 80.3 |
+| pyyaml | real | 10.1 | 51.9 | 80.4 |
+| gawk | real | 3.1 | 44.8 | 93.1 |
+| mta-msmtp | real | 2.6 | 44.3 | 94.2 |
+| sqlite | real | 1.9 | 43.6 | 95.6 |
+| redis | real | 1.7 | 43.4 | 96.2 |
+| control-oldsnap | control | 1.6 | 43.4 | 96.2 |
+| curl | real | 1.6 | 43.4 | 96.2 |
+| tcpdump | real | 1.1 | 42.8 | 97.5 |
+| zstd | real | 0.9 | 42.6 | 98.0 |
+| tmux | real | 0.7 | 42.5 | 98.2 |
+| rsync | real | 0.7 | 42.4 | 98.4 |
+| socat | real | 0.6 | 42.3 | 98.5 |
+| wget | real | 0.6 | 42.3 | 98.6 |
+| mta-nullmailer | real | 0.5 | 42.2 | 98.9 |
+| htop | real | 0.4 | 42.1 | 99.1 |
+| nc-openbsd | real | 0.3 | 42.0 | 99.3 |
+| original-awk | real | 0.3 | 42.0 | 99.3 |
+| nc-traditional | real | 0.3 | 42.0 | 99.4 |
+| fake-nvidia-driver | synthetic | 0.2 | 41.9 | 99.5 |
+| fake-cuda | synthetic | 0.2 | 41.9 | 99.5 |
+
+Table 6.9: Current per-module compressed sizes and marginal saving, $100[1-d/(B+d)]$. Source: `thesis/evidence/storage-per-module.csv`; catalogue: 40 modules. “Marginal” means that the server already holds the shared base. For an isolated one-module repository, base plus delta costs $B+d$, so this column is not its total saving.
+
+The per-module spread explains why the aggregate result is modest. CUDA's 680.2 MB delta yields only 5.8% marginal saving, whereas thin utilities benefit much more from not duplicating the base. The whole catalogue retains the incompatible control and synthetic modules for experimental purposes. Their presence must be visible when relating the headline result to a deployable workload library.
+
+### 6.4.3 Cohort sensitivity and calibration
+
+| Population | N | Stored MB | Modelled monolithic MB | Ratio |
+| --- | --- | --- | --- | --- |
+| all 40 modules (headline) | 40 | 1945.4 | 3572.4 | 1.84× |
+| minus large realistic (31 left) | 31 | 282.6 | 1534.2 | 5.43× |
+| minus control + synthetic (36 left) | 36 | 1927.8 | 3388.0 | 1.76× |
+| minus cuda-runtime alone (39 left) | 39 | 1265.2 | 2850.5 | 2.25× |
+| minus nvidia-driver-535 alone (39 left) | 39 | 1713.9 | 3299.1 | 1.92× |
+| minus rust alone (39 left) | 39 | 1770.0 | 3355.2 | 1.90× |
+
+Table 6.10: Exclusions from the current 40-module catalogue, recalculated with the same model. Source: `thesis/evidence/storage-sensitivity.csv`.
+
+Removing only CUDA changes the ratio to 2.25×; removing the control and synthetic cases gives 1.76× for the 36 real workloads. The differences quantify a limitation of external validity: the ratio belongs to this catalogue as well as to the storage method.
+
+| Module | Measured MB | Modelled MB | Model error % |
+| --- | --- | --- | --- |
+| curl | 43.0 | 43.4 | +0.91 |
+| emacs | 78.3 | 78.7 | +0.51 |
+| jq | 51.5 | 52.2 | +1.34 |
+| nc-traditional | 41.6 | 42.0 | +0.95 |
+| pytools | 67.4 | 67.6 | +0.25 |
+| webserver | 62.3 | 62.8 | +0.82 |
+
+Table 6.11: Real monolithic builds used to calibrate the model. Source: `thesis/evidence/storage-model-check.csv`; current 40-module catalogue.
+
+Only six modules have a measured monolithic comparator; 34 have no such build. The headline monolithic total nevertheless remains the formula applied to **all 40**, rather than substituting the six measurements into an otherwise modelled sum. `storage.md` S2 contains both the explicit formula statement and an ambiguous “34 modelled and 6 measured” sentence; the formula, CSV totals, and calibration role resolve that ambiguity.
+
+Across the six comparisons, modelled monolithic size is 0.25–1.34% above measured size. This biases the apparent storage benefit upward, but it is a baseline-size error, not the same percentage-point error in every saving ratio. Nor is it a confidence interval for unbuilt large monoliths. The largest calibrated delta is `emacs` at 37.0 MB; the large cohort begins with `mysql` at 56.6 MB and includes CUDA at 680.2 MB (`storage-per-module.csv`). Extending calibration to this tail remains necessary.
+
+### 6.4.4 The historical fat-base experiment
+
+The claim audit traces a separate 38-module fat-base experiment: repository storage moved from 1,023.8 MB with the thin base to 777.2 MB with the fat base (`thesis/evidence/claims.md`, STATE_OF_PLAY base-fattening row, tracing `fatbase-analysis-2026-09-17T163305Z.txt`). The derived reduction is $(1-777.2/1023.8)\times100\approx24.1\%$. This historical result answers a different question from Table 6.8: whether moving common dependencies into one shared base reduces duplication among sibling deltas. It is not a current 40-module remeasurement and must not be subtracted from the present catalogue total. Chapter 7 develops the corresponding fleet trade-off without treating compressed layer sums as measured node-image sizes.
+
+Figure 6.3: Current per-module delta sizes and marginal savings, ordered by delta size. Source: `thesis/evidence/storage-per-module.csv`. Identify synthetic and control entries and state the already-held-base assumption.
+
+Figure 6.4: Current repository storage for the small, large, and whole cohorts, with a sensitivity panel for exclusions. Source: `thesis/evidence/storage-cohorts.csv` and `thesis/evidence/storage-sensitivity.csv`. Show decimal MB and the modelled nature of the monolithic column.
+
+## 6.5 Tier 3: boot results and runtime conflicts
+
+The complete local evidence snapshot contains six PASS, five FAIL, two BROKEN, four ABORTED, and three unfinished bundles without `result.json` (`tier3.md` T3.0). These are not interchangeable trial outcomes: a missing serial marker is not an observed operating-system failure, and a failed unit is not necessarily failed filesystem composition. Only two bundles are unmarked as superseded; both concern the GPU stack, and one of them aborted. Table 6.12 gives the selected causal matrix and high-layer sequence.
+
+| Run | N | Verdict | systemd | Failed unit | Probes | Seconds |
+| --- | --- | --- | --- | --- | --- | --- |
+| m1-nginx-20260903T080001Z | 1 | PASS | running | none | 1/1 | 232 |
+| m2-apache-20260903T081752Z | 1 | PASS | running | none | 1/1 | 284 |
+| m3-nginx-apache-20260903T080746Z | 2 | FAIL | degraded | apache2.service | 2/2 | 191 |
+| m4-apache-nginx-20260903T081112Z | 2 | FAIL | degraded | apache2.service | 2/2 | 194 |
+| acct-mp-20260916T142443Z | 2 | PASS | starting | none | 2/2 | 330 |
+| acct-pm-20260916T141529Z | 2 | PASS | starting | none | 2/2 | 316 |
+| maxsub-20260916T154758Z | 36 | FAIL | starting | apache2.service | 34/36 | 189 |
+| maxsub-20260917T075714Z | 36 | FAIL | starting | apache2.service | 35/36 | 204 |
+| probes-20260918T123806Z | 36 | FAIL | starting | apache2.service | 36/36 | 183 |
+| gpu-stack-20260918T231943Z | 2 | PASS | running | none | 2/2 | 198 |
+
+Table 6.12: Selected completed boot observations. Source: `thesis/evidence/tier3.csv`. N excludes base. All selected runs except the GPU-stack PASS are superseded relative to the current 40-module inventory. Full identifiers are retained to distinguish repeated runs.
+
+The individual web-server runs establish that each service can start alone in its historical image. In both composed orders, nginx owns port 80 and `apache2.service` fails, despite passing package audit and module probes. The controlled change is the selected service set and order; the observation supports Class 8, a runtime resource conflict. Reversing the filesystem order does not prove that a scheduler will always choose the same winner. The conflict is a startup race, and the probes' limited conditions do not establish mutual service health.
+
+The high-layer probe sequence records 34/36, then 35/36, then 36/36 passing probes while the Apache failed unit persists. These are runs of evolving artefacts and harnesses, not repeated trials of one fixed system, so the progression is not an estimated reliability improvement. The last run records systemd state `starting`; the generated table alone must not be paraphrased as a fully settled `running` system. It does show the relevant package tools, probes, and several network listeners available alongside a runtime conflict.
+
+The non-superseded GPU-stack PASS reports `running`, two passing probes, and no failed units, but the guest had no GPU. Its driver/kernel and userspace checks do not establish hardware operation. Separately recorded userspace GPU computation and the driver boundary are discussed in Chapter 7, without treating them as extra rows in this boot census.
+
+Figure 6.5: Historical boot matrix linking selected modules, probe outcomes, failed units, and port ownership. Source: `thesis/evidence/tier3.csv`. Label superseded bundles and retain the unobserved/aborted categories in any full-history panel. A current high-layer matrix needs fresh boot bundles.
+
+## 6.6 Answers to the research questions
+
+**RQ1:** The taxonomy gives distinct policies for package relations, ownership, shared registries, numeric identities, opaque-directory semantics, and runtime resources. The current pair/triple census exercises admission exhaustively at those set sizes, while the historical physical sample supports the then-implemented reconciliation predicates. Neither establishes completeness for arbitrary package sets.
+
+**RQ2:** The current repository ratios are 5.43×, 1.20×, and 1.84× for the small, large, and whole 40-module catalogue populations. Sensitivity analysis and measured monolithic calibration bound their interpretation. Savings concern server storage of variants under the stated model, not a smaller flattened image per node.
+
+**RQ3:** Each tier establishes properties in its observation domain. Historical boot tests expose a service conflict that metadata and structural checks did not model, and adversarial reviews expose analogous blind spots inside the checkers themselves. The physical sweep must be refreshed after the artefact rebuilds before its predicates can be claimed for the current inventory. This does not erase the historical mechanism findings; it limits which exact bytes have received which tests.
