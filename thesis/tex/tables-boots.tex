@@ -1,0 +1,15 @@
+\begin{table}[tbp]\centering\small
+\begin{tabularx}{\textwidth}{@{}Ylrl@{}}
+\toprule Selected modules / order & Verdict & Time (\si{\second}) & Key observation \\
+\midrule
+nginx alone & PASS & \dref{/boot/run/11/duration-s} & nginx listener \\
+Apache alone & PASS & \dref{/boot/run/14/duration-s} & Apache listener \\
+nginx, Apache & FAIL & \dref{/boot/run/15/duration-s} & Apache failed \\
+Apache, nginx & FAIL & \dref{/boot/run/16/duration-s} & Apache failed \\
+MySQL, PostgreSQL & PASS & \dref{/boot/run/0/duration-s} & Both listeners \\
+PostgreSQL, MySQL & PASS & \dref{/boot/run/4/duration-s} & Both listeners \\
+Large selected set & FAIL & \dref{/boot/run/19/duration-s} & Apache failed \\
+Driver, CUDA runtime & PASS & \dref{/boot/run/8/duration-s} & No GPU access \\
+\bottomrule\end{tabularx}
+\caption{Selected boot observations from the retained history, not a current exhaustive \dref{/catalogue/total}-module boot census. The large selected set has \dref{/boot/run/19/n} deltas. Only the displayed GPU pair remains non-superseded; its probes do not test hardware operation.}\label{tab:boots}
+\end{table}

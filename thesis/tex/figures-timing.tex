@@ -1,0 +1,14 @@
+\begin{figure}[tbp]\centering
+\begin{tikzpicture}
+\begin{axis}[width=.94\textwidth,height=6.7cm,xlabel={Sibling deltas $N$ (base excluded)},ylabel={Duration (\si{\milli\second})},xmin=0,xmax=40,ymin=0,grid=major,legend pos=north west,legend style={font=\small}]
+\addplot[only marks,blue,mark=*] coordinates {(\drefvalueof{/timing/2/n},\drefvalueof{/timing/2/total-ms-mean}) (\drefvalueof{/timing/3/n},\drefvalueof{/timing/3/total-ms-mean}) (\drefvalueof{/timing/5/n},\drefvalueof{/timing/5/total-ms-mean}) (\drefvalueof{/timing/10/n},\drefvalueof{/timing/10/total-ms-mean}) (\drefvalueof{/timing/15/n},\drefvalueof{/timing/15/total-ms-mean}) (\drefvalueof{/timing/20/n},\drefvalueof{/timing/20/total-ms-mean}) (\drefvalueof{/timing/25/n},\drefvalueof{/timing/25/total-ms-mean}) (\drefvalueof{/timing/27/n},\drefvalueof{/timing/27/total-ms-mean}) (\drefvalueof{/timing/30/n},\drefvalueof{/timing/30/total-ms-mean}) (\drefvalueof{/timing/33/n},\drefvalueof{/timing/33/total-ms-mean}) (\drefvalueof{/timing/35/n},\drefvalueof{/timing/35/total-ms-mean}) (\drefvalueof{/timing/38/n},\drefvalueof{/timing/38/total-ms-mean})};
+\addlegendentry{Compose mean}
+\addplot[blue,domain=2:38,no marks,dashed] {\drefvalueof{/tier2/current/compose/intercept-ms}+\drefvalueof{/tier2/current/compose/slope-ms-per-module}*x};
+\addlegendentry{Compose fit}
+\addplot[only marks,orange,mark=square*] coordinates {(\drefvalueof{/timing/2/n},\drefvalueof{/timing/2/verify-ms-mean}) (\drefvalueof{/timing/3/n},\drefvalueof{/timing/3/verify-ms-mean}) (\drefvalueof{/timing/5/n},\drefvalueof{/timing/5/verify-ms-mean}) (\drefvalueof{/timing/10/n},\drefvalueof{/timing/10/verify-ms-mean}) (\drefvalueof{/timing/15/n},\drefvalueof{/timing/15/verify-ms-mean}) (\drefvalueof{/timing/20/n},\drefvalueof{/timing/20/verify-ms-mean}) (\drefvalueof{/timing/25/n},\drefvalueof{/timing/25/verify-ms-mean}) (\drefvalueof{/timing/27/n},\drefvalueof{/timing/27/verify-ms-mean}) (\drefvalueof{/timing/30/n},\drefvalueof{/timing/30/verify-ms-mean}) (\drefvalueof{/timing/33/n},\drefvalueof{/timing/33/verify-ms-mean}) (\drefvalueof{/timing/35/n},\drefvalueof{/timing/35/verify-ms-mean}) (\drefvalueof{/timing/38/n},\drefvalueof{/timing/38/verify-ms-mean})};
+\addlegendentry{Verify mean}
+\addplot[orange,domain=2:38,no marks,dashed] {\drefvalueof{/tier2/current/verify/intercept-ms}+\drefvalueof{/tier2/current/verify/slope-ms-per-module}*x};
+\addlegendentry{Verify fit}
+\end{axis}\end{tikzpicture}
+\caption{Physical phase means and fits for the \dref{/catalogue/total}-module catalogue (\dref{/catalogue/covered} ordinary deltas covered). Sample counts appear in \cref{tab:physical}; the fit uses all \dref{/tier2/current/compose/n} rows. Aggregate summaries supply no dispersion estimates, so no uncertainty band is inferred. Plot preparation assisted by H1.}\label{fig:timing}
+\end{figure}

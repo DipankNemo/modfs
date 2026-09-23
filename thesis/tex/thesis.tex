@@ -1,0 +1,100 @@
+\PassOptionsToPackage{loadshadowlibrary}{todonotes}
+\RequirePackage[T1]{fontenc}
+\RequirePackage[utf8]{inputenc}
+%\documentclass[germanthesis,twoside]{vssthesis}
+\documentclass[twoside,privacy]{vssthesis}
+% options:
+% [germanthesis] - Thesis is written in German
+% [plainunnumbered] - Don't print numbers on plain pages
+% [privacy] - Generate a more privacy aware PDF (exclude birthplace and birthday)
+% [twoside] - double sided
+% [watermark] - Print current time/date at bottom of each page
+
+\input{preamble}
+
+\author{Dipanker Dubey}
+\studentid{10026801}
+\title{ModFS: A Modular, Updatable Filesystem for Bare Metal as a Service}
+\thesistype{Bachelor's Thesis in Computer Science}
+\thesiscite{Bachelor's Thesis}
+\birthday{[not supplied]}
+\birthplace{[not supplied]}
+\thesisstart{[pending confirmation]}
+\thesisend{28 September 2026}
+\examiner{[pending confirmation]}
+\coexaminer{[pending confirmation]}
+\advisors{& \textbf{[pending confirmation]}\\}
+
+\begin{document}
+
+\pagestyle{fancy}
+\pagenumbering{roman}
+
+
+\maketitle
+
+\input{cha/00-abstract}
+\acresetall
+
+\cleardoublepage
+\tableofcontents
+
+\cleardoublepage
+\pagenumbering{arabic}
+
+\input{cha/01-introduction}
+
+\input{cha/02-fundamentals}
+
+\input{cha/03-architecture}
+
+\input{cha/04-analysis}
+
+\input{cha/05-conclusion}
+
+\appendix
+\input{cha/06-provenance}
+\input{cha/07-aids}
+
+\cleardoublepage
+
+\pagestyle{fancy-lists}
+
+% \phantomsection is needed for hyperref to reference the correct
+% page.
+
+\phantomsection
+% special page style for the unnumbered lists chapter and its sections.  This
+% prevents numbers in the headers.  The title is set via \chaptermark and
+% \sectionmark, see below.
+\addcontentsline{toc}{chapter}{\listoftitlename}%
+\chaptermark{\listoftitlename}
+
+\phantomsection
+\addcontentsline{toc}{section}{\glossarytitlename{}}%
+\sectionmark{\glossarytitlename{}}
+\printacronyms[template=tabular,heading=chapter*,name=\glossarytitlename{}]
+\cleardoublepage{}
+
+\phantomsection
+\addcontentsline{toc}{section}{\listfigurename}%
+\sectionmark{\listfigurename}
+\listoffigures
+\cleardoublepage
+
+\phantomsection
+\addcontentsline{toc}{section}{\listtablename}%
+\sectionmark{\listtablename}
+\listoftables
+\cleardoublepage
+
+
+
+
+
+\phantomsection
+\addcontentsline{toc}{section}{\bibname}%
+\sectionmark{\bibname}
+\printbibliography
+
+\end{document}

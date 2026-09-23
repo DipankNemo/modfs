@@ -1,0 +1,10 @@
+\begin{figure}[tbp]\centering
+\begin{tikzpicture}
+\begin{axis}[ybar,bar width=15pt,width=.94\textwidth,height=6cm,ymin=0,ymax=4200,ylabel={Compressed size (\si{\mega\byte})},symbolic x coords={Small,Large,All},xtick=data,legend pos=north west,legend style={font=\small},scaled y ticks=false,ymajorgrids]
+\addplot[fill=blue!50,draw=blue] coordinates {(Small,\drefvalueof{/storage/small/stored-mb}) (Large,\drefvalueof{/storage/large/stored-mb}) (All,\drefvalueof{/storage/all/stored-mb})};
+\addlegendentry{Stored base and deltas}
+\addplot[fill=orange!50,draw=orange] coordinates {(Small,\drefvalueof{/storage/small/monolithic-mb}) (Large,\drefvalueof{/storage/large/monolithic-mb}) (All,\drefvalueof{/storage/all/monolithic-mb})};
+\addlegendentry{Modelled monoliths}
+\end{axis}\end{tikzpicture}
+\caption{Storage comparison for the \dref{/catalogue/total}-module catalogue: \dref{/storage/small/n} small and \dref{/storage/large/n} large modules. Each cohort counts the base once in modular storage; cohort bars therefore must not be summed. Plot preparation assisted by H1.}\label{fig:storage}
+\end{figure}

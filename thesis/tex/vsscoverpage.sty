@@ -1,0 +1,208 @@
+%% vsscoverpage (formerly: sracoverpage.sty, i4coverpage.sty)
+%%
+%% Copyright (C) 2023      Jan S. Rellermeyer <rellermeyer@vss.uni-hannover.de>
+%% Copyright (C) 2009 Christoph Sommer <christoph.sommer@informatik.uni-erlangen.de>
+%%                    Falko Dressler
+%% Copyright (C) 2014 Clemens Lang <cl@clang.name)
+%% Copyright (C) 2015,2017-2018 Christian Dietrich <stettberger@dokucode.de>
+%
+% License (pick one or both):
+% - Creative Commons Attribution-Share Alike 3.0 (or later)
+% - GPL v2 (or later)
+%
+\NeedsTeXFormat{LaTeX2e}
+\ProvidesPackage{vsscoverpage}[2023/06/23 The VSS Thesis Class Cover Page]  % YYYY/MM/DD
+
+% -----------------------------------------------------------------------------
+% All the simple stuff goes here
+% -----------------------------------------------------------------------------
+
+\RequirePackage[babel]{csquotes}
+
+
+% For cover page
+\RequirePackage{tikz}
+\tikzoption{text @isevencoverpage@ badly  raggedleft}[]{\def\tikz@text@action{\raggedleft\relax}}
+\usetikzlibrary{calc,fit}
+
+% -----------------------------------------------------------------------------
+
+
+% -----------------------------------------------------------------------------
+% Cover page
+% -----------------------------------------------------------------------------
+
+\newcommand{\coverpagetextsmall}[1]{%
+	\@isevencoverpage@smalltextsize%
+	#1%
+	\vspace{0.5cm}\\%
+}
+
+\newcommand{\coverpagetextlarge}[1]{%
+	\vspace{0.25cm}%
+	\@isevencoverpage@largetextsize%
+	#1%
+	\@isevencoverpage@smalltextsize%
+	\vspace{0.5cm}\\%
+}
+
+%\makecoverpage
+\newcommand{\makecoverpagea}{%
+    \makecoverpage@modern{
+
+	}{%
+		\theauthor%
+	}{%
+		\thetitle%
+	}{%
+		\thethesistype\thedate%
+	}{%
+
+	}{%
+
+	}{%
+
+	}{%
+		%
+	}{%
+                \includegraphics{logos/luh-watermark.pdf}%
+	}%
+      }
+
+\newcommand{\makecoverpage}{%
+% Cover page uses single line spacing
+
+\begingroup
+\pagestyle{empty}
+\setcounter{page}\@ne
+
+\def\@isevencoverpage@affiliationsize{\fontsize{12}{14}\selectfont}
+\def\@isevencoverpage@authorsize{\fontsize{14}{17}\selectfont}
+\def\@isevencoverpage@titlesize{\fontsize{20}{24}\selectfont}
+\def\@isevencoverpage@subtitlesize{\fontsize{12}{14}\selectfont}
+\def\@isevencoverpage@citeassize{\fontsize{8}{9}\selectfont}
+\def\@isevencoverpage@addresssize{\fontsize{8}{9}\selectfont}
+\def\@isevencoverpage@smalltextsize{\@setfontsize{\@isevencoverpage@smalltextsize}{14}{17pt}}
+\def\@isevencoverpage@largetextsize{\@setfontsize{\@isevencoverpage@largetextsize}{20}{24pt}}
+
+
+\pgfdeclarelayer{i4coverback}
+\pgfdeclarelayer{i4coverfront}
+\pgfsetlayers{i4coverback,main,i4coverfront}
+\begin{tikzpicture}[remember picture,overlay] \node[xshift=0cm,yshift=0cm] at (current page.south west) { \begin{tikzpicture}[remember picture, overlay]
+      \providecolor{luhgreen}{RGB}{177,201,32}		% CMKY 30,0,94,0, Pantone 382
+      \providecolor{luhblue}{RGB}{0,80,155}		% CMKY 100,70,0,0, Pantone 293C
+      \providecolor{luhgray}{RGB}{128,128,128}
+
+	\providecommand{\pageHeight}{297mm}
+	\providecommand{\pageWidth}{210mm}
+
+	\providecommand{\textSpacing}{5mm}
+        \providecommand{\leftOffset}{10mm}
+
+
+	%%% Fakultätslogo
+	% Nach links Stand X, nach oben Stand Y. Unser Referenzpunkt ist links
+	% unten auf der Seite und wir spezifizieren den oberen linken Punkt des
+	% Logos.
+	\pgftext[top,right,at={\pgfpoint{\pageWidth - 8mm}{\pageHeight - 8mm}}] {%
+		\includegraphics[width=60mm]{logos/luh-logo-rgb}%
+	}
+
+
+	%% Affiliation
+%	\node[anchor=south west]
+%		(affiliationtext) at (\leftOffset+8mm+17.5mm+3mm, \pageHeight - 8mm - 17.5mm)
+%		[align = left, font=\sffamily\@isevencoverpage@affiliationsize] {%
+ %                 Leibniz Universität Hannover\\
+ %                 Institut für Systems Engineering\\
+ %                 Fachgebiet System- und Rechnerarchitektur%
+ %\label{key}               };
+
+        % Untertiteltext
+	\node[anchor = south west]
+		(subtitletext) at (\leftOffset+8mm, 25mm + 152mm+5mm)
+		[align = left, font = \sffamily\@isevencoverpage@subtitlesize] {\thethesistype};
+
+        \node[anchor = south west]
+		(datetext) at (161.7mm, 25mm + 152mm+5mm)
+		[align = left, font = \sffamily\@isevencoverpage@subtitlesize] {\thedate};
+
+	%% Titel
+	\node[anchor = south west]
+		(titletext) at ($(subtitletext.north west)+(up:\textSpacing)$)
+		[text width = 160mm-\leftOffset,
+		font = \sffamily\bfseries\@isevencoverpage@titlesize] {\nohyphens{\thetitle}};
+        %
+	%% Autor
+	\path (titletext.north west) ++ (0, \textSpacing)
+		node[anchor = south west,
+			align = left,
+			font=\sffamily\bfseries\@isevencoverpage@authorsize] (authortext) {\nohyphens{\theauthor}};
+
+
+
+	% Zitierhinweis
+	\node[anchor = north west]
+		at (\leftOffset+8mm, 25mm+152mm-\textSpacing)
+		[align = left,
+		font = \sffamily\color{white}\@isevencoverpage@citeassize,
+		text width = (155mm-8mm-5mm)/4*3] {%
+                     \begin{otherlanguage*}{american}%
+			Please cite as:\\%
+			\nohyphens{\theauthor{}, \enquote{\thetitle}
+                          \thethesiscite, Leibniz University Hannover,
+                         Institut für Systems Engineering, \monthname~\the\year.}
+      \end{otherlanguage*}
+                };
+
+	% URL
+	\node[anchor = north west]
+		(url) at (161.7mm, 22mm)
+		[font = \sffamily\@isevencoverpage@addresssize] {%
+                  \href{https://www.vss.uni-hannover.de}{www.vss.uni-hannover.de}%
+                  };
+
+	% Lehrstuhllogo
+	\node[anchor = north west]
+		(chairlogo) at (\leftOffset+8mm, \pageHeight-7mm) {
+			\includegraphics[height=17.2mm]{logos/vss-logo-full}
+              };
+
+
+        \node[anchor = south west,inner sep=0pt] (luh-watermark) at (0mm, 25mm+5mm+20mm) {
+          \includegraphics[width=120mm]{logos/luh-watermark}
+        };
+
+
+	% Adresse
+	\path (155mm, 25mm+5mm)
+		node[anchor = south east,
+                align = left,
+			font = \sffamily\color{white}\@isevencoverpage@addresssize] (chairlogotext) {%
+                        Leibniz University Hannover\\%
+			Institute for Systems Engineering\\%
+			Dependable and Scalable Software Systems\\%
+			\vspace{.5em}%
+			Appelstr. 4 $\cdot$ 30167 Hannover $\cdot$ Germany%
+                      };
+
+	\begin{pgfonlayer}{i4coverback}
+                \fill[luhblue]  (0,     25mm) rectangle ++(160mm, 152mm);
+		\fill[luhblue!30!white]  (161.7mm, 25mm) rectangle ++(40mm, 152mm);
+	\end{pgfonlayer}
+
+
+
+
+\end{tikzpicture} }; \end{tikzpicture}
+
+\cleardoublepage
+\setcounter{page}\@ne
+\endgroup
+}
+
+
+
+
+% -----------------------------------------------------------------------------

@@ -1,0 +1,23 @@
+\chapter*{Abstract}
+\addcontentsline{toc}{chapter}{Abstract}
+\begin{otherlanguage*}{american}
+Repositories for bare-metal provisioning retain several operating-system variants that often repeat the same base. Sharing that base promises lower server storage and independently rebuildable workload components. However, overlaying independent package installations can lose package records, account identities, or configuration state even when all required files appear present.\aidnote
+
+ModFS captures Ubuntu package installations as compressed sibling deltas over one pinned base. A conflict taxonomy assigns prevention, rejection, reconciliation, or runtime observation to each mechanism. Admission checks metadata, physical verification inspects a reconciled filesystem, and virtual-machine boots observe service behavior.
+
+For an adversarial catalogue of \dref{/catalogue/total} modules, admission accepts \dref{/tier1/totals/2/accept} of \dref{/tier1/totals/2/combinations} pairs and \dref{/tier1/totals/3/accept} of \dref{/tier1/totals/3/combinations} triples. All \dref{/tier2/current/compose/n} sampled physical compositions pass the implemented predicates. The modelled monolithic-to-modular storage ratio is \dref{/storage/all/ratio}\(\times\) overall, with strong cohort dependence. Adversarial review nevertheless exposed omitted predicates and merger defects, while boot tests revealed competing service listeners.
+
+The result supports modular server-side image construction within explicit compatibility boundaries. It does not establish byte-reproducible builds, smaller node transfers, or complete verification. The main contributions are the conflict taxonomy, semantic registry reconciliation, and evidence that a clean verdict establishes only what its checker can observe.
+\end{otherlanguage*}
+
+\chapter*{Kurzfassung}
+\addcontentsline{toc}{chapter}{Kurzfassung}
+\begin{otherlanguage*}{ngerman}
+Repositorien für die Bereitstellung physischer Rechner speichern mehrere Betriebssystemvarianten, die häufig dieselbe Basis enthalten. Eine gemeinsam gespeicherte Basis verspricht einen geringeren serverseitigen Speicherbedarf und unabhängig neu erstellbare Komponenten. Das Überlagern unabhängiger Paketinstallationen kann jedoch Paketinformationen, Benutzeridentitäten oder Konfigurationszustand verlieren, obwohl alle benötigten Dateien vorhanden erscheinen.\footnote{KI-gestützte Textbearbeitung und Übersetzung durch H1; siehe \cref{app:aids}.}
+
+ModFS erfasst Ubuntu-Paketinstallationen als komprimierte, gleichrangige Deltas über einer gemeinsamen Basis mit festgelegtem Archivstand. Eine Konflikttaxonomie ordnet jedem Mechanismus eine Strategie zur Vermeidung, Ablehnung, Zusammenführung oder Laufzeitbeobachtung zu. Die Zulassungsprüfung untersucht Metadaten, die physische Verifikation das zusammengeführte Dateisystem; Tests in virtuellen Maschinen beobachten das Verhalten der Dienste.
+
+In einem gezielt auf Konflikte ausgelegten Katalog mit \dref{/catalogue/total} Modulen akzeptiert die Zulassungsprüfung \dref{/tier1/totals/2/accept} von \dref{/tier1/totals/2/combinations} Paaren und \dref{/tier1/totals/3/accept} von \dref{/tier1/totals/3/combinations} Tripeln. Alle \dref{/tier2/current/compose/n} untersuchten physischen Kompositionen bestehen die implementierten Prüfungen. Das modellierte Verhältnis des monolithischen zum modularen Speicherbedarf beträgt insgesamt \dref{/storage/all/ratio}; es hängt stark von der Modulgruppe ab. Adversariale Prüfungen deckten dennoch fehlende Prüfkriterien und Fehler bei der Zusammenführung auf. Starttests zeigten konkurrierende Netzwerkdienste.
+
+Das Ergebnis stützt die modulare, serverseitige Image-Erstellung innerhalb ausdrücklich benannter Kompatibilitätsgrenzen. Es belegt weder byte-identische Wiederholbarkeit noch geringere Übertragungsmengen pro Rechner oder vollständige Verifikation. Die wesentlichen Beiträge sind die Konflikttaxonomie, die semantische Zusammenführung gemeinsamer Systemdatenbanken und der Nachweis, dass ein erfolgreiches Prüfergebnis nur die tatsächlich beobachteten Eigenschaften bestätigt.
+\end{otherlanguage*}
