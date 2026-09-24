@@ -1,0 +1,30 @@
+\chapter{Implementation map}
+\label{app:implementation}
+
+\Cref{tab:implementation} follows the mechanisms in \cref{ch:architecture}. Script names refer to \filepath{scripts/}; regression-test names refer to \filepath{tests/}. A dash indicates that no dedicated regression suite is listed. Listed tests exercise the mechanisms without implying complete coverage or isolation of untrusted code.
+
+\begingroup\small
+\begin{longtable}{@{}>{\raggedright\arraybackslash}p{.28\textwidth}>{\raggedright\arraybackslash}p{.33\textwidth}>{\raggedright\arraybackslash}p{.33\textwidth}@{}}
+\caption{Implementation and regression-test map in the order of the architecture chapter. The files named \texttt{update\_report.py} in the script and test columns are distinct.}\label{tab:implementation}\\
+\toprule Mechanism & Implementing scripts & Regression tests \\
+\midrule\endfirsthead
+\toprule Mechanism & Implementing scripts & Regression tests \\
+\midrule\endhead
+Pinned sibling model and generation identity (\cref{sec:arch:siblings}) & \filepath{00_verify.sh}\newline \filepath{generation.py} & \filepath{update_generation.py}\newline \filepath{legacy_generation.py} \\
+Conflict taxonomy and admission (\cref{sec:arch:taxonomy}) & \filepath{05_check.sh}\newline \filepath{09_run_combinations.sh} & \filepath{review_replaces.py}\newline \filepath{round4_class7.py} \\
+Building against the exact parent (\cref{sec:arch:build}) & \filepath{01_build_base.sh}\newline \filepath{02_build_delta.sh}\newline \filepath{08_build_catalogue.sh} & \filepath{update_pin.py} \\
+Artefact, manifest, and sidecar (\cref{sec:arch:data}) & \filepath{06_extract_metadata.sh}\newline \filepath{account_schema.py} & \filepath{review_account_metadata.py}\newline \filepath{round4_attacks.py} \\
+Digests and artefact re-derivation (\cref{sec:arch:digests}) & \filepath{manifest_binding.py}\newline \filepath{lib.sh}\newline \filepath{12_verify_binding.sh} & \filepath{review_binding.py}\newline \filepath{review_binding_coverage.py} \\
+Registry reconciliation (\cref{sec:arch:registries}) & \filepath{04_compose.sh}\newline \filepath{reconcile.py} & \filepath{round4_attacks.py} \\
+Package status and installation marks (\cref{sec:arch:status}) & \filepath{reconcile.py} & \filepath{review_verification.py}\newline \filepath{review_extended_states.py} \\
+Alternatives and diversions (\cref{sec:arch:alternatives}) & \filepath{reconcile.py} & \filepath{review_probes.py}\newline \filepath{round4_attacks.py} \\
+Accounts and debconf (\cref{sec:arch:accounts}) & \filepath{account_schema.py}\newline \filepath{reconcile.py} & \filepath{round2_attacks.py}\newline \filepath{round4_attacks.py} \\
+Derived state and structural verification (\cref{sec:arch:derived}) & \filepath{04_compose.sh}\newline \filepath{verify_compose.py} & \filepath{review_probes.py}\newline \filepath{review_verification.py}\newline \filepath{v7_attacks.py} \\
+Registry discovery (\cref{sec:arch:discovery}) & \filepath{03_analyse_overlap.sh} & --- \\
+Admitted-set sampling and composition (\cref{sec:arch:running}) & \filepath{sample_sets.py}\newline \filepath{10_compose_sweep.sh}\newline \filepath{verify_compose.py} & \filepath{review_verification.py} \\
+Boot construction and probes (\cref{sec:arch:running}) & \filepath{11_boot_test.sh} & \filepath{review_probes.py}\newline \filepath{gpu_probe_attacks.sh} \\
+Retained-bundle freshness (\cref{sec:arch:running}) & \filepath{16_build_evidence.sh} & \filepath{round3_evidence.py} \\
+Verification and trust boundaries (\cref{sec:arch:trust}) & \filepath{05_check.sh}\newline \filepath{manifest_binding.py}\newline \filepath{lib.sh} & \filepath{round4_class7.py}\newline \filepath{review_binding.py} \\
+Updates and transfer reporting (\cref{sec:arch:updates}) & \filepath{08_build_catalogue.sh}\newline \filepath{generation.py}\newline \filepath{14_report_update.sh}\newline \filepath{update_report.py} & \filepath{update_pin.py}\newline \filepath{update_generation.py}\newline \filepath{update_report.py} \\
+\bottomrule\end{longtable}
+\endgroup

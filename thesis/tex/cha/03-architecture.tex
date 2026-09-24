@@ -1,9 +1,10 @@
 \chapter{Architecture}
 \label{ch:architecture}
 
-The design begins with a constrained composition problem: one exact base, independently installed siblings, and an explicitly selected set. We chose this topology to make each module's parent assumptions checkable and to keep ordinary Ubuntu package paths. The implementation then separates admission, semantic assembly, and execution. Those operations answer different questions, so their success conditions remain distinct.
+The design begins with a constrained composition problem: one exact base, independently installed siblings, and an explicitly selected set. We chose this topology to make each module's parent assumptions checkable and to keep ordinary Ubuntu package paths. The implementation then separates admission, semantic assembly, and execution. Those operations answer different questions, so their success conditions remain distinct. \Cref{app:implementation} maps each mechanism in this chapter to the scripts that implement it and the tests that check it.
 
 \section{Pinned sibling model and invariants}
+\label{sec:arch:siblings}
 
 Let B be an exact base artefact and M a selected set of deltas built against it. Each module contributes a package map P(m), removals R(m), captured filesystem changes, and extracted identity metadata. At the package-summary level, the effective installed state is described by
 
@@ -31,6 +32,7 @@ The generation identifier is derived from \texttt{(snapshot, suite, arch, base\_
 \end{figure}
 
 \section{Conflict taxonomy and policy}
+\label{sec:arch:taxonomy}
 
 The conflict taxonomy separates mechanisms by the action they require. Some overlaps are harmless; some states must be rejected; others should be prevented before the bytes are created; shared registries need reconciliation; runtime resource contention needs execution. The policies in the taxonomy distinguish the observed mechanisms.
 
@@ -80,6 +82,7 @@ The current build policy strips opaque markers only for direct-base siblings and
 Class \num{8} was added after boots exposed a failure beyond the successful package and structural checks. It marks the runtime boundary: \texttt{apache2} and \texttt{nginx} can be metadata-compatible and structurally complete while both seek port \num{80}. Their actual startup outcome depends on scheduling. The existing Tier-1 and Tier-2 models cannot observe that race. A future policy could statically warn about known configured listeners, but would not turn an offline package or path check into an observation of resource acquisition. Runtime results are therefore recorded separately from structural success.
 
 \section{Building against the exact parent}
+\label{sec:arch:build}
 
 The base builder uses \texttt{debootstrap}, then upgrades the base against the same snapshot pockets that sibling installations will see. This prevents a module from receiving newer base libraries merely because its \ac{APT} view includes updates absent from the initial bootstrap. The snapshot identity is in the archive URL so both bootstrap and subsequent \ac{APT} operations use the same archive view.
 
@@ -92,8 +95,10 @@ Build-only mounts and daemon-start suppression let maintainer scripts run in the
 The builder also removes \texttt{trusted.overlay.opaque} under the checked flat-sibling preconditions. Such a marker was created against the base but would later hide entries from a sibling that did not exist at build time. The storage representation preserves ordinary file whiteouts, but the current builder conservatively refuses an upperdir containing them before applying this opaque-marker policy. Thus representation support for deletion is not demonstrated support for building arbitrary deleting siblings. The evaluated pattern is additive; removals and directory replacement remain a separate validation problem.
 
 \section{Bundle representation and integrity}
+\label{sec:arch:bundle}
 
 \subsection{Artefact, manifest, and sidecar}
+\label{sec:arch:data}
 
 Each module consists of \texttt{<name>.sqsh}, \texttt{<name>.json}, and \texttt{<name>.files.json.zst}. The manifest is small enough for routine admission; the sidecar supplies per-path ownership when Class \num{4} needs it; physical composition mounts the archive. Thus Tier \num{1} avoids mounts and root privileges, although it does consume the relevant sidecars as well as manifests. It does not rehash all SquashFS bytes on every metadata decision: artefact consumption and re-derivation have their own checks.
 
@@ -124,6 +129,7 @@ A module records only package contributions that differ from its parent, plus re
 The sidecar maps paths to owning package names and records diversions. Extraction operates on the stored module and parent artefacts so excluded build scratch cannot be mistaken for shipped content. This also lets the build tree be discarded. A sealed manifest can still describe the wrong \emph{requested specification} if no one compares the spec with the installation; \texttt{jq}'s earlier missing \texttt{moreutils} is the project's concrete example. Bundle consistency and fulfilment of operator intent are distinct conditions.
 
 \subsection{What each digest proves}
+\label{sec:arch:digests}
 
 \Cref{tab:digests} summarizes the corresponding contract.
 \begin{table}[tbp]
@@ -151,22 +157,26 @@ The binding verifier mounts artefacts and re-derives metadata, which is stronger
 A generation consists of snapshot, suite, architecture, and exact base digest, together with an identifier derived from those values. Module specifications are deliberately absent: a specification may change within one generation. A metadata refresh preserves the recorded generation rather than relabelling old bytes as children of the current base. Adoption for legacy artefacts is an explicit assertion about their origin, not reconstruction of missing historical proof.
 
 \section{Registry reconciliation}
+\label{sec:arch:registries}
 
 The composer mounts each selected SquashFS layer and overlays a writable reconciliation layer above them. It supplies the reconciler with layer roots in the intended precedence order. The reconciler writes parsed registry results into the top layer, then the native tools regenerate derived state. Relative lowerdir paths keep mount-option length manageable at high N. Mount creation, reconciliation, regeneration, and teardown must all preserve an observable failure rather than allowing partial scratch state to become a publishable result.
 
 \subsection{Package status and installation marks}
+\label{sec:arch:status}
 
 \texttt{dpkg/status} uses blank-line-separated stanzas. The format-level identity is package plus architecture, and different versions of the same effective package are incompatible. The current implementation, in the documented single-architecture scope, indexes status by package name. Consequently it should not be presented as a general multiarch union; an architecture-aware key is a required extension for that claim. Repeated installed stanzas at the same version retain a selected source stanza, while version disagreement contributes an error. Fields outside the compared version can still depend on the selected layer.
 
 \texttt{extended\_states} also uses stanzas, but its semantics differ. \ac{APT} generally records automatic installation positively; manual installation can be represented by the \textbf{absence} of an automatic stanza. Combining only explicit entries would miss a sibling's manual request. The reconciler considers the installed package records together with automatic marks, lets manual intent dominate, and inherits base marks when a delta has no replacement file. An empty output can therefore be necessary to clear a top layer's obsolete automatic flags. This is not ordinary last-layer precedence.
 
 \subsection{Alternatives and diversions}
+\label{sec:arch:alternatives}
 
 An alternatives registry is positional: mode, generic link, slave-link definitions, then candidate paths, priorities, and slave targets. It must be parsed with that structure. \texttt{vim} offers \path{/usr/bin/vim.basic} at priority \num{30} and \texttt{emacs} offers \texttt{/usr/bin/emacs} at priority \num{0}; retaining both candidates and running automatic selection chooses vim. If layers assign different priorities to the \emph{same} candidate, the merger reports a conflict. It may retain the higher priority in the scratch output, but its nonzero result means that tree is not accepted. A diagnostic choice is not successful conflict resolution.
 
 A diversion is a consecutive triple: original path, diverted path, and responsible package. Malformed or partial triples must fail rather than silently disappearing. A diversion is identified semantically by its original path. The present diversion parser deduplicates whole triples; it does not independently reject different triples sharing the same original path. Malformed-record rejection does not establish complete conflicting-diversion arbitration. The reference key and implementation behavior therefore differ, limiting the claimed scope.
 
 \subsection{Accounts and debconf}
+\label{sec:arch:accounts}
 
 The account group comprises \texttt{passwd}, \texttt{group}, \texttt{shadow}, \texttt{gshadow}, \texttt{subuid}, and \texttt{subgid}. Their record shapes are centralized in a shared account-format schema; names identify the ordinary account records, while subordinate ranges are retained as whole-line sets. Numeric \ac{UID}, \ac{GID}, and primary-group disagreement is an error. Group and gshadow membership is unioned as sets rather than overwritten. Other fields follow the declared highest-layer policy, and sensitive modes and ownership are preserved. Disjoint allocation windows prevent ordinary numeric collisions, but do not remove the need for this record union.
 
@@ -175,18 +185,21 @@ Debconf's \texttt{config.dat}, \texttt{templates.dat}, and \texttt{passwords.dat
 The reconciler accumulates problems and returns failure even if it has already written diagnostic output to the scratch tree. Its caller must discard a failed composition. Tested order reversals preserve semantic record sets for the documented examples, but record order and bytes differ, and conflicting highest-layer fields do not acquire general order independence from this mechanism.
 
 \subsection{Derived state and verification coverage}
+\label{sec:arch:derived}
 
 \texttt{/etc/alternatives/*} is regenerated by \texttt{update-alternatives --auto} from the merged candidates. \texttt{/etc/ld.so.cache} is regenerated by \texttt{ldconfig} from the composed library tree. These are the last two of the eight registry groups. They are functions of the merged inputs, so unioning their old outputs is inappropriate. Failure of either native tool is a failed composition.
 
 V2 checks package status, V3 alternatives, V4 the linker result, V6 accounts, and V8 debconf. V5 asks dpkg to audit its view, while V7 checks path visibility and selected file properties. This coverage does not give every registry an equally strong independent oracle: diversions and extended states do not have dedicated V-numbered semantic checks in the generated list. Trigger registrations also remain outside the handled registry set. These limits matter when interpreting a clean V1--V8 row.
 
 \section{How the registry inventory was established}
+\label{sec:arch:discovery}
 
 The inventory grew through compositions whose visible behavior disagreed with their apparent package state. Lost package records motivated status reconciliation. A survey of paths shared by independent upperdirs exposed alternatives, diversions, and automatic-installation marks; inspecting library lookup exposed the derived cache. Account auditing revealed that unique numeric allocations still needed a union of account records. Enumerating shared unowned files then exposed configuration databases whose answers had disappeared beneath a later layer.
 
 This supplies a repeatable discovery method: intersect the files present in multiple upperdirs and remove package-owned paths using the ownership inventory. The remaining shared files are candidates for semantic interpretation. They are not automatically interchangeable registries, and the survey does not prove complete coverage of every maintainer-script effect. Trigger registrations, for example, remain outside the implemented merge groups. New package families should prompt another survey, not an assumption that the existing list is universal.
 
 \section{From admitted sets to a running image}
+\label{sec:arch:running}
 
 A requested plan maps layer counts to sample counts. The sampler combines declared requirements with exclusions learned from Tier-1 observations. It first explains a pair rejection that a later provider could satisfy; only irreducible exclusions belong in the pair-conflict model. Otherwise \texttt{fake-cuda} would be systematically excluded from high-layer sets despite belonging to an admissible set with its driver.
 
@@ -199,12 +212,14 @@ The guest harness records systemd state, foreign pending jobs, failed units, pac
 The bundle retains the serial log, verdict, run identity, and resolved kernel information. Recording a kernel digest establishes which boot input was used; it does not by itself make the whole build reproducible. Old bundles remain immutable, while later evidence generation assesses their currency against the artefact inventory. Freshness checks use recorded identities and rebuild times. A freshness label does not constitute new content verification of every old run.
 
 \section{Verification and trust boundaries}
+\label{sec:arch:trust}
 
 The checker must declare what it has observed. Missing sidecars or malformed nested ownership fields cannot be treated as an empty, clean set of paths or owners. Where the checker returns \texttt{ACCEPT WITH WARNINGS}, that is weaker than fully checked acceptance. A negative control is likewise specific: an old-snapshot control exercises composability rejection, but does not establish that every account or debconf predicate is effective. Adversarial tests target the individual observation boundaries.
 
 Trusted inputs are another design assumption. Packing and reconciliation invoke tools from composed roots with host-side privileges before the VM boundary. Bundle digests detect drift and internal inconsistency; they do not isolate hostile package code. The prototype therefore concerns a controlled build catalogue, not a service safely composing arbitrary untrusted customer artefacts. This limit follows from where code executes, independently of whether its files have consistent hashes.
 
 \section{Updates, publication, and rollback}
+\label{sec:arch:updates}
 
 An intra-generation specification update rebuilds the affected sibling against the unchanged exact base, refreshes its manifest and sidecar, and repeats binding, admission, and relevant later checks. Rebuilding at a fixed snapshot cannot obtain a security version absent from that archive. A pin move instead builds a new base and all siblings in an isolated generation. The selected generation must be exposed coherently; the current implementation has no transactional remote publisher providing that atomicity.
 
