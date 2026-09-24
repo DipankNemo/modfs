@@ -1,7 +1,7 @@
 \chapter{Introduction}
 \label{ch:introduction}
 
-\ac{BMaaS} provisions physical machines from prepared operating-system images. Workloads often share a distribution base while differing in their compilers, databases, web servers, or scientific libraries. Keeping every variant as an independent filesystem repeats that common content and couples each variant's maintenance to the whole image. Image construction is therefore a useful place to separate reusable operating-system content from workload-specific additions \autocite{baas,ironic,maas}.\aidnote
+\ac{BMaaS} provisions physical machines from prepared operating-system images. Workloads often share a distribution base while differing in their compilers, databases, web servers, or scientific libraries. Keeping every variant as an independent filesystem repeats that common content and couples each variant's maintenance to the whole image. Image construction is therefore a useful place to separate reusable operating-system content from workload-specific additions \autocite{baas,ironic,maas}.
 
 Ordinary package installation makes this separation difficult. A package manager installs files, executes maintainer scripts, allocates numeric identities, and updates shared system databases. Two installations performed independently over the same base each produce a complete local view of those databases. Overlaying their files can select one view and silently discard the other. Package co-installability alone does not establish that their captured installation effects form a coherent root filesystem.
 

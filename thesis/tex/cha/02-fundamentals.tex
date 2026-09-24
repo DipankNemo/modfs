@@ -1,7 +1,7 @@
 \chapter{Fundamentals}
 \label{ch:fundamentals}
 
-A filesystem layer supplies names and bytes, whereas an installed operating system also contains relationships among packages, identities, and persistent administrative records. This chapter develops that distinction from the underlying mechanisms. It first describes the execution environment and package installation, then explains the shared state and filesystem primitives that independent builds reuse. The related-work sections ask which of these consistency problems earlier systems solve and which remain for sibling-delta composition.\aidnote
+A filesystem layer supplies names and bytes, whereas an installed operating system also contains relationships among packages, identities, and persistent administrative records. This chapter develops that distinction from the underlying mechanisms. It first describes the execution environment and package installation, then explains the shared state and filesystem primitives that independent builds reuse. The related-work sections ask which of these consistency problems earlier systems solve and which remain for sibling-delta composition.
 
 \section{Execution and provisioning environment}
 The evaluated system targets Ubuntu \num{22.04} on the x86-64 architecture. Its packages use \ac{APT} and dpkg, its build and composition mounts use Linux OverlayFS, and its stored artefacts use SquashFS. A separate Ubuntu \num{24.04} investigation tests portability; results from that environment must retain their own identity. Distribution release and architecture matter because package names, maintainer scripts, default base contents, and kernel interfaces are inputs to the construction.

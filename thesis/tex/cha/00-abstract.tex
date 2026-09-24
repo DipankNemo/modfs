@@ -1,7 +1,7 @@
 \chapter*{Abstract}
 \addcontentsline{toc}{chapter}{Abstract}
 \begin{otherlanguage*}{american}
-Repositories for bare-metal provisioning retain several operating-system variants that often repeat the same base. Sharing that base promises lower server storage and independently rebuildable workload components. However, overlaying independent package installations can lose package records, account identities, or configuration state even when all required files appear present.\aidnote
+Repositories for bare-metal provisioning retain several operating-system variants that often repeat the same base. Sharing that base promises lower server storage and independently rebuildable workload components. However, overlaying independent package installations can lose package records, account identities, or configuration state even when all required files appear present.
 
 ModFS captures Ubuntu package installations as compressed sibling deltas over one pinned base. A conflict taxonomy assigns prevention, rejection, reconciliation, or runtime observation to each mechanism. Admission checks metadata, physical verification inspects a reconciled filesystem, and virtual-machine boots observe service behavior.
 
@@ -13,7 +13,7 @@ The result supports modular server-side image construction within explicit compa
 \chapter*{Kurzfassung}
 \addcontentsline{toc}{chapter}{Kurzfassung}
 \begin{otherlanguage*}{ngerman}
-Repositorien für die Bereitstellung physischer Rechner speichern mehrere Betriebssystemvarianten, die häufig dieselbe Basis enthalten. Eine gemeinsam gespeicherte Basis verspricht einen geringeren serverseitigen Speicherbedarf und unabhängig neu erstellbare Komponenten. Das Überlagern unabhängiger Paketinstallationen kann jedoch Paketinformationen, Benutzeridentitäten oder Konfigurationszustand verlieren, obwohl alle benötigten Dateien vorhanden erscheinen.\footnote{KI-gestützte Textbearbeitung und Übersetzung durch H1; siehe \cref{app:aids}.}
+Repositorien für die Bereitstellung physischer Rechner speichern mehrere Betriebssystemvarianten, die häufig dieselbe Basis enthalten. Eine gemeinsam gespeicherte Basis verspricht einen geringeren serverseitigen Speicherbedarf und unabhängig neu erstellbare Komponenten. Das Überlagern unabhängiger Paketinstallationen kann jedoch Paketinformationen, Benutzeridentitäten oder Konfigurationszustand verlieren, obwohl alle benötigten Dateien vorhanden erscheinen.
 
 ModFS erfasst Ubuntu-Paketinstallationen als komprimierte, gleichrangige Deltas über einer gemeinsamen Basis mit festgelegtem Archivstand. Eine Konflikttaxonomie ordnet jedem Mechanismus eine Strategie zur Vermeidung, Ablehnung, Zusammenführung oder Laufzeitbeobachtung zu. Die Zulassungsprüfung untersucht Metadaten, die physische Verifikation das zusammengeführte Dateisystem; Tests in virtuellen Maschinen beobachten das Verhalten der Dienste.
 

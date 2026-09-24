@@ -1,7 +1,7 @@
 \chapter{Architecture}
 \label{ch:architecture}
 
-The design begins with a constrained composition problem: one exact base, independently installed siblings, and an explicitly selected set. We chose this topology to make each module's parent assumptions checkable and to keep ordinary Ubuntu package paths. The implementation then separates admission, semantic assembly, and execution. Those operations answer different questions, so their success conditions remain distinct.\aidnote
+The design begins with a constrained composition problem: one exact base, independently installed siblings, and an explicitly selected set. We chose this topology to make each module's parent assumptions checkable and to keep ordinary Ubuntu package paths. The implementation then separates admission, semantic assembly, and execution. Those operations answer different questions, so their success conditions remain distinct.
 
 \section{Pinned sibling model and invariants}
 
@@ -26,7 +26,7 @@ The generation identifier is derived from \texttt{(snapshot, suite, arch, base\_
 \node[box,left=of pack] (boot) {Boot image\\observe services};
 \draw[->] (base)--(deltas);\draw[->] (deltas)--(admit);\draw[->] (admit)--(merge);\draw[->] (merge)--(pack);\draw[->] (pack)--(boot);
 \end{tikzpicture}
-\caption{Server-side construction and verification of a selected root. Schematic; no measured quantities are represented. Diagram preparation assisted by H1.}
+\caption{Server-side construction and verification of a selected root. Schematic; no measured quantities are represented. Diagram prepared with tool H1.}
 \label{fig:architecture}
 \end{figure}
 
