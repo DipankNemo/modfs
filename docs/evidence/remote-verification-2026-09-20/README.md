@@ -6,7 +6,7 @@ initial checks is `a69111baedb576ea9d093626e883b6f7cd5bd3ce`.
 
 ## Container bootstrap
 
-Connect using `ssh -p 17288 root@91.150.160.38`. Read the instance guide at
+Connect using `ssh -p <port> root@<rented-instance>`. Read the instance guide at
 `/etc/vast-agents-guide.md`. On a fresh equivalent instance:
 
 ```sh

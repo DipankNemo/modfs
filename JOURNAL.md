@@ -4863,7 +4863,7 @@ remote builds and dependency installation, superseding CLAUDE.md's older
 privilege boundary for this task. Local artefacts remain read-only. Evidence
 is committed under `docs/evidence/remote-verification-2026-09-20/`.
 
-The supplied endpoint, `ssh -p 17288 root@91.150.160.38`, is **not the machine
+The supplied endpoint, `ssh -p <port> root@<rented-instance>`, is **not the machine
 described in the brief**. Observed: Ubuntu **24.04.4** userspace in an
 unprivileged Docker container; shared host kernel **6.8.0-47-generic**; RTX
 **3060, 12288 MiB**, compute capability **8.6**, injected driver **550.107.02**.
@@ -4921,7 +4921,7 @@ Reproduce the initial verifier on a fresh equivalent container, before any
 tool installation (the existing clone can simply rerun the last command):
 
 ```sh
-ssh -p 17288 root@91.150.160.38
+ssh -p <port> root@<rented-instance>
 git clone https://github.com/DipankNemo/modfs.git /root/modfs
 cd /root/modfs
 git checkout --detach a69111baedb576ea9d093626e883b6f7cd5bd3ce
