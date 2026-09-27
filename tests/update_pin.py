@@ -9,7 +9,14 @@ import unittest
 
 REPO = Path(__file__).resolve().parents[1]
 
+# Stage 08 refuses to run without root (delta builds mount and chroot), so an
+# unprivileged run reported this as a FAILURE rather than as a skip -- the same
+# defect four other root-only test files had until 2026-09-21.
+ROOT_ONLY = unittest.skipUnless(os.geteuid() == 0,
+                               'needs root: stage 08 mounts and chroots')
 
+
+@ROOT_ONLY
 class PinTests(unittest.TestCase):
     def test_dispatch(self):
         # Retained scratch, no cleanup outside the permitted build tree.
