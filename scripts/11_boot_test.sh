@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# TIER 3: boot a composed module set for real, under UEFI, and check it from
+# Tier 3: boot a composed module set for real, under UEFI, and check it from
 # inside the running system.
 #
 #   sudo ./scripts/11_boot_test.sh base webserver apache
@@ -12,7 +12,7 @@
 #
 # What it does:
 #   1. compose the set and reconcile it (same path as 04/07)
-#   2. install a kernel INTO THE IMAGE ONLY -- boot scaffolding is not module
+#   2. install a kernel into the image only -- boot scaffolding is not module
 #      content, so no artefact and no module definition changes
 #   3. pack a GPT/UEFI disk: ESP with systemd-boot, ext4 root
 #   4. boot headless under OVMF with the console on ttyS0
@@ -21,8 +21,8 @@
 #   6. parse the serial log for the verdict
 #
 # Exit: 0 everything passed, 1 something in the guest failed, 2 the harness
-# broke (no boot, timeout, missing tool). Run B below is EXPECTED to exit 1 --
-# that is the finding, not a malfunction.
+# broke (no boot, timeout, missing tool). A --known-negative run exits 1 by
+# design: it observes a set tier 1 rejected.
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 source "${HERE}/config.sh"
@@ -50,8 +50,8 @@ MODULES=("$@")
 [ -n "$NAME" ] || NAME="$(IFS=-; echo "${MODULES[*]}")"
 NAME="${NAME:0:60}"
 
-# C1. --name reached a root `rm -rf` unvalidated; "../../modules" would have
-# deleted the artefact store. Validate every identifier, bound every number.
+# Names reach paths and a root `rm -rf`, so validate every identifier and
+# bound every number.
 require_ident "$NAME" "run name"
 for m in "${MODULES[@]}"; do require_ident "$m" "module name"; done
 require_uint "$TIMEOUT" 30 7200 "--timeout"
@@ -66,10 +66,8 @@ OVMF_VARS=/usr/share/OVMF/OVMF_VARS_4M.fd
 [ -f "$OVMF_CODE" ] || OVMF_CODE=/usr/share/ovmf/OVMF.fd
 [ -f "$OVMF_CODE" ] || die2 "no OVMF firmware (apt install ovmf)"
 
-# C5. Run bundles are timestamped and immutable. Reusing --name can no
-# longer delete prior evidence, because nothing is ever deleted: a collision
-# is an error. The bundle also lives outside BUILD_DIR, which config.sh calls
-# scratch.
+# Run bundles are timestamped and immutable: a collision is an error, never a
+# deletion. They live outside BUILD_DIR, which is scratch.
 RUN_TS="$(date -u +%Y%m%dT%H%M%SZ)"
 RUN_ID="${NAME}-${RUN_TS}"
 BOOT_ROOT="${RESULTS_DIR}/boot"
@@ -84,7 +82,7 @@ IMG="$C/disk.img"; VARS="$C/OVMF_VARS.fd"
 reset_workdir "$C"; mkdir -p "$C"/{upper,work,merged}
 M="$C/merged"
 
-# Written BEFORE any mount, chroot, apt transaction or image write, so an
+# Written before any mount, chroot, apt transaction or image write, so an
 # aborted run still leaves a record of what was attempted and why.
 python3 - "$B/run.json" "$RUN_ID" "$RUN_TS" "$EXPECT" "$KNOWN_NEG" "$TIMEOUT" \
          "$MEM" "$IMG_MB" "${MODULES[@]}" <<'RJ'
@@ -145,18 +143,13 @@ LOOPDEV=""
 boot_cleanup() {
     [ -n "$LOOPDEV" ] && { umount "$C/mnt/esp" 2>/dev/null; umount "$C/mnt/root" 2>/dev/null
                            losetup -d "$LOOPDEV" 2>/dev/null; }
-    # DROP THE DISK IMAGE on every exit path. The mount teardown was already
-    # trap-based and correct; the scratch TREE was never removed, so three
-    # failed GPU runs left 11.9 GB behind without saying so and a fourth took
-    # it to 19 GB on a disk with 38 GB free. The image is 3.6 GB of a 4.5 GB
-    # tree -- 80 % -- and it is the one part that is fully reproducible by
-    # re-running this script. The merged tree, the logs and the mount points
-    # stay, because those are what a failed run is debugged from.
+    # Drop the disk image on every exit path: it is most of the scratch tree
+    # and fully reproducible by re-running. The merged tree, the logs and the
+    # mount points stay, because a failed run is debugged from them.
     [ -n "${IMG:-}" ] && [ -f "$IMG" ] && rm -f "$IMG"
     return 0
 }
-# Every exit path records a result, including die2 and a signal. Run A left
-# no record at all; that is precisely what C5 is meant to prevent.
+# Every exit path records a result, including die2 and a signal.
 trap 'RC_TRAP=$?; boot_cleanup
       [ "${FINISHED:-0}" -eq 1 ] || finish ABORTED "$RC_TRAP"
       cleanup' EXIT
@@ -168,9 +161,8 @@ trap 'boot_cleanup; [ "${FINISHED:-0}" -eq 1 ] || finish TERMINATED 143
       unmount_all; trap - EXIT TERM; kill -s TERM $$' TERM
 
 # ---- 0. admission --------------------------------------------------------
-# C3. Run A died inside APT because a tier-1-rejected set (the MTA pair) was
-# composed anyway. Integrity and admission come first, always; a deliberate
-# negative must say so explicitly and is never called "admitted".
+# Integrity and tier-1 admission come first. A deliberate negative must be
+# requested with --known-negative and is never called "admitted".
 log "verifying bundle integrity"
 verify_bundle "${MODULES[@]}" > "$B/integrity.txt" 2>&1 || {
     cat "$B/integrity.txt" >&2; finish INTEGRITY_FAIL 2; die2 "bundle integrity failed"; }
@@ -197,15 +189,10 @@ for m in "${MODULES[@]}"; do
     do_mount -o loop,ro "$sq" "$mp"
     LOWERS=("ro_${m}" "${LOWERS[@]}"); LAYERS+=("${m}=${mp}")
 done
-# RELATIVE lowerdir names, mounted from inside $C. The kernel caps mount DATA at
-# one page (4096 bytes) and overlay packs every lower layer into that one string,
-# so absolute paths make the ceiling depend on how deep the scratch directory
-# happens to sit. A 37-module set auto-named from its own module list produced an
-# 83-character run directory and a 4319-byte option string, and failed -- while
-# the identical set under `--name maxsub` came to 2213 bytes and worked.
-# Composability must not depend on the length of a directory name. Relative
-# names cost ~13 bytes per layer instead of ~112: the same set is now 419 bytes,
-# moving the ceiling from roughly 35 layers to several hundred.
+# Relative lowerdir names, mounted from inside $C. The kernel caps mount data
+# at one page (4096 bytes) and overlay packs every lower layer into that one
+# string, so absolute paths would make the layer limit depend on how deep the
+# scratch directory sits. Relative names cost ~13 bytes per layer, not ~112.
 OPTS="lowerdir=$(IFS=:; echo "${LOWERS[*]}"),upperdir=upper,workdir=work"
 if [ "${#OPTS}" -ge 4096 ]; then
     die2 "overlay options are ${#OPTS} bytes, over the kernel's 4096-byte limit, at ${#MODULES[@]} layers. Shorten module names or compose in stages."
@@ -233,18 +220,13 @@ in_chroot "$M" ldconfig >/dev/null 2>&1 </dev/null \
 log "reconciled: $(grep -c . <<<"$(in_chroot "$M" dpkg-query -W -f '${binary:Package}\n' 2>/dev/null </dev/null)") packages"
 
 # ---- 2. kernel: scaffolding, into the image only -------------------------
-# The artefacts exclude /run by design, so base's /etc/resolv.conf -- a
-# symlink to ../run/systemd/resolve/stub-resolv.conf -- DANGLES in a composed
-# view and apt cannot resolve anything. 02_build_delta.sh never hits this
-# because it builds on base.dir, the raw tree, which still has /run.
-# Supply a real resolver for the pack step only, and put the symlink back
-# before the image is written so no host DNS config ships in it.
-# Same story for directories. SQUASH_EXCLUDES drops proc, sys, dev, run, tmp,
-# var/tmp, var/lib/apt/lists and var/cache/apt/archives -- the DIRECTORIES,
-# not merely their contents -- so a composed tree has neither the mountpoints
-# systemd needs nor the scratch space apt needs. mount_chroot_fs happens to
-# create proc/sys/dev/run, which is why nothing noticed until now; it does not
-# create /tmp, and apt fails on its first temporary file.
+# The artefacts exclude /run, so base's /etc/resolv.conf (a symlink into
+# /run/systemd/resolve) dangles in a composed view and apt cannot resolve
+# names. Supply a real resolver for the pack step only, and restore the
+# symlink before the image is written so no host DNS config ships in it.
+# SQUASH_EXCLUDES also drops whole directories (tmp, var/tmp and the apt
+# lists and archives), so apt has no scratch space; mount_chroot_fs creates
+# only proc, sys, dev and run.
 log "creating runtime directories the artefacts exclude"
 mkdir -p "$M"/tmp "$M"/var/tmp \
          "$M"/var/lib/apt/lists/partial "$M"/var/cache/apt/archives/partial
@@ -261,22 +243,15 @@ cp -L "$RESOLV_SRC" "$M/etc/resolv.conf" || die2 "cannot stage resolv.conf"
 log "installing kernel into the image (not into any module)"
 in_chroot "$M" apt-get update -qq </dev/null > "$B/apt.log" 2>&1 \
     || die2 "apt update failed in the merged view, see $B/apt.log"
-# iproute2 is here for the same reason as the kernel: it is OBSERVABILITY
-# SCAFFOLDING, not module content. Run m2 (base+apache) reported
-# "ss unavailable" and produced no socket evidence at all, because `ss` only
-# happened to be present in the other runs -- nginx pulls iproute2 in, apache
-# does not. Diagnostic tooling the matrix depends on must be guaranteed, never
-# incidental to which modules were selected.
+# iproute2 is observability scaffolding, like the kernel: the harness needs
+# `ss` in every image, not only when some module happens to pull it in.
 in_chroot "$M" apt-get install -y -qq --no-install-recommends \
     linux-image-generic initramfs-tools iproute2 </dev/null >> "$B/apt.log" 2>&1 \
     || die2 "kernel install failed, see $B/apt.log"
-# The pack-step apt-get update/install re-creates exactly the scratch that
-# SQUASH_EXCLUDES strips from every artefact: 298 MB of package indices in
-# var/lib/apt/lists and 411 MB of .debs in var/cache/apt/archives. config.sh
-# already rules that this is build scaffolding and not module content, so it
-# must not ship in the image either -- 02_build_delta.sh drops it the same way
-# after its own installs. Leaving it in cost 709 MB of a 3072 MB image and was
-# where rsync hit ENOSPC. Keep the DIRECTORIES: apt needs them at runtime.
+# The pack step's apt-get re-creates the scratch SQUASH_EXCLUDES strips from
+# every artefact (package indices and .debs, hundreds of MB). It is build
+# scaffolding, so it must not ship in the image either. Keep the directories:
+# apt needs them at runtime.
 log "dropping apt scratch the image must not carry"
 in_chroot "$M" apt-get clean </dev/null >/dev/null 2>&1 \
     || die2 "apt-get clean failed in the merged view"
@@ -290,19 +265,15 @@ KVER=$(in_chroot "$M" sh -c 'ls -1 /boot/vmlinuz-* 2>/dev/null | sed "s|.*/vmlin
 [ -n "$KVER" ] || die2 "no kernel in /boot after install"
 log "kernel ${KVER}"
 
-# ---- 2b. RECORD THE RESOLVED KERNEL ABI ----------------------------------
-# linux-image-generic is a META package: its version (5.15.0.185.166) is NOT
-# the ABI, and the thing a prebuilt out-of-tree module must match is the ABI
-# package version (5.15.0-185.195) and the /lib/modules/<abi> directory name.
-# Until now the pack step resolved that at run time and threw it away, so
-# nothing downstream could check that a driver module matches the kernel it
-# will meet -- STATE_OF_PLAY section 7 item 9 names exactly this as the CUDA
-# blocker. It is recorded here, next to the boot it describes.
+# ---- 2b. record the resolved kernel ABI ----------------------------------
+# linux-image-generic is a meta package: its version (5.15.0.185.166) is not
+# the ABI. A prebuilt out-of-tree module must match the ABI package version
+# (5.15.0-185.195) and the /lib/modules/<abi> directory name, so both are
+# recorded next to the boot they describe.
 #
-# Written to its OWN file rather than into run.json, for the same reason
-# run.json is written before the first mount: this is evidence, and evidence
-# must survive the run that produced it failing later. finish() folds it into
-# result.json on every exit path, and records null when the run died first.
+# Written to its own file rather than run.json, so the evidence survives a
+# later failure. finish() folds it into result.json on every exit path, and
+# records null when the run died first.
 log "recording resolved kernel ABI"
 in_chroot "$M" dpkg-query -W -f '${binary:Package}\t${Version}\n' \
     'linux-image*' 'linux-modules*' 'linux-headers*' 'linux-generic*' \
@@ -320,7 +291,7 @@ try:
         if '\t' in line:
             n, v = line.rstrip('\n').split('\t', 1)
             # dpkg-query -W with a glob also lists packages dpkg merely
-            # KNOWS about, with an empty version. Recording those would imply
+            # knows about, with an empty version. Recording those would imply
             # the image carries a kernel it does not have.
             if n and v: pkgs[n] = v
 except OSError:
@@ -337,7 +308,7 @@ for cand in ('linux-modules-' + kver, 'linux-image-' + kver,
         break
 # <abi> is the /lib/modules directory name a .ko must live under. Record what
 # actually exists rather than asserting it: a composed system that carries a
-# REAL lib/ directory outranks base's lib -> usr/lib symlink, and the two
+# real lib/ directory outranks base's lib -> usr/lib symlink, and the two
 # paths below are how that is told apart afterwards.
 moddir = os.path.join(merged, 'usr/lib/modules', kver)
 real_lib_modules = os.path.join(merged, 'lib/modules', kver)
@@ -371,15 +342,13 @@ with open(out, 'w', encoding='utf-8') as f:
 print("  probes for %d module(s)" % sum(1 for m in mods if m in probes))
 PY
 
-# The boot matrix asserts the units the MODULES bring, not base's background
+# The boot matrix asserts the units the modules bring, not base's background
 # services: a unit that is absent, masked or never enabled is exactly the
-# failure mode a "list the failed units" check cannot see.
+# failure a "list the failed units" check cannot see.
 #
-# Enable symlinks point at ABSOLUTE paths inside the guest root
-# (/lib/systemd/system/nginx.service). Testing -e here resolves them against
-# the HOST, where they usually do not exist -- which silently dropped
-# nginx.service and kept only those base units the host happens to have
-# installed too. Test the link itself, never its target.
+# Enable symlinks point at absolute paths inside the guest root, so testing
+# -e here would resolve them against the host. Test the link itself, never
+# its target.
 : > "$M/etc/modfs-units"
 for m in "${MODULES[@]}"; do
     [ "$m" = base ] && continue
@@ -399,39 +368,20 @@ cat > "$M/usr/local/sbin/modfs-boottest" <<'GUEST'
 # Runs inside the booted guest. Everything goes to the serial console, which
 # is the only channel the harness can read.
 #
-# /dev/console, NOT /dev/ttyS0. agetty calls vhangup() on its tty while it sets
-# up, which invalidates every OTHER process's open fd to that terminal. This
-# script holds one fd for its whole run, so it was racing the serial getty:
-# whoever touched ttyS0 first won. nginx/apache runs happened to open after
-# agetty had settled and were fine; base+postgres+mysql shifted boot timing by
-# about a second, opened FIRST, and had its fd hung up under it. The symptom is
-# brutal to diagnose -- the first write lands, every later write fails EIO in
-# silence, and the run looks like a harness that never started. systemd's own
-# messages were never affected because systemd writes to /dev/console. No getty
-# owns /dev/console, so nothing vhangups it.
+# /dev/console, not /dev/ttyS0: agetty calls vhangup() on its tty while it
+# sets up, which invalidates every other process's open fd to that terminal,
+# and later writes then fail with EIO in silence. No getty owns /dev/console.
 exec > /dev/console 2>&1
 
-# Liveness marker, emitted BEFORE any waiting. Without it the harness is
-# silent for up to 180 s, which makes three very different outcomes look
-# identical in the serial log: the unit never started, the redirect to
-# /dev/ttyS0 failed, or the harness is simply still waiting. Run acct-pm
-# (base+postgres+mysql) powered off at 187.6 s having printed NOTHING, and
-# that ambiguity is the only reason the cause could not be read off the log.
+# Liveness marker, emitted before any waiting, so the serial log can tell
+# "the unit never started" from "the harness is still waiting".
 echo "===MODFS-HARNESS-ALIVE=== uptime=$(cut -d' ' -f1 /proc/uptime)"
 
-# THE OBSERVER IS THE JOB, and this is structural rather than a race.
-# systemctl(1): the state is "starting" until the job queue goes idle for the
-# FIRST time -- and this harness is itself a queued job for as long as it runs.
-# Run acct-mp finally named it: "360 modfs-boottest.service start running".
-# Moving to a timer removed the DEADLOCK but not the job, so the old
-# `is-system-running --wait` burned its full 120 s on every run and could not
-# have done otherwise. It is gone: a wait that cannot succeed is not a wait.
-#
-# Second and independent: the old drain loop used `grep -c . || echo 0`, but
-# `grep -c` prints 0 AND exits 1 on no match, so `|| echo 0` appended a SECOND
-# zero and n became the two-line string "0\n0". `[ "$n" = "0" ]` was therefore
-# never true and the loop could not break even on a genuinely empty queue.
-# Two defects, one symptom (iterations=60 forever). wc -l always exits 0.
+# Wait for every job except this harness's own. systemctl(1): the state is
+# "starting" until the job queue first goes idle, and this harness is itself a
+# queued job while it runs, so `is-system-running --wait` cannot succeed here.
+# Count with wc -l: `grep -c` exits 1 on no match, and `|| echo 0` would then
+# print a second zero.
 jobs_foreign() {
     systemctl list-jobs --no-legend --plain 2>/dev/null \
         | grep -v 'modfs-boottest\.service' | wc -l
@@ -443,22 +393,16 @@ while [ "$i" -lt 120 ]; do
 done
 echo "MODFS wait-jobs iterations=$i foreign=$(jobs_foreign) uptime=$(cut -d' ' -f1 /proc/uptime)"
 
-# Re-open the console immediately before the report. The waits above are where
-# a TTYVHangup lands -- serial-getty is Type=idle, so its vhangup fires
-# whenever the boot transaction finally settles, which is exactly the window we
-# spend waiting. A hung-up fd fails EIO in silence, so the one thing we must
-# never do is carry a fd ACROSS that window and into the report. This costs
-# nothing and makes the report independent of who hung up what while we waited.
+# Re-open the console right before the report. serial-getty is Type=idle, so
+# its vhangup fires when the boot transaction settles, which is during the
+# waits above; a fd carried across that window would fail with EIO.
 exec > /dev/console 2>&1
 
 echo "===MODFS-BOOTTEST-BEGIN==="
 echo "MODFS state: $(systemctl is-system-running 2>&1)"
 echo "MODFS jobs-remaining: $(systemctl list-jobs --no-legend --plain 2>/dev/null | wc -l)"
 echo "MODFS jobs-foreign: $(jobs_foreign)"
-# Every run so far reports exactly 1 outstanding job and none of them says WHICH.
-# That one job is why `is-system-running --wait` returns 124 and why the reported
-# state can sit at "starting", so naming it is the difference between a number we
-# cannot act on and a fact we can.
+# Name the outstanding jobs: they explain a state stuck at "starting".
 systemctl list-jobs --no-legend --plain 2>/dev/null | sed 's/^/MODFS job /' 
 
 echo "MODFS failed-begin"
@@ -503,11 +447,8 @@ if [ -r /etc/modfs-probes ]; then
     while IFS='|' read -r name probe; do
         [ -n "$probe" ] || continue
         out=$(timeout 30 sh -c "$probe" 2>&1); rc=$?
-        # A PASSING probe's output was DISCARDED, so a probe could not report
-        # anything it merely observed -- only whether it exited 0. The NVIDIA
-        # insmod diagnostic printed its result and it vanished. Pass through
-        # lines on the harness's own structured channel regardless of verdict,
-        # so a probe can carry a finding without having to fail to be heard.
+        # Pass through a probe's MODFS- lines whatever its verdict, so a
+        # probe can report an observation without having to fail.
         printf '%s\n' "$out" | grep '^MODFS-' || :
         if [ "$rc" -eq 0 ]; then echo "MODFS PROBE $name PASS"
         else
@@ -523,9 +464,8 @@ systemctl poweroff -i 2>/dev/null || poweroff -f
 GUEST
 chmod +x "$M/usr/local/sbin/modfs-boottest"
 
-# Triggered by a TIMER, not wanted by multi-user.target. As part of the boot
-# transaction the harness could never observe boot completing, because it was
-# itself the job holding it open.
+# Triggered by a timer, not wanted by multi-user.target: as part of the boot
+# transaction the harness would itself hold the boot open.
 cat > "$M/etc/systemd/system/modfs-boottest.service" <<'UNIT'
 [Unit]
 Description=modfs tier-3 boot test
@@ -546,11 +486,9 @@ WantedBy=timers.target
 TIMER
 mkdir -p "$M/etc/systemd/system/timers.target.wants"
 if [ "$INTERACTIVE" -eq 1 ]; then
-    # EXPLORATION MODE, not a test. The harness ends in `systemctl poweroff`, so
-    # arming it here would shut the machine down seconds after you reached a
-    # prompt. Leave the unit on disk (handy for running it by hand) but do not
-    # arm the timer, and autologin root on both consoles: the guest has no root
-    # password, so without this there is no way in.
+    # Exploration mode, not a test. The harness ends in poweroff, so leave the
+    # unit on disk but do not arm the timer, and autologin root on both
+    # consoles (the guest has no root password).
     log "interactive: harness NOT armed, autologin on tty1 and ttyS0"
     for u in getty@tty1 serial-getty@ttyS0; do
         mkdir -p "$M/etc/systemd/system/${u}.service.d"
@@ -571,15 +509,9 @@ printf 'LABEL=modfsroot / ext4 defaults 0 1\n' > "$M/etc/fstab"
 remove_chroot_policy "$M"
 
 # ---- 4. pack a UEFI disk -------------------------------------------------
-# SIZE THE IMAGE FROM THE CONTENT, not from a constant.
-#
-# IMG_MB was a fixed 3072. The jammy GPU stack fitted (912 MB of artefact) and
-# the noble one did not (1358 MB): rsync died with ENOSPC on
-# libcusolver.so.11.4.3.1 with 42 GB free on the host, because what filled was
-# the 3 GB image file. The same shape as the 4096-byte mount-data ceiling -- a
-# constant that was ample until the content grew past it, and nothing recomputed
-# it. An explicit --size-mb still wins; the floor keeps every set that works
-# today working.
+# Size the image from the content, not from a constant: large sets (the GPU
+# stack) outgrow any fixed size. An explicit --size-mb still wins, and the
+# 3072 MB floor keeps small sets unchanged.
 if [ "$IMG_MB_SET" -eq 0 ]; then
     CONTENT_MB=$(du -sm "$M" 2>/dev/null | cut -f1)
     if [ -n "$CONTENT_MB" ] && [ "$CONTENT_MB" -gt 0 ] 2>/dev/null; then
@@ -595,14 +527,9 @@ sgdisk -n 1:0:+128M -t 1:ef00 -c 1:ESP \
        -n 2:0:0     -t 2:8300 -c 2:modfsroot "$IMG" >/dev/null 2>&1 \
     || die2 "sgdisk failed"
 LOOPDEV=$(losetup --show -f -P "$IMG") || die2 "losetup failed"
-# PARTITION NODES ARE CREATED ASYNCHRONOUSLY, so testing that they EXIST can
-# succeed a moment before the kernel will let anything open them. Observed
-# 2026-09-19 on the first GPU boot attempt: `[ -e ${LOOPDEV}p1 ]` passed and
-# mkfs.vfat then failed, on an image that the identical command formats without
-# complaint when run by hand seconds later. Three squashfs loop mounts are
-# already held at this point and the host carries 36 snap loop devices, which is
-# the load that makes the window visible. Wait for the partitions to be USABLE,
-# not merely present.
+# Partition nodes are created asynchronously, so a node can exist a moment
+# before it can be opened (mkfs then fails). Wait until both are usable, not
+# merely present.
 command -v udevadm >/dev/null 2>&1 && udevadm settle --timeout=20 >/dev/null 2>&1
 for _try in $(seq 1 50); do
     blockdev --getsize64 "${LOOPDEV}p1" >/dev/null 2>&1 \
@@ -613,9 +540,7 @@ blockdev --getsize64 "${LOOPDEV}p1" >/dev/null 2>&1 \
     || die2 "partition ${LOOPDEV}p1 never became usable after losetup -P"
 blockdev --getsize64 "${LOOPDEV}p2" >/dev/null 2>&1 \
     || die2 "partition ${LOOPDEV}p2 never became usable after losetup -P"
-# And keep the reason. `>/dev/null 2>&1 || die2 "mkfs.vfat failed"` discarded
-# the only evidence of WHY, which is the same defect as the silent harness in
-# the 2026-09-16 entry: a failure that reports its existence and nothing else.
+# Keep mkfs output in the bundle, so a failure says why.
 mkfs.vfat -F32 -n ESP "${LOOPDEV}p1" > "$B/mkfs.log" 2>&1 \
     || { sed 's/^/    /' "$B/mkfs.log" >&2; die2 "mkfs.vfat failed, see $B/mkfs.log"; }
 mkfs.ext4 -q -L modfsroot "${LOOPDEV}p2" >> "$B/mkfs.log" 2>&1 \
@@ -632,11 +557,8 @@ rsync -aHAX --numeric-ids \
       "$M/" "$C/mnt/root/" > "$B/rsync.log" 2>&1 || die2 "rsync failed, see $B/rsync.log"
 
 # SQUASH_EXCLUDES drops proc, sys, dev, run, tmp and var/tmp from every
-# artefact -- the DIRECTORIES, not just their contents. That is right for an
-# artefact (they are runtime, not module content) but it means a composed tree
-# has no mountpoints, and systemd cannot mount the API filesystems without
-# them. Tiers 1 and 2 never saw this because mount_chroot_fs mkdir -p's them
-# first. Creating them here is image scaffolding, exactly like the kernel.
+# artefact, directories included, so the image needs its own mountpoints for
+# systemd's API filesystems. Like the kernel, this is image scaffolding.
 log "creating runtime mountpoints (excluded from artefacts by design)"
 for d in proc sys dev run tmp var/tmp; do mkdir -p "$C/mnt/root/$d"; done
 chmod 555 "$C/mnt/root/proc" "$C/mnt/root/sys"
@@ -679,13 +601,9 @@ if [ "$INTERACTIVE" -eq 1 ]; then
     [ -n "${DISPLAY:-}${WAYLAND_DISPLAY:-}" ] || { QDISP="vnc"; log "no DISPLAY; serving VNC on :1 -- connect to localhost:5901"; }
     log "interactive boot: close the window or run 'poweroff' to end"
     if [ "$QDISP" = "gtk" ]; then
-        # -serial mon:stdio, NOT file:. The first interactive run autologged
-        # root successfully -- onto the SERIAL console, which file: makes
-        # write-only, so there was a live root shell nobody could type into,
-        # while the gtk window showed tty1 with the kernel and systemd logging
-        # over the top of it. Put the shell in the terminal that launched this,
-        # where typing works, and keep the window for watching the boot.
-        # (mon:stdio also means Ctrl-A X quits QEMU.)
+        # -serial mon:stdio, not file:, which is write-only: the autologin
+        # shell on the serial console lands in this terminal, where typing
+        # works, and the window shows the boot. Ctrl-A X quits QEMU.
         log "shell is HERE in this terminal; the window shows the video console"
         log "quit with Ctrl-A then X, or type 'poweroff' in the guest"
         qemu-system-x86_64 \
@@ -747,8 +665,8 @@ if '===MODFS-BOOTTEST-BEGIN===' not in serial:
         bail("QEMU hit the %ss timeout -- boot hung or never started." % timeout, tail)
     if not tail:
         bail("serial log is EMPTY: firmware never handed off, or no console.")
-    # The ALIVE marker separates "the unit never ran" from "the unit ran and
-    # stalled". Before it existed both looked like an empty serial log.
+    # The ALIVE marker separates "the unit never ran" from "the unit ran
+    # and stalled".
     alive = re.search(r'===MODFS-HARNESS-ALIVE=== uptime=(\S+)', serial)
     if alive:
         waits = re.findall(r'MODFS wait-\S+ \S+ uptime=(\S+)', serial)
@@ -786,7 +704,7 @@ for j in re.findall(r'MODFS job (.+)', serial):
     print("    outstanding job: %s" % j.strip()[:90])
 if foreign is not None and int(foreign) == 0 and state == 'starting':
     # systemctl(1): "starting" holds until the job queue goes idle for the
-    # FIRST time, and the harness is itself a queued job. With no FOREIGN job
+    # first time, and the harness is itself a queued job. With no foreign job
     # outstanding this is the expected reading, not an unsettled system.
     print("    ^ steady: the only outstanding job is the harness itself")
 print("  failed units     : %d%s" % (len(failed), "  " + ", ".join(failed) if failed else ""))
