@@ -10,13 +10,12 @@
 #   sudo ./scripts/08_build_catalogue.sh --refresh-metadata --adopt-generation
 #
 # --refresh-metadata re-runs stage 06 over base and every built module without
-# rebuilding anything. Needed whenever the manifest schema grows -- the file
-# sidecars for class-4 checking were added long after these artefacts existed.
+# rebuilding anything, e.g. after the manifest schema grows.
 #
 # Idempotent: a module with both a .sqsh and a .json is skipped unless
-# --force. Build failures do NOT stop the run -- a catalogue chosen
-# adversarially is expected to contain packages that will not install, and
-# the harness needs whatever did build.
+# --force. Build failures do not stop the run: an adversarial catalogue is
+# expected to contain packages that will not install, and the harness needs
+# whatever did build.
 #
 # Exit: 0 all requested modules present, 1 some failed, 2 the runner broke.
 
@@ -66,11 +65,9 @@ for m in (doc.get('modules') or []):
     seen.add(name)
     if wanted is not None and name not in wanted: continue
     post = str(m.get('post_install') or '').replace('\t', ' ').replace('\n', ' ')
-    # '-' for empty, never an empty field: IFS=$'\t' treats tab as IFS
-    # WHITESPACE, so bash collapses runs of tabs and an empty column silently
-    # shifts every later value one place left. That put post_install into the
-    # snapshot variable and pipdemo tried to derive SOURCE_EPOCH from a pip
-    # command line.
+    # '-' for empty, never an empty field: with IFS=$'\t', bash treats tab as
+    # whitespace and collapses runs of tabs, so an empty column would shift
+    # every later value one place left.
     rows.append((name, str(m.get('version') or defaults.get('version') or '1.0'),
                  ' '.join(str(p) for p in pkgs),
                  str(m.get('snapshot') or '') or '-', post or '-'))
@@ -97,9 +94,8 @@ if [ "$REFRESH" -eq 1 ]; then
     [ "$snapshot" = "-" ] && snapshot=""
     [ "$post" = "-" ] && post=""
         [ -f "${MOD_DIR}/${name}.json" ] || continue
-        # A module built from another snapshot must have that snapshot
-        # recorded, so the override has to be re-applied on refresh too --
-        # otherwise the positive control would silently record the wrong one.
+        # A module built from another snapshot must record that snapshot,
+        # so the override is re-applied on refresh too.
         if MODFS_SNAPSHOT_ID="${snapshot:-$SNAPSHOT_ID}" \
            "${HERE}/scripts/06_extract_metadata.sh" "$name" --version "$version" "${ADOPT_ARGS[@]}" \
                > "${LOG_DIR}/refresh-${name}.log" 2>&1 </dev/null; then
@@ -165,8 +161,8 @@ while IFS=$'\t' read -r name version pkgs snapshot post; do
     if [ "$mb" -gt "$MODULE_MAX_MB" ]; then
         flag=" OVER ${MODULE_MAX_MB}MB"; OVERSIZE+=("$name")
     fi
-    # Integer MB rounds 11 of 27 real modules to "0M", which hides the whole
-    # point of a delta. Print the actual size.
+    # Integer MB would round many small deltas to "0M", so print the
+    # actual size.
     printf " %-16s %10s  %s%s\n" "$name" "$(human "$bytes")" "ok" "$flag"
 done < "$PLAN"
 echo "========================================================================"
