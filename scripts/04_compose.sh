@@ -14,10 +14,8 @@
 # PHASE 2: reconcile those registries, then regenerate what is derived from
 #          them, and measure the same things again.
 #
-# Reads MOUNTED ARTEFACTS only. It used to read the .upper/.dir build trees,
-# which quietly made composition depend on scratch directories that are
-# supposed to be disposable -- and left two divergent reconciliation
-# implementations in the tree. Both 04 and 07 now call scripts/reconcile.py.
+# Reads the mounted artefacts only, never the disposable build trees, and
+# reconciles with the same scripts/reconcile.py as 07.
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 source "${HERE}/config.sh"
@@ -26,7 +24,7 @@ need_root
 
 [ $# -ge 2 ] || die "usage: $0 base <module> [module...]"
 MODULES=("$@")
-# C1: identifiers reach paths and mount options; validate at the boundary.
+# Module names reach paths and mount options, so validate them here.
 for m in "${MODULES[@]}"; do require_ident "$m" "module name"; done
 
 C="${BUILD_DIR}/compose"
@@ -128,10 +126,9 @@ python3 "${HERE}/scripts/reconcile.py" --merged "$M" \
         --groups-out "$GROUPS_AFTER" "${LAYERS[@]}" \
     || die "reconciliation failed"
 
-# /etc/alternatives/* is owned by no package: there is nothing to merge, it is
-# a FUNCTION of the merged registry and its priorities. update-alternatives is
-# the authority on computing it, so let it, rather than reimplementing the
-# rules for slaves and ties.
+# /etc/alternatives/* is owned by no package; it is derived from the merged
+# registry and its priorities. update-alternatives computes it, rather than
+# this script reimplementing its rules for slaves and ties.
 AUTO_OK=0; AUTO_FAIL=0
 while read -r g; do
     [ -n "$g" ] || continue
