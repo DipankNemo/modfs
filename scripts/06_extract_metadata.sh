@@ -5,26 +5,32 @@
 #   sudo ./scripts/06_extract_metadata.sh <name> [--parent NAME|none]
 #                                                [--version V]
 #                                                [--requested "pkg [pkg...]"]
+#                                                [--new-build]
+#                                                [--adopt-generation]
+#                                                [--check]
 #
-# Why this exists:
-#   Until now the checker read /var/lib/dpkg/status straight out of the build
-#   tree, so metadata-only validation still needed a few hundred MB of chroot
-#   per module. This writes the same information next to the artefact, so
-#   base.sqsh + base.json is everything a consistency check needs. The build
-#   tree becomes disposable scratch, which is what it was always meant to be.
+#   --new-build          label a fresh delta with the current generation
+#   --adopt-generation   adopt a legacy manifest that has no generation
+#   --check              re-derive and compare with the manifest; write nothing
+#
+# Why: with the manifest beside it, <name>.sqsh + <name>.json is everything a
+# consistency check needs, and the build tree is disposable scratch.
 #
 # What lands in the file:
 #   - identity  : module, version, parent, snapshot, suite, arch, build time
-#   - the ARCHITECTURE section 5 module-dependency layer, empty for now
+#   - requires, conflicts, provides : module-dependency layer (ARCHITECTURE
+#                 section 5), from specs/modules.yaml
 #   - requested : the packages actually asked for on the build command line
 #   - artifact  : .sqsh name, size and sha256 (reproducibility evidence)
-#   - binding   : what this manifest was DERIVED FROM, and a digest over the
+#   - binding   : what this manifest was derived from, and a digest over the
 #                 fields the checks depend on (see "Binding" below)
-#   - packages  : ONLY this module's contribution -- packages whose
+#   - packages  : only this module's contribution -- packages whose
 #                 (name, version) differ from the parent's. Full dpkg
 #                 relations for each: Depends, Pre-Depends, Conflicts,
 #                 Breaks, Replaces, Provides.
 #   - removed   : packages the parent had and this module does not
+#   - accounts, units, uid_range, identity_audit : identity data for class 7
+#   - generation : the archive view and exact base artefact built against
 #
 #   Consumers rebuild the merged view as:
 #       effective(m) = parent.packages | m.packages  -  m.removed
@@ -32,34 +38,25 @@
 # Re-running is safe: hand-written requires/conflicts/provides/version, and a
 # previously recorded requested list, are carried over rather than wiped.
 #
-# BINDING THE MANIFEST TO THE ARTEFACT  (new, 2026-09-18; this is a FEATURE)
+# Binding the manifest to the artefact:
 #
-#   Every tier-1 verdict trusts this document, and until now nothing tied it to
-#   the .sqsh it describes. Two holes, and the first was the larger:
+#   1. Derivation. The manifest is derived from the artefact, mounted
+#      read-only, not from the build tree (which still holds paths that
+#      SQUASH_EXCLUDES drops), so the content fields and the recorded digest
+#      come from the same bytes. `binding.source` records which was used.
 #
-#   1. DERIVATION. This script read <name>.upper -- the BUILD TREE -- not the
-#      artefact. `artifact.sha256` therefore said "the .sqsh hashes to X" while
-#      every content field described a different tree. Measured: the tree holds
-#      /dev, /tmp, the apt caches and the build logs that SQUASH_EXCLUDES drops,
-#      so `file_uids` listed uid 100 (_apt) for modules whose artefact contains
-#      no file owned by 100 at all. It now mounts the artefact read-only and
-#      derives from THAT, so the content fields and the recorded digest come
-#      from the same bytes. `binding.source` records which was used.
+#   2. Omission. `binding.fields_sha256` is a canonical digest over exactly
+#      the fields the checks read, so a field that is edited or removed does
+#      not pass unnoticed. `binding.sidecar_sha256` does the same for the
+#      class-4 sidecar.
 #
-#   2. OMISSION. Deleting two keys from a manifest silently disabled class 7's
-#      numeric-ownership check (round 2 finding R2-9). `binding.fields_sha256`
-#      is a canonical digest over exactly the fields the checks read, so a field
-#      that is edited, or simply removed, no longer passes unnoticed.
-#      `binding.sidecar_sha256` does the same for the class-4 sidecar.
+#   This is integrity, not authenticity: the digest lives in the document it
+#   protects, so anyone who can rewrite the manifest can rewrite the digest
+#   (as with `artifact.sha256`). It catches drift, partial refreshes and
+#   omission. Authenticity needs a key outside the artefact set and is out of
+#   scope.
 #
-#   WHAT THIS IS AND IS NOT. It is INTEGRITY, not AUTHENTICITY: the digest lives
-#   in the document it protects, so anyone who can rewrite the manifest can
-#   rewrite the digest. That is the same property `artifact.sha256` already has,
-#   and it closes drift, partial refreshes and quiet omission -- which is what
-#   actually goes wrong here. Authenticity needs a key outside the artefact set
-#   and is deliberately out of scope (ARCHITECTURE H1).
-#
-# Output: $MOD_DIR/<name>.json
+# Output: $MOD_DIR/<name>.json and $MOD_DIR/<name>.files.json.zst (class 4)
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 source "${HERE}/config.sh"
@@ -88,12 +85,8 @@ while [ $# -gt 0 ]; do
         --new-build) NEW_BUILD=1; shift ;;
         --adopt-generation) ADOPT_GENERATION=1; shift ;;
         --check)
-            # Re-derive from the artefact and COMPARE against the manifest on
-            # disk instead of writing. Used by 12_verify_binding.sh. Reusing
-            # this script rather than reimplementing the derivation is
-            # deliberate: a second implementation would drift, and the question
-            # being asked is "is the manifest still what this artefact
-            # produces", not "is the extractor correct".
+            # Re-derive from the artefact and compare against the manifest on
+            # disk instead of writing. Used by 12_verify_binding.sh.
             CHECK_ONLY=1; shift ;;
         -*)
             die "unknown option: $1" ;;
@@ -104,7 +97,7 @@ while [ $# -gt 0 ]; do
 done
 
 [ -n "$NAME" ] || die "usage: $0 <name> [--parent NAME|none] [--version V] [--requested \"pkg ...\"]"
-# C1: identifiers reach paths and mount options; validate at the boundary.
+# Module names reach paths and mount options, so validate them here.
 require_ident "$NAME" "module name"
 case "$PARENT" in ""|none|NONE|None) ;; *) require_ident "$PARENT" "parent module name" ;; esac
 
@@ -118,14 +111,12 @@ module_tree() {          # module_tree <name> -> path on stdout, empty if none
     fi
 }
 
-# THE ARTEFACT IS THE SOURCE OF TRUTH, and the build tree is the fallback.
-# Mounting is ~5-18 ms per artefact (measured) and this runs once per build, so
-# the cost is irrelevant here -- it is the CHECK path that cannot afford it.
+# The artefact is the source of truth; the build tree is the fallback.
+# Mounting costs milliseconds and this runs once per build.
 MOUNT_ROOT="${BUILD_DIR}/metadata-${NAME}.$$"
-# Sets ARTIFACT_MNT rather than printing it. `$(mount_artifact ...)` would run
-# the mount in a SUBSHELL, so track_mount's push would be lost with the
-# subshell and the trap would never unmount it -- the exact class of leak
-# lib.sh's mount stack exists to prevent.
+# Sets ARTIFACT_MNT rather than printing it: `$(mount_artifact ...)` would
+# mount in a subshell whose track_mount push is lost, so the EXIT trap would
+# never unmount it.
 ARTIFACT_MNT=""
 mount_artifact() {       # mount_artifact <name>  -> sets ARTIFACT_MNT ('' if none)
     local n sq mp
@@ -154,10 +145,8 @@ case "$PARENT" in
     ""|none|NONE|None)
         PARENT="" ;;
     *)
-        # The parent comes from ITS artefact too, for the same reason: `removed`
-        # and every package's origin are computed against it, so a parent read
-        # from a build tree would make this module's contribution a statement
-        # about scratch rather than about what ships.
+        # The parent is read from its artefact too: `removed` and every
+        # package's origin are computed against it.
         mount_artifact "$PARENT"; PARENT_TREE="$ARTIFACT_MNT"
         if [ -z "$PARENT_TREE" ]; then
             SOURCE=tree
@@ -203,7 +192,7 @@ export M_SOURCE="$SOURCE"
 export M_SQUASH_EXCLUDES="$SQUASH_EXCLUDES"
 export M_SPEC_DIR="$SPEC_DIR"
 
-# --check exits 1 on a MISMATCH, which is a verdict and not a crash, so the
+# --check exits 1 on a mismatch, which is a verdict and not a crash, so the
 # status is captured rather than turned into die().
 RC=0
 python3 - <<'PY' || RC=$?
@@ -215,11 +204,8 @@ SCHEMA = 1
 def warn(msg):
     sys.stderr.write("\033[1;33m[warn]\033[0m %s\n" % msg)
 
-# JSON key -> dpkg control field. All six relation types are captured even
-# though today's checker only consults Conflicts/Breaks: Replaces is what
-# file-collision detection (class 4) will need, Provides is what virtual
-# package checking will need, and neither can be recovered once the build
-# tree is deleted.
+# JSON key -> dpkg control field. All six relation types are recorded; the
+# checks in 05 read every one of them.
 RELATIONS = [
     ("depends",     "Depends"),
     ("pre_depends", "Pre-Depends"),
@@ -316,9 +302,8 @@ if parent_tree and not parent_pkgs:
 auto = load_auto(tree)
 
 # ------------------------------------------------- carry over hand-written
-# Week 3 fills requires/conflicts/provides in by hand. A rebuild must not
-# throw that away, so anything already present and not overridden on the
-# command line survives.
+# A rebuild must not throw away hand-written fields, so anything already
+# present and not overridden survives.
 prev = {}
 if os.path.exists(out_path):
     try:
@@ -360,9 +345,8 @@ if not requested:
     requested = list(prev.get('requested') or [])
 
 # ------------------------------------------------- the module's contribution
-# Only what differs from the parent. Everything else is inherited and already
-# described by the parent's own manifest -- storing it again would duplicate
-# base's 113 packages into every sibling.
+# Only what differs from the parent; everything else is inherited and
+# described by the parent's own manifest.
 packages = {}
 for name in sorted(own):
     f = own[name]
@@ -420,20 +404,18 @@ resolved_generation = extraction_generation(
     adopt=E.get('M_ADOPT_GENERATION') == '1')
 
 # ------------------------------------------------- accounts and unit identity
-# Conflict class 7. /etc/passwd, /etc/group, /etc/shadow and /etc/gshadow are
-# rewritten wholesale by maintainer scripts, so they are NOT package-owned
-# files and never appear in the class-4 sidecar. OverlayFS takes the top
-# layer's copy entire and cannot union conflicting numbers: four modules in
-# this catalogue independently allocate uid 103 / gid 104 to four different
-# names, so whichever lands on top silently redefines the others' ownership.
+# Conflict class 7. The account databases are rewritten wholesale by
+# maintainer scripts, so they are not package-owned and never appear in the
+# class-4 sidecar, and two modules can give one number to different names.
 #
 # Record additions, changed numeric identities and explicit removals. A delta
-# without an account file inherits its parent; absence is not deletion. Password hashes are deliberately
-# NOT stored: verifying that a shadow record exists needs the name only.
+# without an account file inherits its parent; absence is not deletion.
+# Password hashes are not stored: checking that a shadow record exists needs
+# only the name.
 def colon_table(tree, rel, key_at, want):
     out = {}
-    # From account_schema.FIELDS, not a third private copy: R4-6 was R4-4's
-    # defect found again here because the two tables were independent.
+    # Field counts come from account_schema.FIELDS, shared with the merger
+    # and the verifier.
     expected = FIELDS[rel]
     path = os.path.join(tree, rel)
     if not os.path.exists(path):
@@ -475,14 +457,10 @@ users = {n: {'uid': v['uid'], 'gid': v['gid']}
 groups = {n: {'gid': v['gid'],
               'members': [x for x in v['members'].split(',') if x]}
           for n, v in own_g.items() if n not in par_g or v['gid'] != par_g[n]['gid']}
-# FILE OWNERS, as NUMBERS. Class 7 compares account RECORDS, but ownership on
-# disk is a number, and until now nothing looked at the numeric owners of the
-# files a module actually ships. Reproduced 2026-09-17 WITHOUT any forged
-# manifest: a module that allocates no account at all, but ships a file owned by
-# uid 2500 -- the way a tarball or a pip install preserving ownership does --
-# silently takes on another module's identity in the composed system, and its
-# empty `accounts` block is entirely truthful. Recording the numbers is what
-# lets class 7 compare what is ON DISK rather than only what was DECLARED.
+# Numeric file owners. Class 7 compares account records, but ownership on
+# disk is a number: a module that allocates no account can still ship a file
+# owned by uid 2500 (a tarball or pip install preserving ownership). Recording
+# the numbers lets class 7 compare what is on disk, not only what is declared.
 file_ids = {'uids': set(), 'gids': set()}
 for _dp, _dn, _fn in os.walk(tree):
     for _n in _dn + _fn:
@@ -539,9 +517,7 @@ def classify(num):
         return 'in-range'
     # base has no window: it is the baseline every module inherits, built
     # before partitioning applies, so its accounts legitimately sit in
-    # Debian's 100-999 dynamic system range. Calling those out-of-range
-    # flagged seven correct base accounts and would train the reader to
-    # ignore the audit.
+    # Debian's 100-999 dynamic system range.
     if uid_range is None and n <= DEBIAN_DYNAMIC_MAX:
         return 'base-dynamic'
     return 'out-of-range'
@@ -587,17 +563,11 @@ for unit_dir in ('lib/systemd/system', 'usr/lib/systemd/system', 'etc/systemd/sy
 
 # ---------------------------------------------------------------- assemble
 # ------------------------------------------------- file ownership sidecar
-# Conflict class 4 needs to know which package owns which PATH. That comes
-# from dpkg's own /var/lib/dpkg/info/<pkg>.list files, which for a delta
-# contain exactly the packages the delta installed -- overlayfs leaves the
-# parent's list files in the lower layer. Written as a separate, compressed
-# sidecar because it is 10-20x the size of module.json and only the
-# file-collision check ever reads it.
-#
-# Directories are DROPPED. dpkg lists them in every owning package's .list,
-# so co-ownership of /usr/bin is normal and would swamp the signal; on a
-# merged-/usr system /bin, /lib and /sbin are symlinks to directories and
-# must go too, which is why the test follows symlinks.
+# Conflict class 4 needs to know which package owns which path. That comes
+# from dpkg's /var/lib/dpkg/info/<pkg>.list files, which for a delta cover
+# exactly the packages the delta installed (the parent's list files stay in
+# the lower layer). It is a separate, compressed sidecar because it is 10-20x
+# the size of the manifest and only the file-collision check reads it.
 import glob as _glob
 import subprocess as _sp
 
@@ -611,19 +581,14 @@ def is_dir(rel):
             return True
     return False
 
-# EXCLUDED PATHS ARE NOT SHIPPED, and this case appeared the moment derivation
-# moved from the build tree to the artefact. `base-files` owns /dev, /tmp,
-# /proc, /run, /sys and /var/tmp and `apt` owns the archive caches -- every one
-# of them in SQUASH_EXCLUDES. Against the build tree they tested as directories
-# and were dropped; against the artefact they do not exist at all, so `is_dir`
-# called them files and base's sidecar gained nine phantom package-owned paths.
+# Paths in SQUASH_EXCLUDES are not shipped. Packages still list them
+# (base-files owns /dev, /tmp, /run ...; apt owns the archive caches), and
+# since they are absent from the artefact, is_dir() would call them files.
 #
-# The test is the exclude list itself rather than "absent from the artefact",
-# and the difference matters: on merged-/usr jammy a delta's
-# /lib/systemd/system/<unit>.service exists only in the MERGED view, because the
-# /lib -> usr/lib symlink lives in base and the unit file lives in the delta.
-# Testing absence dropped 143 such paths across 27 sidecars -- real files, and
-# exactly the kind class 4 exists to catch colliding.
+# The test is the exclude list itself, not "absent from the artefact": on
+# merged-/usr jammy a delta's /lib/systemd/system/<unit>.service exists only
+# in the merged view (the /lib -> usr/lib symlink lives in base), and such
+# real files are exactly what class 4 must see.
 EXCLUDED = tuple('/' + x for x in (E.get('M_SQUASH_EXCLUDES') or '').split() if x)
 def excluded(rel):
     return any(rel == x or rel.startswith(x + '/') for x in EXCLUDED)
@@ -664,7 +629,7 @@ sidecar = {'schema': SCHEMA, 'module': E['M_NAME'],
            'files': dict(sorted(files.items())), 'diversions': diversions}
 side_path = out_path[:-5] + '.files.json.zst'
 blob = json.dumps(sidecar, indent=None, sort_keys=False).encode('utf-8')
-# Digest of the UNCOMPRESSED sidecar, so it does not depend on the zstd level
+# Digest of the uncompressed sidecar, so it does not depend on the zstd level
 # or version. This is what binds class 4's input to the manifest that names it.
 sidecar_sha256 = hashlib.sha256(blob).hexdigest()
 if E.get('M_CHECK_ONLY') == '1':
@@ -684,13 +649,12 @@ else:
         warn("could not write %s (%s); class-4 checking will skip this module"
              % (side_path, exc))
 # ------------------------------------------------- manifest binding
-# BIND_FIELDS is the list of keys the checks actually read, and it is stored in
-# the manifest rather than only in this script, so a verifier can reproduce the
-# digest without knowing this version of the code. class 4 reads the sidecar
-# (bound separately by its own digest) plus `packages`; class 7 reads
-# `accounts` and `units`; PRE reads parent/snapshot/suite/arch/version; class 6
-# reads `packages` and `removed`; the module-dependency layer reads
-# requires/conflicts/provides.
+# BIND_FIELDS (manifest_binding.py) lists the keys the checks read. It is
+# stored in the manifest too, so a verifier can reproduce the digest without
+# this version of the code. Class 4 reads the sidecar (bound separately by its
+# own digest) plus `packages`; class 7 reads `accounts` and `units`; PRE reads
+# parent/snapshot/suite/arch/version; class 6 reads `packages` and `removed`;
+# the module-dependency layer reads requires/conflicts/provides.
 sys.path.insert(0, os.path.join(E['MODFS_SRC'], 'scripts'))
 from manifest_binding import BIND_FIELDS, bind_digest
 
@@ -704,10 +668,11 @@ doc = {
     'arch':     E['M_ARCH'],
     'built':    E['M_BUILT'],
 
-    # Module-level dependency layer, ARCHITECTURE section 5. Package
-    # relations cannot express cross-module requirements, because apt only
-    # ever sees one module's build. Filled in by hand in week 3; note these
-    # are a different namespace from the per-package fields of the same name.
+    # Module-level dependency layer (ARCHITECTURE section 5), from the
+    # catalogue or carried over. Package relations cannot express
+    # cross-module requirements, because apt only ever sees one module's
+    # build. These are a different namespace from the per-package fields of
+    # the same name.
     'requires':  list(cat_requires  if cat_requires  is not None else (prev.get('requires')  or [])),
     'conflicts': list(cat_conflicts if cat_conflicts is not None else (prev.get('conflicts') or [])),
     'provides':  list(cat_provides  if cat_provides  is not None else (prev.get('provides')  or [])),
@@ -737,9 +702,9 @@ doc['binding'] = {
 }
 
 if E.get('M_CHECK_ONLY') == '1':
-    # Compare, do not write. Only the BOUND fields are compared: `built` is a
-    # wall-clock stamp and is deliberately outside the binding, so a manifest
-    # does not become "wrong" merely by being older than a re-derivation.
+    # Compare, do not write. Only the bound fields are compared: `built` is a
+    # wall-clock stamp outside the binding, so a manifest does not become
+    # "wrong" merely by being older than a re-derivation.
     old = prev or {}
     ob = (old.get('binding') or {})
     nb = doc['binding']
@@ -750,11 +715,10 @@ if E.get('M_CHECK_ONLY') == '1':
         problems.append("binding covers different fields: %s vs %s"
                         % (ob.get('fields'), nb['fields']))
     else:
-        # TWO DISTINCT QUESTIONS, and the first version of this asked only the
-        # second: comparing the STORED digest against the re-derived one passes
-        # a manifest whose fields were edited while its digest was left alone,
-        # because the stored digest still equals what the artefact produces.
-        # The digest must be recomputed from the manifest AS IT IS ON DISK.
+        # Two questions. First, recompute the digest from the manifest as it
+        # is on disk: comparing only the stored digest would pass fields that
+        # were edited while the digest was left alone. Then compare that with
+        # the re-derivation.
         old_actual = bind_digest(old, ob['fields'])
         if old_actual != ob['fields_sha256']:
             differing = [k for k in ob['fields'] if old.get(k) != doc.get(k)]
