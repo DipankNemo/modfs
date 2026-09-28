@@ -77,6 +77,7 @@ file checks is listed in [`tests/README.md`](tests/README.md).
     specs/            the module catalogue and the per-module UID ranges
     tests/            regression and adversarial test suites
     thesis/evidence/  every published number, regenerated, with provenance
+                      (raw/ holds the per-set census and per-composition sweep rows)
     docs/             reference documentation (below) and the cross-machine evidence
     ARCHITECTURE.md   the canonical design
     EVOLUTION.md      how the design developed, phase by phase
