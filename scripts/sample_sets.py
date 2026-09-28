@@ -353,9 +353,9 @@ def main(argv):
         print("  manifests. A conflict expressed through a virtual package name")
         print("  will not be known, and high-N draws may be refused by tier 1.")
 
-    # Feasibility ceiling. A catalogue containing a deliberate conflict pair
-    # cannot be composed whole, and saying which N is the real top of the
-    # range beats letting a plan point quietly produce nothing.
+    # Feasibility ceiling. A catalogue with a deliberate conflict pair
+    # cannot be composed whole, so find the largest admissible N instead of
+    # letting a plan point silently produce nothing.
     rng = random.Random(seed)
     ceiling = 0
     for n in range(len(mods), 1, -1):
