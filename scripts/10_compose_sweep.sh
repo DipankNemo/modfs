@@ -1,34 +1,31 @@
 #!/usr/bin/env bash
 #
-# TIER 2 sweep: actually compose module sets at increasing N and verify the
-# composed system, rather than checking metadata about it.
+# Tier-2 sweep: compose module sets at increasing N and verify the composed
+# system, rather than checking metadata about it.
 #
 #   sudo ./scripts/10_compose_sweep.sh
 #   sudo ./scripts/10_compose_sweep.sh --seed 7 --plan 2:5,3:5
 #   sudo ./scripts/10_compose_sweep.sh --pairs /srv/modfs/logs/combinations.csv
 #
-# Tier 1 (09_run_combinations.sh) has thousands of data points but never
-# mounts anything. Tier 2 had four, all at N<=3, while the design promises
-# arbitrary N. This closes that gap with real compositions from N=2 to the
-# largest N the catalogue admits, which the sampler computes rather than
-# assumes. (An earlier version of this header claimed "96 compositions from
-# N=2 to N=27". It was 81, and the top of that range held nothing at all --
-# see the sample-plan section for why.)
+# Tier 1 (09_run_combinations.sh) never mounts anything. This composes real
+# sets from N=2 up to the largest N the catalogue admits, which the sampler
+# computes rather than assumes.
 #
 # Per composition it verifies:
 #   V1  reconciliation completed
-#   V2  merged dpkg status is the EXACT UNION of the layers (sets, not counts)
+#   V2  merged dpkg status is the exact union of the layers (name and version)
 #   V3  every alternatives group holds every candidate any layer offered
 #   V4  /etc/ld.so.cache is the union of the layers' caches
 #   V5  dpkg --audit is clean
 #   V6  the composed account databases (passwd, group, shadow, gshadow, subuid,
-#       subgid) are the exact SEMANTIC union of the layers, compared record by
+#       subgid) are the exact semantic union of the layers, compared record by
 #       record rather than by line -- numeric uniqueness is not composition
-#   V7  every path present in any layer is VISIBLE in the merged view, compared
+#   V7  every path present in any layer is visible in the merged view, compared
 #       by (kind, size) and never traversing a symlink, so a decoy cannot stand
 #       in for a payload and the verdict cannot depend on the checking host
 #   V8  every debconf record any layer answered survives the merge
-# and records mount, reconcile and total time so cost against N is measurable.
+# and records mount, reconcile, total and verify times, so cost against N is
+# measurable.
 #
 # The positive control is excluded: it is built from a different snapshot and
 # is meant to be rejected at tier 1, so composing it proves nothing.
@@ -42,24 +39,14 @@ source "${HERE}/scripts/lib.sh"
 die2() { printf '\033[1;31m[FAIL]\033[0m %s\n' "$*" >&2; exit 2; }
 [ "$(id -u)" -eq 0 ] || die2 "must run as root (mounts + chroot)"
 
-# The default plan reaches the TOP of the range, which is 36 -- not 37, because
-# the catalogue contains a deliberate conflict pair and so cannot be composed
-# whole, and not 27, which is where this plan used to stop. "27:1" was not a
-# sample at all when it was written: the catalogue then held exactly 27 usable
-# modules, so N=27 was a CENSUS of one deterministic set. The catalogue grew to
-# 37 and that plan point silently became a 27-of-37 random draw of a single
-# sample. High N now gets enough samples to fit a line through.
-#
-# AND IT DECAYED AGAIN, the same way, on 2026-09-19. "36:2" was the census of
-# the two maximal admissible sets of a 37-usable catalogue. Adding the two GPU
-# modules made the catalogue 39 usable and the maximum 38, so "36:2" silently
-# became a 2-draw sample of a large space while still LOOKING like the top of
-# the range. The top point is now 38:2, and the lesson is that this constant
-# must be re-derived whenever the catalogue grows -- run
+# The default plan reaches the top of the range: the largest admissible N,
+# which is below the catalogue size because the catalogue contains a
+# deliberate conflict pair. That maximum moves whenever the catalogue grows,
+# and the top plan point must then be re-derived by hand -- run
 #   python3 scripts/sample_sets.py --spec specs/modules.yaml \
 #       --mod-dir "$MOD_DIR" --plan 2:1 --pairs <pair csv> --out /dev/null
-# and read "largest admissible N" off it. Deriving it here automatically is the
-# real fix and is not done.
+# and read "largest admissible N" off it. Otherwise a point meant as the
+# census of the maximal sets silently becomes a small random sample.
 SEED=1
 PLAN="2:30,3:30,5:20,10:10,15:10,20:10,25:10,27:10,30:10,33:6,35:4,38:2"
 CSV="${LOG_DIR}/compose-sweep.csv"; PAIRS=""
@@ -82,16 +69,9 @@ W="${BUILD_DIR}/csweep"
 reset_workdir "$W"
 
 # ---- maximal admitted subset ---------------------------------------------
-# A high-N boot test is impossible while the catalogue contains sets tier 1
-# rejects -- Run A died in APT for exactly that reason. This computes a set
-# to which no further module can be added without a tier-1 rejection, and
-# records it so the boot test has something legitimate to compose.
-#
-# Tier-1 rejections here are overwhelmingly pairwise (class 2, 3, 7 and the
-# precondition), so the pair verdicts give a conflict graph and a maximal
-# independent set in it is a maximal admitted subset. The result is then
-# CONFIRMED with one n-ary tier-1 run, because "no rejecting pair" is not by
-# itself a proof for the whole set.
+# A high-N boot test needs a set tier 1 admits. This builds one greedily and
+# records it for the boot test: every addition is confirmed against the whole
+# selected set, and the result is confirmed once more as a whole.
 if [ "$MAXSUB" -eq 1 ]; then
     PAIRCSV="${PAIRS:-$W/pairs.csv}"
     if [ -z "$PAIRS" ]; then
@@ -101,12 +81,10 @@ if [ "$MAXSUB" -eq 1 ]; then
             || die2 "pair sweep failed, see $W/pairs.log"
     fi
 
-    # Pair verdicts ORDER the search; they no longer decide it. Treating every
-    # rejected pair as an undirected conflict edge is invalid once positive
-    # requirements exist: fake-cuda is rejected with every module except
-    # fake-nvidia-driver, yet it is admissible in any set that already
-    # contains the driver. The previous "no further module can be added" claim
-    # was false for exactly that reason.
+    # Pair verdicts only order the search. They cannot decide it: with
+    # positive requirements a rejected pair is not a conflict edge (fake-cuda
+    # is rejected alongside everything except fake-nvidia-driver, yet is
+    # admissible in any set that already contains the driver).
     CAND="$W/candidates.txt"
     python3 - "$PAIRCSV" "$CAND" <<'ORDPY' || die2 "candidate ordering failed"
 import csv, sys
@@ -130,7 +108,7 @@ ORDPY
     SUBSET_LOG="${SUBSET_OUT%.txt}-tier1.log"
     : > "$SUBSET_LOG"
     CHOSEN=""; EXCLUDED=""; TRIES=0
-    # Every addition is confirmed N-ARILY against the whole selected set, so
+    # Every addition is confirmed n-arily against the whole selected set, so
     # the result is admitted by construction rather than inferred from pairs.
     for round in 1 2 3; do
         ADDED=0; NEXT=""
@@ -178,25 +156,21 @@ fi
 mkdir -p "$(dirname "$CSV")" 2>/dev/null || true
 
 # ---- sample plan ----------------------------------------------------------
-# Seeded, so the sampled sets are reproducible: an evaluation that cannot be
-# re-run is not evidence.
+# Seeded, so the sampled sets are reproducible.
 #
-# The draw is CONSTRAINT-AWARE (sample_sets.py). It used to be uniform, which
-# works while nearly every draw is admissible and silently stops working when
-# it is not: at N=27 of 37 modules only 38 % of uniform draws satisfy the
-# catalogue's constraints, and the plan asked for exactly one sample there, so
-# the top of the cost-vs-N curve came out EMPTY 62 % of the time -- and did.
+# The draw is constraint-aware (sample_sets.py): at high N most uniform draws
+# violate the catalogue's constraints, and the top of the cost-vs-N curve
+# would come out empty.
 #
-# The sampler PROPOSES, tier 1 still DECIDES. Every set is put through
-# 05_check.sh below exactly as before, so a set the model gets wrong is
-# recorded NOT_ADMITTED rather than composed on the model's word.
+# The sampler proposes; tier 1 decides. Every set still goes through
+# 05_check.sh below, so a set the model gets wrong is recorded NOT_ADMITTED
+# rather than composed on the model's word.
 SAMPLES="$W/samples.txt"
 require_uint "$SEED" 0 4294967295 "--seed"
 
-# Exclusions are MEASURED, not assumed. The mail-transport-agent conflict is
-# declared only through a virtual package name, so no module manifest records
-# it; it exists in the pair verdicts or it exists nowhere. ~20 s at 8 jobs, and
-# --pairs reuses an earlier sweep rather than repeating it.
+# Exclusions are measured, not assumed: a conflict declared only through a
+# virtual package name (e.g. mail-transport-agent) is in no manifest, only in
+# the pair verdicts. --pairs reuses an earlier sweep.
 if [ -z "$PAIRS" ]; then
     PAIRS="$W/pairs.csv"
     log "measuring pair verdicts for the sampler's constraint model"
@@ -211,15 +185,14 @@ python3 "${HERE}/scripts/sample_sets.py" \
     --seed "$SEED" --plan "$PLAN" --pairs "$PAIRS" --out "$SAMPLES" \
     || die2 "cannot build the sample plan"
 TOTAL=$(wc -l < "$SAMPLES")
-# An empty plan is a broken run, not a clean one: every plan point was
-# infeasible or unsatisfiable, and reporting "0 failed" over no compositions
-# is exactly the kind of vacuous pass this sweep exists to avoid.
+# An empty plan is a broken run, not a clean one: "0 failed" over no
+# compositions would be a vacuous pass.
 [ "$TOTAL" -gt 0 ] || die2 "the plan produced NO sets -- nothing would be composed
        check the NOTE lines above: every requested N may be infeasible"
 log "tier-2 sweep: ${TOTAL} compositions, seed ${SEED}"
 
 # do_mount() dies on failure, which would abort the whole sweep; a failed
-# composition is a RESULT here, not a reason to stop.
+# composition is a result here, not a reason to stop.
 try_mount() {
     local target="${*: -1}"
     if mount "$@" 2>>"$W/mount.err"; then track_mount "$target"; return 0; fi
@@ -229,14 +202,8 @@ now_ms() { date +%s%3N; }
 
 echo "sample,n,modules,admitted,mount_ms,reconcile_ms,total_ms,pkg_expected,pkg_actual,pkg_ok,alt_groups,alt_groups_bad,ld_expected,ld_actual,ld_ok,audit_ok,acct_expected,acct_ok,dbc_expected,dbc_ok,vis_missing,vis_ok,verify_ms,result" > "$CSV"
 
-# Emit a stub row whose label lands in `result`, WHATEVER the schema width is.
-# Every one of these used to hand-count commas, and when acct_expected/acct_ok
-# were added this session four of the six were not updated: NOT_ADMITTED landed
-# in acct_expected, COMPOSE_FAIL and RECONCILE_FAIL in audit_ok, REGEN_FAIL in
-# acct_ok, and `result` came out EMPTY on every failure row. A real composition
-# failure would have been filed as a blank result with its label sitting in an
-# account column. Derive the padding from the header so the schema can never
-# drift away from the writers again.
+# Emit a stub row whose label lands in `result` whatever the schema width; the
+# padding is derived from the header so it cannot drift from the writers.
 CSV_NCOL=$(head -1 "$CSV" | awk -F',' '{print NF}')
 csv_stub() {            # csv_stub <idx> <n> <modules> <admitted> <result>
     local pad; pad=$(printf ',%.0s' $(seq 5 $((CSV_NCOL - 1))))
@@ -244,8 +211,8 @@ csv_stub() {            # csv_stub <idx> <n> <modules> <admitted> <result>
 }
 
 
-# C3: integrity before anything else. A composed artefact that does not match
-# its own manifest invalidates every downstream measurement.
+# Integrity first: an artefact that does not match its own manifest
+# invalidates every downstream measurement.
 log "verifying bundle integrity"
 ALLMODS=$(cut -f2 "$SAMPLES" | tr ' ' '\n' | sort -u | tr '\n' ' ')
 # shellcheck disable=SC2086
@@ -257,9 +224,9 @@ while IFS=$'\t' read -r N MODS; do
     SET=(base $MODS)
     for m in "${SET[@]}"; do valid_ident "$m" || die2 "invalid module name: '$m'"; done
 
-    # C3: tier-1 admission BEFORE composing. A structural PASS on a set tier 1
-    # rejects is not a verification of anything; it is a physical experiment on
-    # an inconsistent set, and must be labelled as such.
+    # Tier-1 admission before composing. A structural pass on a set tier 1
+    # rejects verifies nothing; --known-negative composes it anyway, labelled
+    # as a known-negative experiment.
     tier1_admit "$W/tier1.log" "${SET[@]}"; ADM=$?
     if [ "$ADM" -eq 2 ]; then
         csv_stub "$IDX" "$N" "${SET[*]}" broken TIER1_BROKEN
@@ -312,9 +279,8 @@ while IFS=$'\t' read -r N MODS; do
             || REGEN_FAIL=$((REGEN_FAIL+1))
     done < "$C/alt.groups"
     in_chroot "$M" ldconfig >/dev/null 2>&1 </dev/null || REGEN_FAIL=$((REGEN_FAIL+1))
-    # Regeneration is the step being verified. Swallowing its failure meant a
-    # composition whose alternatives or linker cache were never rebuilt could
-    # still be recorded PASS.
+    # Regeneration is part of what is verified: a composition whose
+    # alternatives or linker cache were not rebuilt must not be recorded PASS.
     if [ "$REGEN_FAIL" -gt 0 ]; then
         warn "regeneration failed ${REGEN_FAIL} time(s) for ${SET[*]}"
         csv_stub "$IDX" "$N" "${SET[*]}" "$ADM_LABEL" REGEN_FAIL
@@ -323,9 +289,8 @@ while IFS=$'\t' read -r N MODS; do
     T2=$(now_ms)
 
     # ---- collect what the composed system actually reports ----------------
-    # Versions, not just names: V2 compared NAME SETS, so tier 2 had no
-    # independent view of class 2 at all and passed a composition that tier 1
-    # had rejected for five version skews.
+    # Versions, not just names, so V2 can detect class 2 (version skew)
+    # independently of tier 1.
     in_chroot "$M" dpkg-query -W -f '${binary:Package}\t${Version}\n' 2>/dev/null </dev/null \
         | sort -u > "$C/actual.pkgs"
     in_chroot "$M" ldconfig -p 2>/dev/null </dev/null > "$C/actual.ld"
@@ -342,7 +307,7 @@ while IFS=$'\t' read -r N MODS; do
         FAILED=$((FAILED+1)); unmount_all; continue
     fi
     printf '%s\n' "$ROW" >> "$CSV"
-    # A known-negative that passes structurally is NOT a verification.
+    # A known-negative that passes structurally is not a verification.
     case "$ROW" in *,PASS) ;; *) FAILED=$((FAILED+1)); warn "VERIFY FAILED: ${SET[*]}" ;; esac
     unmount_all
 done < "$SAMPLES"
@@ -359,9 +324,8 @@ import csv, statistics, sys
 rows = list(csv.DictReader(open(sys.argv[1], encoding='utf-8')))
 byn = {}
 for r in rows: byn.setdefault(int(r['n']), []).append(r)
-# "skipped" is its own column. Folding tier-1 refusals into "fail" made the
-# admission gate working correctly look like tier 2 breaking, and at N=27 it
-# reported 0 pass / 1 fail when the truth is that nothing was composed at all.
+# "skipped" is its own column: a tier-1 refusal is the admission gate working,
+# not tier 2 failing.
 print("\n    N   samples   composed   pass   fail   skipped    mount ms   reconcile ms   total ms   packages")
 for n in sorted(byn):
     rs = byn[n]
@@ -378,8 +342,7 @@ for n in sorted(byn):
              "%d-%d" % (min(pk), max(pk)) if pk else "-"))
     if composed == 0:
         print("        ^ NO DATA at this N: every sample was refused by tier 1")
-# NOT_ADMITTED is tier 1 doing its job, not tier 2 failing. Listing the two
-# together under "failures" made a correct refusal look like a defect.
+# NOT_ADMITTED is tier 1 doing its job, so it is listed apart from failures.
 skipped = [r for r in rows if r['result'] == 'NOT_ADMITTED']
 bad = [r for r in rows if r['result'] not in ('PASS', 'KNOWN_NEGATIVE', 'NOT_ADMITTED')]
 if skipped:
