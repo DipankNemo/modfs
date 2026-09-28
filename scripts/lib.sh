@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Shared helpers. Sourced by every build script.
-# Main job: make sure mounts are ALWAYS torn down, in reverse order,
-# even if the script dies or is interrupted.
+# Main job: tear down every mount, in reverse order, even if the script dies
+# or is interrupted.
 
 set -uo pipefail
 
@@ -12,14 +12,12 @@ die()  { printf '\033[1;31m[FAIL]\033[0m %s\n' "$*" >&2; exit 1; }
 need_root() { [ "$(id -u)" -eq 0 ] || die "must run as root (use sudo)"; }
 
 # ---- identifier and path safety -------------------------------------------
-# Module names and run names reach file paths, mount option strings, and
-# recursive deletions. `--name ../../modules` in a root-run harness is enough
-# to delete the artefact store, so identifiers are validated at every entry
-# point rather than trusted because the current catalogue happens to be tame.
+# Module and run names reach file paths, mount options and recursive deletes
+# (`--name ../../modules` in a root-run harness would delete the artefact
+# store), so every entry point validates them.
 #
-# Allowlist, not denylist: [A-Za-z0-9][A-Za-z0-9._-]* cannot contain a slash,
-# cannot begin with a dot, and therefore cannot be "." or ".." or contain a
-# traversal component.
+# Allowlist, not denylist: [A-Za-z0-9][A-Za-z0-9._-]* cannot contain a slash
+# or begin with a dot, so it cannot be "." or ".." or traverse.
 valid_ident() {          # valid_ident <string>
     case "$1" in
         ''|.|..) return 1 ;;
@@ -42,8 +40,8 @@ require_uint() {         # require_uint <value> <min> <max> <what>
         || die "${4:-value} out of range (${2}..${3}): '$1'"
 }
 
-# Prove a path is a DIRECT child of a fixed root before anything destructive
-# touches it. Printing the canonical path makes the caller use the proven one.
+# Prove a path is a direct child of a fixed root before anything destructive
+# touches it. The canonical path is printed so the caller uses the proven one.
 safe_child() {           # safe_child <root> <name> -> canonical path on stdout
     local root="$1" name="$2" parent child
     require_ident "$name" "path component"
@@ -62,11 +60,9 @@ require_no_mounts() {    # require_no_mounts <path>
     # Compare canonical paths: a mount is recorded under its real path, so a
     # relative or symlinked argument would never match.
     canon="$(cd "$p" 2>/dev/null && pwd -P)" || canon="$p"
-    # Field 5 of /proc/self/mountinfo is the MOUNT POINT. This used to read
-    # field 2, which is the parent mount ID -- an integer -- so the check never
-    # matched anything and the whole guard was inert. Matching "$canon/" as a
-    # prefix catches mounts nested BELOW the target, which is the case that
-    # turns rm -rf into a deletion of whatever is mounted there.
+    # Field 5 of /proc/self/mountinfo is the mount point (field 2 is the
+    # parent mount ID). Matching "$canon/" as a prefix also catches mounts
+    # nested below the target.
     hit=$(awk -v d="$canon" '
         { mp = $5 }
         mp == d || index(mp, d "/") == 1 { print mp; exit }
@@ -85,11 +81,9 @@ safe_rm_rf() {           # safe_rm_rf <root> <name>
 
 # ---- identity policy: prevent class 7 ------------------------------------
 # Debian allocates dynamic system accounts from 100-999 on every build, so two
-# independently built siblings reach for the same number and get different
-# names. Pointing each module at a disjoint window makes the collision
-# impossible to create, rather than something to find afterwards. Same
-# relationship as the base full-upgrade and class 6: prevention is the policy,
-# the class-7 check in 05 is the guard that proves the policy held.
+# independently built siblings can give one number to different names. Each
+# module gets a disjoint UID window, which prevents the collision; the class-7
+# check in 05 verifies that the policy held.
 uid_range_for() {        # uid_range_for <module> -> "START END"
     python3 - "${SPEC_DIR}/uid-ranges.yaml" "$1" <<'URPY'
 import sys, yaml
@@ -138,10 +132,9 @@ write_identity_policy() {   # write_identity_policy <root> <start> <end> <backup
     _idpol_set_sp "$r/etc/login.defs" SYS_GID_MAX "$hi"
 }
 
-# The policy is BUILD scaffolding, not module content. Restoring the original
-# bytes keeps it out of the artefact -- and restores rather than deletes,
-# because deleting a file that exists in the lower layer would leave a
-# whiteout and HIDE base's copy from every composition.
+# The policy is build scaffolding, not module content, so the original files
+# are restored. Restored, not deleted: deleting a file that exists in the
+# lower layer would leave a whiteout that hides base's copy.
 restore_identity_policy() { # restore_identity_policy <root> <backupdir>
     local r="$1" bk="$2"
     [ -f "$bk/adduser.conf.orig" ] && cp -a "$bk/adduser.conf.orig" "$r/etc/adduser.conf"
@@ -149,11 +142,9 @@ restore_identity_policy() { # restore_identity_policy <root> <backupdir>
     return 0
 }
 
-# A scratch workspace that could not be cleared is worse than no workspace:
-# `rm -rf` fails silently for a non-root user against a directory a previous
-# sudo run created, and the sweep then concatenates 666 stale result files
-# from an older schema into a CSV presented as a fresh run. Clear, then PROVE
-# it is empty.
+# Clear a scratch workspace and prove it is empty. As a non-root user, rm -rf
+# fails silently on files a previous sudo run created, and stale results would
+# then be reused as if fresh.
 reset_workdir() {        # reset_workdir <dir>
     local d="$1" left
     require_no_mounts "$d"
@@ -168,25 +159,19 @@ reset_workdir() {        # reset_workdir <dir>
 }
 
 # ---- admission: integrity, then tier-1 ------------------------------------
-# C3. The pipeline order is a rule, not a convention:
+# The pipeline order is a rule:
 #     bundle integrity -> tier-1 admission -> compose/reconcile -> tier-2
-# Tier 2 composing a tier-1-rejected set and printing PASS made "verified"
-# mean less than it looked; a physical composition proves structure, never
-# package semantics.
+# A physical composition proves structure, never package semantics, so tier 2
+# must not report PASS for a set tier 1 rejected.
 
-# Every artefact must match the size and digest its own manifest records, AND
-# the manifest's own content fields must match the digest it carries.
-#
-# The second half is new (2026-09-18). The first half proved the .sqsh had not
-# moved; it said nothing about whether the manifest still DESCRIBED it, so a
-# manifest could understate its accounts, drop a field, or describe a previous
-# build and pass integrity untouched. `binding.fields_sha256` is written by
-# 06_extract_metadata.sh over exactly the fields the checks read; recomputing it
-# costs a hash of a few kilobytes of JSON, which is why it can live here and in
-# tier 1 while re-deriving from the artefact cannot.
+# Every artefact must match the size and digest its manifest records, and the
+# manifest's content fields must match the digest it carries
+# (`binding.fields_sha256`, written by 06_extract_metadata.sh over exactly the
+# fields the checks read). Rehashing a few kilobytes of JSON is cheap enough
+# to run here and in tier 1; re-deriving from the artefact is not.
 #
 # Integrity, not authenticity: the digest is inside the document it protects.
-# See 06_extract_metadata.sh's header and ARCHITECTURE H1.
+# See 06_extract_metadata.sh's header.
 verify_bundle() {        # verify_bundle <module...>
     python3 - "$MOD_DIR" "$@" <<'VBPY'
 import hashlib, json, os, sys
@@ -270,11 +255,9 @@ cleanup() {
     return $rc
 }
 
-# A handler that RETURNS lets the script carry on. With INT and TERM bound to
-# cleanup, Ctrl-C during a build tore every mount down and then continued --
-# writing into what was no longer a merged overlay, squashing the result, and
-# exiting 0 so a caller believed it succeeded. Clean up, restore the default
-# disposition, and re-raise so the process really dies with 130/143.
+# A signal handler that returns lets the script carry on, writing into what is
+# no longer a merged overlay and possibly exiting 0. So clean up, restore the
+# default disposition and re-raise: the process dies with 130/143.
 on_signal() {            # on_signal <SIGNAME>
     local sig="$1"
     unmount_all
@@ -286,9 +269,8 @@ trap 'on_signal INT'  INT
 trap 'on_signal TERM' TERM
 
 # ---- chroot plumbing ------------------------------------------------------
-# June's build only bound /dev and /dev/pts. Some maintainer scripts read
-# /proc and /sys and fail quietly without them, producing a subtly
-# incomplete module. Bind all four.
+# Some maintainer scripts read /proc and /sys and fail quietly without them,
+# leaving an incomplete module, so all four are bound.
 mount_chroot_fs() {      # mount_chroot_fs <root>
     local r="$1"
     mkdir -p "$r"/{proc,sys,dev,dev/pts,run}
@@ -296,16 +278,10 @@ mount_chroot_fs() {      # mount_chroot_fs <root>
     do_mount -t sysfs sys   "$r/sys"
     do_mount --bind /dev     "$r/dev"
     do_mount --bind /dev/pts "$r/dev/pts"
-    # MAKE EVERY MOUNT PRIVATE, or unmounting them takes the HOST's copies with
-    # them. systemd mounts / and /dev `shared`, so a --bind puts the chroot copy
-    # in the same PEER GROUP as the original: unmount one and the kernel
-    # propagates the unmount to the other. On 2026-09-20 a build tore down
-    # "$r/dev/pts" and unmounted the host's /dev/pts with it, after which no
-    # process could allocate a pty and plain `sudo` failed with
-    #     sudo: unable to allocate pty: No such device
-    # The damage outlives the script, survives its EXIT trap, and is invisible
-    # until something needs a terminal. Every mount this project makes is
-    # scratch that belongs to one build, so none of them should ever propagate.
+    # Make every mount private, or unmounting it also unmounts the host's copy:
+    # systemd mounts / and /dev shared, so a --bind joins the original's peer
+    # group and unmount events propagate. Losing the host's /dev/pts this way
+    # breaks every later pty allocation ("sudo: unable to allocate pty").
     local m
     for m in "$r/proc" "$r/sys" "$r/dev" "$r/dev/pts"; do
         mount --make-rprivate "$m" 2>/dev/null \
@@ -327,12 +303,8 @@ write_chroot_policy() {  # write_chroot_policy <root>
         > "$r/etc/apt/apt.conf.d/99modfs"
 }
 
-# Everything write_chroot_policy created must come back out. 99modfs was
-# written but never removed, so APT::Install-Recommends "false" shipped inside
-# all 38 artefacts and every node built from them would silently stop
-# installing recommended packages. Build scaffolding, leaking into the
-# product -- the same category as the UID policy and the boot test's staged
-# resolv.conf, both of which are restored.
+# Everything write_chroot_policy created must come back out; otherwise
+# APT::Install-Recommends "false" would ship inside every artefact.
 remove_chroot_policy() {
     rm -f "$1/usr/sbin/policy-rc.d"
     rm -f "$1/etc/apt/apt.conf.d/99modfs"
@@ -347,9 +319,8 @@ in_chroot() {            # in_chroot <root> <command...>
 }
 
 # ---- sources.list against the pinned snapshot -----------------------------
-# The snapshot ID goes in the URL PATH, not as an apt option. debootstrap
-# does not understand apt's [snapshot=] syntax, and jammy ships apt 2.4.5
-# which predates the --snapshot flag. The URL form works regardless.
+# The snapshot ID goes in the URL path, not an apt option: debootstrap does not
+# understand [snapshot=], and jammy's apt 2.4.5 predates --snapshot.
 write_sources_list() {   # write_sources_list <root>
     local r="$1"
     mkdir -p "$r/etc/apt"
