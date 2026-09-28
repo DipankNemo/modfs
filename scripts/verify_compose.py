@@ -24,11 +24,8 @@ def cache_libs(text):
     return out
 
 def main(argv):
-    # Time OURSELVES. total_ms is exactly mount_ms + reconcile_ms -- checked
-    # across all 152 rows, maximum difference 0 ms -- so the number published
-    # as the cost of tier 2 has never included verifying, while the cost table
-    # labelled that row "Compose + verify". Measuring it is the only way to
-    # stop quoting a composition cost as a verification cost.
+    # Time the verification itself: the caller's total_ms covers mounting and
+    # reconciling only, so it never includes the cost of verifying.
     _t0 = time.monotonic()
     scripts = arg(argv, '--scripts'); merged = arg(argv, '--merged')
     work = arg(argv, '--work')
@@ -46,15 +43,9 @@ def main(argv):
     from account_schema import FIELDS as _FIELDS
 
     # ---- V2: dpkg status is the exact union of the layers -----------------
-    # NAME AND VERSION. Comparing name sets left tier 2 with no independent view
-    # of class 2 whatsoever: on 2026-09-17, 05_check.sh REJECTED
-    # curl+control-oldsnap with five version skews and every tier-2 column came
-    # back green, because both layers offer a package called `curl`. That made
-    # stage 10's admission gate load-bearing rather than convenient, which is a
-    # much weaker claim than "tier 2 verifies the composed system against its
-    # own layers". A composition holding one of two offered versions is now a
-    # failure here too, and the caller reports ${Version} so this can be checked
-    # against the running system rather than against metadata.
+    # Compares (name, version) pairs, not names: a composition that keeps only
+    # one of two offered versions of a package fails. The caller reports
+    # ${Version} from the running system, not from metadata.
     expected, exp_names = set(), set()
     for _, root in layers:
         for s in stanzas(read(os.path.join(root, 'var/lib/dpkg/status'))):
@@ -74,21 +65,15 @@ def main(argv):
             actual.add((nm, parts[1].strip()))
         else:
             versioned = False
-    # Fall back to names if the caller predates the versioned format, and say so
-    # rather than silently reporting a weaker check as if it were the strong one.
+    # A caller that reports names only (no version column) gets the weaker
+    # name comparison.
     pkg_ok = (expected == actual) if versioned else (exp_names == act_names)
     pkg_skew = sorted({n for n, _ in expected} & act_names
                       & {n for n, v in (expected - actual)}) if versioned else []
 
     # ---- V3: every alternatives group holds every candidate offered -------
-    # NAMED alt_want, not `want`. It used to be `want`, and BOTH V6's loop
-    # variable (`for rel, want in acct_expected.items()`) and a local inside
-    # V7's ALTERED branch rebound it before the CSV was printed at the bottom.
-    # The column labelled `alt_groups` therefore reported the number of
-    # /etc/gshadow records: 42 for `base nc-traditional rust`, which has 10
-    # alternatives groups. `alt_groups_bad` was computed here, before the
-    # rebinding, so the VERDICT was always right and only the count was wrong --
-    # but the count is published in ARCHITECTURE section 7's tier-2 table.
+    # Named alt_want, not `want`: V6 and V7 rebind `want` before the CSV row
+    # at the end is printed.
     alt_want = {}
     for _, root in layers:
         d = os.path.join(root, 'var/lib/dpkg/alternatives')
@@ -130,9 +115,8 @@ def main(argv):
     # member lists and subordinate ranges union as sets; other fields and file
     # attributes come from the highest layer providing the record/file.
     # Conflicting numeric identities are never a legitimate override.
-    # Field counts from account_schema.FIELDS; identity columns, member columns
-    # and the whole-line-union flag stay here, being what V6 does with a record
-    # rather than properties of the format.
+    # Field counts come from account_schema.FIELDS; the identity and member
+    # columns and the whole-line-union flag are V6's own and stay here.
     account_schema = {
         'etc/passwd':   (_FIELDS['etc/passwd'],   (2, 3),              (),     False),
         'etc/group':    (_FIELDS['etc/group'],    (2,),                (3,),   False),
@@ -273,27 +257,16 @@ def main(argv):
     # ---- V5 ---------------------------------------------------------------
     audit_ok = not (read(os.path.join(work, 'audit.txt')) or '').strip()
 
-    # ---- V7: every file in any layer is VISIBLE, AND IS THE SAME FILE ----
-    # V7 v1 compared directory ENTRY NAMES and was defeated three ways on
-    # 2026-09-17, each with a reproduction:
-    #   (a) a module shipping `dir -> decoy` plus decoy/<same name> replaced
-    #       1 MB of another module's payload with 6 bytes. The name was present,
-    #       so v1 passed. This is EXACTLY what V7 was written to catch.
-    #   (b) an ABSOLUTE symlink (/etc) was resolved by os.path.join against the
-    #       HOST's root, because this runs outside the chroot. v1's verdict
-    #       therefore depended on the checking machine in both directions:
-    #       false negative when the host had matching names, false positive
-    #       when it did not. That breaks "artefact + manifest is self-sufficient".
-    #   (c) jammy is merged-/usr, so base ships lib -> usr/lib. A module shipping
-    #       a REAL lib/ directory outranks the symlink, /lib/x86_64-linux-gnu/
-    #       ld-linux-*.so becomes unreachable and NOTHING in the system can
-    #       execute -- with every file still present and v1 clean.
-    #
-    # So: descend only into REAL directories (no symlink is ever traversed, which
-    # is what confines resolution to the artefacts), record (kind, size) rather
-    # than names, and require the merged entry to match SOME layer's version of
-    # that path. Last-wins between layers stays legal; content arriving from
-    # outside every layer does not.
+    # ---- V7: every file in any layer is visible and is the same file -------
+    # Comparing entry names is not enough: a symlinked directory can replace
+    # another module's files with same-named decoys; an absolute symlink would
+    # resolve against the host's root, because this runs outside the chroot;
+    # and a real lib/ directory can shadow base's merged-/usr lib -> usr/lib
+    # symlink, leaving every file present but the dynamic loader unreachable.
+    # So descend only into real directories (never through a symlink), record
+    # (kind, size) per path, and require the merged entry to match some layer's
+    # version of it. Last-wins between layers is legal; content from outside
+    # every layer is not.
     SKIP_TOP = {'proc', 'sys', 'dev', 'run', 'tmp'}
     # Reconciliation deliberately rewrites these, so they match no single layer.
     RECONCILED = {'etc/passwd', 'etc/group', 'etc/shadow', 'etc/gshadow',
@@ -301,8 +274,8 @@ def main(argv):
                   'var/lib/dpkg/status', 'var/lib/dpkg/status-old',
                   'var/lib/dpkg/diversions', 'var/lib/apt/extended_states',
                   'var/cache/ldconfig/aux-cache',
-                  # reconcile.py merges the debconf databases as of 2026-09-18,
-                  # so the merged copies deliberately match no single layer.
+                  # reconcile.py merges the debconf databases, so
+                  # the merged copies match no single layer.
                   'var/cache/debconf/config.dat',
                   'var/cache/debconf/templates.dat',
                   'var/cache/debconf/passwords.dat'}
@@ -330,29 +303,19 @@ def main(argv):
                     elif e.is_file(follow_symlinks=False):
                         out[r] = ('f', e.stat(follow_symlinks=False).st_size)
                     else:
-                        # A WHITEOUT is a character device 0:0, and it means the
-                        # opposite of everything else here: the path must be
-                        # ABSENT from the merged view. Scored as 'o' it made V7
-                        # demand to find the deletion marker in the merge and
-                        # report MISSING when OverlayFS had correctly honoured
-                        # it -- a false positive on legitimate composition,
-                        # waiting for the day removal support lands (H6).
-                        # Latent today only because 02_build_delta.sh refuses to
-                        # build a module containing one.
+                        # A whiteout (character device 0:0) means the
+                        # path must be absent from the merged view, so it
+                        # gets its own kind 'w' rather than being
+                        # reported missing. 02_build_delta.sh currently
+                        # refuses to build a module containing one.
                         st = e.stat(follow_symlinks=False)
                         if stat.S_ISCHR(st.st_mode) and st.st_rdev == 0:
                             out[r] = ('w', 0)
                         else:
-                            # DISTINGUISH the node types instead of collapsing
-                            # them to 'o'. Scored identically, a FIFO replaced by
-                            # a socket, or a character device by a block device,
-                            # compared equal and V7 saw nothing -- a module could
-                            # swap one special file for another and the merge
-                            # would verify. Device nodes also carry their
-                            # major:minor in st_rdev, so /dev/null becoming
-                            # /dev/sda is a change of content, not merely of
-                            # kind. Cheap: this branch runs only for the handful
-                            # of non-regular, non-directory, non-symlink entries.
+                            # Distinguish the special-file types and record
+                            # a device's major:minor, so swapping a FIFO for a
+                            # socket, or /dev/null for /dev/sda, is a change.
+                            # Only the few special files reach this branch.
                             m = st.st_mode
                             if   stat.S_ISFIFO(m): out[r] = ('p', 0)
                             elif stat.S_ISSOCK(m): out[r] = ('s', 0)
@@ -371,26 +334,20 @@ def main(argv):
     vis_missing, vis_unchecked = [], []
     for r in sorted(vis_expected):
         kinds = {k for k, _ in vis_expected[r]}
-        # RECONCILED paths are exempt from the (kind, size) COMPARISON, because
-        # reconciliation rewrites them on purpose and they match no single
-        # layer. They were also exempt from the EXISTENCE test, which is a
-        # different concession and nothing justified it: a merged
-        # templates.dat truncated to zero bytes, or an /etc/alternatives
-        # emptied of every link, passed with vis_ok=1 and no other check covers
-        # either -- V3 reads the dpkg alternatives REGISTRY, never the symlinks
-        # it is supposed to produce. Existence is still required here.
+        # Reconciled paths are exempt from the (kind, size) comparison, since
+        # reconciliation rewrites them on purpose, but they must still exist.
+        # Nothing else checks that: V3 reads the alternatives registry, not the
+        # symlinks it produces.
         if r in RECONCILED or r.startswith(RECONCILED_PREFIX):
             if 'w' not in kinds and r not in vis_got:
                 vis_missing.append('MISSING /%s (reconciled path, so only its '
                                    'existence is checked)' % r)
             continue
         if 'w' in kinds:
-            # Some layer DELETES this path. Whether the merge should show it
-            # depends on stacking order, which this check does not model. It
-            # declines to judge rather than guessing -- but it says so, out of
-            # band, instead of counting a correct deletion as file loss or
-            # skipping it in silence. Zero on the present catalogue, because
-            # 02_build_delta.sh refuses to build a module containing a whiteout.
+            # Some layer deletes this path. Whether the merge should show it
+            # depends on stacking order, which V7 does not model, so it is
+            # reported as unchecked rather than judged. 02_build_delta.sh
+            # currently refuses to build a module containing a whiteout.
             vis_unchecked.append('/%s (a layer deletes it; V7 does not model '
                                  'deletion ordering)' % r)
             continue
@@ -412,8 +369,8 @@ def main(argv):
                                % (r, describe(g), shape))
     vis_ok = not vis_missing
 
-    # Not a failure and not silence: a path V7 declined to judge is written to
-    # stderr on every run, so "vis_ok=1" never quietly means "did not look".
+    # Paths V7 declined to judge go to stderr on every run, so vis_ok=1
+    # never silently means "did not look".
     for v in vis_unchecked[:5]:
         sys.stderr.write("  V7 DECLINED TO CHECK: %s\n" % v)
     if len(vis_unchecked) > 5:
@@ -436,8 +393,8 @@ def main(argv):
         ('PASS' if admitted != 'known-negative' else 'KNOWN_NEGATIVE')
         if ok else 'FAIL']))
     if not ok:
-        # Distinguish "a package is gone" from "the wrong version survived" --
-        # they are different defects and the second was previously invisible.
+        # Distinguish "a package is gone" from "the wrong version survived";
+        # they are different defects.
         gone = sorted(exp_names - act_names)[:5]
         if gone: sys.stderr.write("  missing packages: %s\n" % ', '.join(gone))
         for n in pkg_skew[:5]:
