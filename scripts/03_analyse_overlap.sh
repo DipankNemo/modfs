@@ -6,8 +6,8 @@
 #   sudo ./scripts/03_analyse_overlap.sh webserver pytools
 #
 # Answers three questions with evidence:
-#   Q1  Which files appear in BOTH deltas?          -> collision candidates
-#   Q2  Of those, which have DIFFERENT content?     -> must be reconciled
+#   Q1  Which files appear in both deltas?          -> collision candidates
+#   Q2  Of those, which have different content?     -> must be reconciled
 #   Q3  Which packages appear in both, same version? -> benign overlap ("X")
 #
 # Output: a report on stdout and a copy in $LOG_DIR/overlap-<a>-<b>.txt
