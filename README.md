@@ -91,3 +91,9 @@ file checks is listed in [`tests/README.md`](tests/README.md).
 - `docs/DATA_MODEL.md`: manifest, file-ownership sidecar, spec files and the integrity digests
 - `docs/SAMPLING_AND_BOOT.md`: how tier 2 chooses sets, and how a composed tree becomes a booting machine
 - `docs/evidence/remote-verification-2026-09-20/REPORT.md`: rebuilding the catalogue on a second machine
+
+## AI assistance
+
+The code was written with AI coding assistance (Claude Code; OpenAI Codex),
+directed, run and reviewed by the author. The thesis appendix *Verwendete
+Hilfsmittel / Tools used* describes this use.
