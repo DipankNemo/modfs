@@ -40,7 +40,9 @@ its source file and digest.
 ## Requirements
 
 Linux x86-64 with root (builds use OverlayFS, loop mounts and chroot) and network
-access to `snapshot.ubuntu.com`. On Ubuntu:
+access to `snapshot.ubuntu.com`. The build host needs **squashfs-tools 4.6 or later**
+for `mksquashfs -xattrs-exclude`, which Ubuntu 22.04's 4.5 lacks; the results here
+were produced on an Ubuntu 24.04 host (4.6.1) building Ubuntu 22.04 targets. On Ubuntu 24.04:
 
     sudo apt install debootstrap squashfs-tools zstd python3 python3-yaml \
                      rsync gdisk dosfstools e2fsprogs qemu-system-x86 ovmf
