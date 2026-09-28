@@ -5,15 +5,12 @@
 #   sudo ./scripts/12_verify_binding.sh              # whole catalogue
 #   sudo ./scripts/12_verify_binding.sh curl webserver
 #
-# WHY THIS STAGE EXISTS. Every tier-1 verdict is computed from <name>.json, and
-# until 2026-09-18 nothing checked that document against the .sqsh it describes.
-# 00's assumption checks, 05's classes and 09's sweep all read the manifest;
-# 06's output IS the manifest; so no stage ever looked at the artefact
-# independently. A module could understate its accounts, its file owners or its
-# packages and be believed, and the cheapest version of that was not forgery but
-# OMISSION -- deleting two keys turned a class-7 REJECT into a clean ACCEPT.
+# Every tier-1 verdict is computed from <name>.json, and every other stage
+# reads that manifest rather than the artefact. A manifest that omits
+# accounts, file owners or packages would be believed, so this stage checks
+# it against the .sqsh itself.
 #
-# THREE LAYERS, PLACED BY WHAT THEY COST. Measured on this catalogue:
+# Three layers, placed by what they cost:
 #
 #   tier 1, every check, ~0 ms
 #       05_check.sh recomputes binding.fields_sha256 from the manifest it just
@@ -21,24 +18,23 @@
 #       touch the artefact.
 #
 #   before composing, ~sha256 of the artefacts
-#       lib.sh's verify_bundle, already called by stages 10 and 11, adds the
-#       same digest check plus the class-4 sidecar's.
+#       lib.sh's verify_bundle, called by stages 10 and 11, adds the same
+#       digest check plus the class-4 sidecar's.
 #
 #   here, once per artefact, mount + walk
-#       RE-DERIVES the manifest from the mounted .sqsh and compares. This is the
-#       only layer that can catch a manifest whose digest was recomputed to
-#       match forged content, because it is the only one that reads the artefact.
+#       Re-derives the manifest from the mounted .sqsh and compares. This is
+#       the only layer that can catch a manifest whose digest was recomputed
+#       to match forged content, because it is the only one that reads the
+#       artefact.
 #
-# The artefact is immutable and the check is not, so the expensive work belongs
-# on the side that does not repeat. Re-deriving inside tier 1 would cost a mount
-# (5-18 ms) and an lstat walk (2-114 ms) per module and would need root, against
-# a whole-check budget of 79 ms at N=2.
+# The artefact is immutable and the check is not, so the expensive work runs
+# once here. Inside tier 1 it would need root and add a mount (5-18 ms) and a
+# file walk (2-114 ms) per module to a check that takes 79 ms at N=2.
 #
-# WHAT IT DOES NOT PROVE. It reuses 06_extract_metadata.sh --check rather than
-# reimplementing the derivation, deliberately: a second implementation would
-# drift, and the question here is "is this manifest still what this artefact
-# produces", not "is the extractor correct". A logic error in 06 is invisible to
-# this stage and always will be.
+# It reuses 06_extract_metadata.sh --check rather than a second implementation
+# that could drift. So it answers "is this manifest still what this artefact
+# produces", not "is the extractor correct": a logic error in 06 is invisible
+# here.
 #
 # Exit: 0 complete requested coverage, 1 missing/mismatched bundle, 2 invalid request/runner.
 
