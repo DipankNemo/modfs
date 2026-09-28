@@ -4,8 +4,7 @@
 #
 #   ./scripts/05_check.sh webserver pytools
 #
-# Checks are numbered by the CONFLICT TAXONOMY in ARCHITECTURE section 4, so
-# output maps onto the table without a decoder ring:
+# Checks are numbered by the conflict taxonomy in ARCHITECTURE section 4:
 #   PRE      composability -- same parent, snapshot, suite, arch (section 2)
 #   CLASS 1  benign overlap -- same package, same version, two siblings
 #   CLASS 2  version skew   -- two siblings disagree on a package version
@@ -14,8 +13,8 @@
 #   CLASS 6  implicit base upgrade -- a delta replaces an inherited package
 #   CLASS 7  identity collision -- two modules give one uid/gid two meanings
 # Plus the module-level layer of ARCHITECTURE section 5: requires/conflicts/
-# provides between MODULES, which package relations cannot express.
-# Class 5 (state divergence) is deliberately absent: it ALWAYS occurs, and is
+# provides between modules, which package relations cannot express.
+# Class 5 (state divergence) is deliberately absent: it always occurs, and is
 # handled by reconciliation at compose time rather than by rejection.
 #
 # Exit status -- the batch harness has to tell a real conflict apart from a
@@ -27,12 +26,12 @@
 # Never conflate 1 and 2: an unhandled Python exception exits 1 by default,
 # which would read as REJECT, so it is remapped to 2 below.
 #
-# Reads ONLY $MOD_DIR/<name>.json, written by 06_extract_metadata.sh.
-# No build tree, no mounting, no building, no network -- and no root.
-# This is ARCHITECTURE section 6 tier 1: ~1 s, so thousands of module
-# combinations can be screened before anything is actually composed.
+# Reads only the manifests ($MOD_DIR/<name>.json and the .files.json.zst
+# sidecars) written by 06_extract_metadata.sh: no build tree, no mounting, no
+# network, no root. This is tier 1 (ARCHITECTURE section 6), cheap enough to
+# screen thousands of combinations before anything is composed.
 #
-# Each manifest stores only its module's CONTRIBUTION (packages that differ
+# Each manifest stores only its module's contribution (packages that differ
 # from the parent). The merged view is reconstructed here as
 #     effective(m) = base.packages | m.packages  -  m.removed
 # which is why base.json must exist alongside the siblings.
@@ -45,17 +44,15 @@ source "${HERE}/scripts/lib.sh"
 die2() { printf '\033[1;31m[FAIL]\033[0m %s\n' "$*" >&2; exit 2; }
 
 [ $# -ge 1 ] || die2 "usage: $0 <module> [module...]"
-# C1: identifiers reach paths and mount options; validate at the boundary.
+# Module names reach file paths, so validate them here.
 for m in "$@"; do valid_ident "$m" || die2 "invalid module name: '$m'"; done
 
-# Probe the report FILE, not its directory. A writable directory is not
-# enough: an earlier root-run check leaves a root-owned report behind, and a
-# later unprivileged run cannot reopen it. That is an environment wart, not a
-# verdict, so fall back rather than failing the check.
+# Probe the report file, not its directory: a root-owned report left by an
+# earlier sudo run cannot be reopened by an unprivileged run. That is not a
+# verdict, so fall back to $TMPDIR rather than failing the check.
 TAG="$(IFS=-; echo "$*")"
-# A 34-module set produces a 300-character name and every filesystem refuses
-# it, which surfaced as "checker broke" and was misread as a rejection. Long
-# sets get a stable digest instead; short ones keep the readable name.
+# A large set would give a file name longer than filesystems allow, so long
+# tags become a stable digest; short ones keep the readable name.
 if [ "${#TAG}" -gt 100 ]; then
     TAG="$(printf '%s' "$TAG" | sha256sum | cut -c1-12)-$#modules"
 fi
@@ -147,9 +144,9 @@ def views(doc):
 def auto_set(doc):
     return {n for n, e in (doc.get('packages') or {}).items() if e.get('auto')}
 
-# Version comparison is delegated to dpkg. Without it vcmp() returns None,
-# every versioned Conflicts/Breaks test evaluates false, and the run reports
-# ACCEPT for a set it never actually checked. Fail loudly instead.
+# Version comparison is delegated to dpkg. Without dpkg every versioned
+# Conflicts/Breaks test would evaluate false and the run would report ACCEPT
+# unchecked, so fail instead.
 if shutil.which('dpkg') is None:
     fail("dpkg not found -- cannot compare versions")
 
@@ -178,9 +175,8 @@ for m in modules:
     contrib[m] = views(d)
     if not contrib[m]:
         print("NOTE: %s contributes no packages" % m)
-    # Reconstruct the merged view this module was built against. Chain
-    # tracing in C1 has to walk through inherited base packages too, so the
-    # contribution alone is not enough.
+    # Reconstruct the merged view this module was built against: class 6's
+    # chain tracing walks through inherited base packages too.
     eff = dict(base)
     for r in (d.get('removed') or []):
         eff.pop(r, None)
@@ -205,23 +201,13 @@ ERRORS = WARNINGS = 0
 WARN_REASONS = []
 
 # ------------------------------------------------- BIND: manifest <-> artefact
-# EVERY VERDICT BELOW THIS LINE TRUSTS A JSON DOCUMENT. Until 2026-09-18 nothing
-# tied that document to the .sqsh it describes, so a module could understate its
-# accounts, its packages or its file owners and be believed -- and the cheapest
-# version of that attack was not forgery at all but OMISSION: deleting
-# `file_uids` from one manifest turned a class-7 REJECT into a clean ACCEPT.
-#
-# What tier 1 can afford, measured: re-deriving from the artefact costs a mount
-# (5-18 ms) plus a full lstat walk (2-114 ms) per module and needs ROOT, and
-# hashing the .sqsh costs 6-250 ms per module -- 116 ms for base+curl alone
-# against a whole-check budget of 79 ms. Both are out. Hashing the manifest's
-# own bound fields costs a hash of a few kilobytes.
-#
-# So the expensive half runs ONCE PER ARTEFACT rather than once per check:
-# 06_extract_metadata.sh derives the manifest FROM the mounted artefact, and
-# 12_verify_binding.sh re-derives independently and compares. Tier 1 checks the
-# digest those produce. The artefact is immutable; the check is not; the work
-# belongs on the side that does not repeat.
+# Every verdict below trusts a JSON document, so first check that each
+# manifest still matches the seal over its own fields (binding.fields_sha256).
+# Tier 1 cannot afford more: re-deriving from the artefact needs root and a
+# mount plus a file walk per module, and hashing the .sqsh can cost more than
+# the whole check. That work runs once per artefact instead: 06 derives the
+# manifest from the mounted artefact, and 12_verify_binding.sh re-derives it
+# independently and compares.
 print("\n" + "=" * 72)
 print(" BIND. MANIFEST <-> ARTEFACT  (does this document describe that .sqsh?)")
 print("=" * 72 + "\n")
@@ -245,8 +231,7 @@ print("    (sidecar seals are checked before class 4; artefact bytes are checked
 
 # ------------------------------------------------- PRE: composability
 # ARCHITECTURE section 2: modules are composable only with siblings sharing
-# the same base AND the same snapshot. That constraint was documented but
-# never enforced -- the manifest is what finally makes it checkable.
+# the same base and snapshot (and suite, arch and generation).
 print("\n" + "=" * 72)
 print(" PRE. COMPOSABILITY PRECONDITIONS  (same generation, parent, snapshot, suite, arch)")
 print("=" * 72 + "\n")
@@ -302,9 +287,8 @@ for m in modules:
 
     added = {n for n, e in docs[m]['packages'].items()
              if e.get('origin') == 'added'}
-    # The manifest records what was actually asked for on the build command
-    # line, so chain roots no longer have to be guessed from apt's
-    # Auto-Installed flags. The old heuristic stays as the fallback.
+    # Chain roots are the packages requested on the build command line, as the
+    # manifest records them; apt's Auto-Installed flags are the fallback.
     req   = {p for p in (docs[m].get('requested') or []) if p in pk}
     roots = req or {p for p in added if p not in autos[m]} or added
 
@@ -385,13 +369,11 @@ for m in modules:
         union.pop(r, None)
     union.update(contrib[m])
 
-# A Conflicts may name a VIRTUAL package. Two mail-transport-agents each
-# declaring "Provides: mail-transport-agent" AND "Conflicts:
-# mail-transport-agent" is a genuine declared conflict that matching on real
-# package names alone cannot see -- measured at exactly 1 pair of 351 in the
-# current catalogue.
+# A Conflicts may name a virtual package: two mail-transport-agents that each
+# provide and conflict with mail-transport-agent genuinely conflict, which
+# matching on real package names alone cannot see.
 #
-# Debian policy: an UNVERSIONED Provides satisfies only an unversioned
+# Debian policy: an unversioned Provides satisfies only an unversioned
 # relation, so "Provides: foo" does not satisfy "Conflicts: foo (<< 2)".
 provides_map = defaultdict(list)          # virtual name -> [(pkg, version|None)]
 for p, d in union.items():
@@ -408,7 +390,7 @@ for p, d in union.items():
                 if n in union and n != p:
                     targets.append((n, union[n]['version'], None))
                 for (prov, pver) in provides_map.get(n, ()):
-                    # "Provides: X" together with "Conflicts: X" on the SAME
+                    # "Provides: X" together with "Conflicts: X" on the same
                     # package is the standard "I supersede standalone X"
                     # idiom, not a conflict.
                     if prov == p: continue
@@ -527,15 +509,13 @@ print("\n" + "=" * 72)
 print(" CLASS 7. IDENTITY COLLISION  (accounts, and the units that name them)")
 print("=" * 72)
 
-# /etc/passwd, /etc/group, /etc/shadow and /etc/gshadow are rewritten whole by
-# maintainer scripts. They are not package-owned, so class 4 never sees them,
-# and OverlayFS takes the top layer's copy ENTIRE -- it cannot union text
-# records. Two modules that independently allocate the same number to
-# different names cannot be reconciled by any merge: the numbers themselves
-# disagree, and files on disk are owned by the number.
+# The account databases are rewritten whole by maintainer scripts and owned
+# by no package, so class 4 never sees them. Reconciliation can merge
+# records, but not two modules that gave one number to different names: the
+# numbers disagree, and files on disk are owned by the number.
 #
-# This check REJECTS such sets. It does not repair them. Deterministic global
-# id allocation and inode remapping are Future Work.
+# This check rejects such sets; it does not repair them. Deterministic global
+# id allocation and inode remapping are future work.
 have_accounts = [m for m in ['base'] + modules
                  if isinstance((docs.get(m) or base_doc).get('accounts'), dict)]
 if len(have_accounts) < len(modules) + 1:
@@ -544,13 +524,8 @@ if len(have_accounts) < len(modules) + 1:
     print("\n    SKIPPED -- no account records in: %s" % ', '.join(missing))
     print("    regenerate with 06_extract_metadata.sh; class 7 was NOT checked")
 else:
-    # NUMBERS, not the strings the manifest happens to store them as. The
-    # 2026-09-18 int-vs-string fix was applied to the numeric-ownership check
-    # below and NOT here, so this comparison still keyed on the raw string:
-    # module A allocating alpha='2500' and module B allocating beta='02500' give
-    # one id two names -- the exact msmtp/redis/tcpdump/memcached defect -- and
-    # the checker reported "no id reused [OK]". A manifest carrying the id as a
-    # JSON NUMBER additionally crashed `sorted(id_names.items())` on int-vs-str.
+    # Compare ids as numbers, not as the strings the manifest stores: '2500'
+    # and '02500' are the same id. A non-numeric id is a malformed manifest.
     def _num(v, m, kind, nm):
         try:
             return int(v)
@@ -601,21 +576,15 @@ else:
                   % (kind, i, len(names),
                      ', '.join("%s (%s)" % (n, '+'.join(ms)) for n, ms in sorted(names.items()))))
 
-    # FILE OWNERSHIP IS A NUMBER, and until 2026-09-18 nothing compared the
-    # numbers. The checks above compare declared RECORDS, so a module that
-    # allocates nothing and simply ships a file owned by uid 2500 -- exactly what
-    # a tarball or a pip install preserving ownership produces -- passed with an
-    # `accounts` block that was entirely truthful. In the composed system that
-    # file then belongs to whichever module DID allocate 2500. Reproduced with no
-    # forged manifest at all.
+    # File ownership is a number. The checks above compare declared records,
+    # but a module can allocate nothing and still ship a file owned by uid
+    # 2500 (a tarball or pip install that preserves ownership), which in the
+    # composed system belongs to whichever module did allocate 2500.
     #
     # Rule: every numeric owner of a file a module ships must resolve to an
-    # account base provides or one the module itself declares. Anything else is
-    # an identity the module is borrowing without saying so.
-    # int() EVERYWHERE. Manifests store ids as STRINGS (they come from fields of
-    # /etc/passwd) while os.lstat gives ints, so the first version of this check
-    # compared 100 against '100', matched nothing, and reported every module as
-    # borrowing base's _apt and adm. Caught by running it, not by reading it.
+    # account base provides or one the module itself declares. Anything else
+    # is an identity the module borrows without saying so. Ids are compared
+    # with int(): manifests store them as strings, lstat gives ints.
     def _ids(doc, kind, key):
         out = set()
         for r in ((doc.get('accounts') or {}).get(kind) or {}).values():
@@ -634,9 +603,8 @@ else:
                 (type(i) is int and i >= 0) or
                 (isinstance(i, str) and i.isdecimal()) for i in value)
         if not owner_list(acc.get('file_uids')) or not owner_list(acc.get('file_gids')):
-            # Both complete numeric-owner lists are required. A missing
-            # file_uids used to skip silently; missing/null/malformed
-            # file_gids was treated as empty and printed an unsupported [OK].
+            # Both complete numeric-owner lists are required; without them
+            # the module is reported as not checked, never as [OK].
             no_field.append(m)
             continue
         own_u = _ids(d, 'users', 'uid') | base_uids | {0}
@@ -679,10 +647,8 @@ else:
                 wanted.append(('group', g, merged_groups))
             for kind, nm, table in wanted:
                 # systemd resolves a bare number directly; only names need an
-                # entry. Values containing '%' are SPECIFIERS substituted at
-                # runtime -- base's user@.service declares User=%i, which is
-                # the instance name, not an account. Treating those as literal
-                # names rejects every set that contains base.
+                # entry. Values containing '%' are specifiers substituted at
+                # runtime (base's user@.service has User=%i), not accounts.
                 if '%' in nm or nm.isdigit() or nm in table: continue
                 unresolved += 1; ERRORS += 1
                 print("    UNRESOLVED IDENTITY %s: %s '%s' (from %s) exists in no layer"
@@ -698,10 +664,9 @@ print(" MODULE-LEVEL DEPENDENCIES  (requires / conflicts / provides)")
 print("=" * 72)
 
 # ARCHITECTURE section 5: package relations cannot express cross-module
-# requirements, because apt only ever sees one module's build. These fields
-# have been in the manifest schema for weeks without being enforced -- the
-# audit called that out (M5). Verification only, never search: the set is
-# fixed, so this is linear checking, not solving.
+# requirements, because apt only ever sees one module's build. Verification
+# only, never search: the set is fixed, so this is linear checking, not
+# solving.
 capabilities = defaultdict(list)          # name -> [(module, version)]
 for m in ['base'] + modules:
     d = docs.get(m) or base_doc
@@ -766,9 +731,7 @@ print(" VERDICT: %d error(s), %d warning(s)" % (ERRORS, WARNINGS))
 if ERRORS:
     print(" REJECT -- module set is not consistently composable")
 elif WARNINGS:
-    # Say what actually warned. This line used to assert base drift
-    # unconditionally, which became untrue the moment a second kind of
-    # warning existed.
+    # Name the kinds of warning that actually occurred.
     seen = []
     for r in WARN_REASONS:
         if r not in seen: seen.append(r)

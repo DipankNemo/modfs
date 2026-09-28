@@ -5,27 +5,27 @@
 #   ./scripts/16_build_evidence.sh                    # write thesis/evidence/
 #   ./scripts/16_build_evidence.sh --out DIR          # elsewhere
 #   ./scripts/16_build_evidence.sh --check            # write nothing, report status
+#   ./scripts/16_build_evidence.sh --help             # print this header
 #
-# NEEDS NO ROOT. It reads artefact sizes, manifests, the retained CSVs under
+# Needs no root. It reads artefact sizes, manifests, the retained CSVs under
 # $LOG_DIR and the run bundles under $RESULTS_DIR, all of which are
 # world-readable. It mounts nothing, builds nothing and deletes nothing.
 #
-# WHY THIS EXISTS. Every number that reaches the thesis must be produced by a
-# script that reads the retained evidence, not typed into a document. The GPU
-# modules are still in flight: when they settle, this is re-run and every
-# table moves with them. Nothing is hand-transcribed.
+# Why: every number that reaches the thesis must be produced by a script
+# that reads the retained evidence, never typed into a document. When the
+# artefacts or results change, a re-run moves every table with them and
+# nothing is hand-transcribed.
 #
-# WHAT IT REFUSES TO DO. If a source file is missing, or is OLDER than the
-# artefacts it describes, the table is replaced by a STALE/MISSING block that
-# says which file, how old, and what to re-run. A missing result is a fact; a
-# silently stale one is a defect. Nothing here ever prints a number it cannot
-# name a file for.
+# Refusals: if a source file is missing, or is older than the artefacts it
+# describes, its table is replaced by a "NO TABLE" block that says which
+# file, how old, and what to re-run, so a stale result is never published
+# silently. Nothing here prints a number it cannot name a source file for.
 #
-# CATALOGUE LABELLING. Numbers from a 27-module catalogue and a 40-module
-# catalogue must never appear side by side unlabelled, so every table carries
-# the catalogue size DERIVED FROM ITS OWN SOURCE -- the distinct modules named
-# in that CSV or bundle -- not the catalogue size today. Where the two differ
-# the caption says so.
+# Catalogue labelling: numbers from catalogues of different sizes must never
+# appear side by side unlabelled, so every table carries the catalogue size
+# derived from its own source (the distinct modules named in that CSV or
+# bundle), not the catalogue size today. Where the two differ the caption
+# says so.
 #
 # Output: one file per result family, Markdown to read and CSV to \input.
 
@@ -51,16 +51,10 @@ python3 -c 'import yaml' 2>/dev/null || die "python3-yaml not found (already a p
 
 [ -d "$MOD_DIR" ] || die "no module directory: ${MOD_DIR}"
 
-# REFUSE to publish one generation's numbers into another's directory.
-#
-# `source .../env.sh` exports MODFS_ROOT for the whole shell. Running this
-# afterwards in the same terminal read /srv/modfs-noble and wrote its numbers
-# into this repo's thesis/evidence -- storage went 5.59x -> 2.49x, the catalogue
-# gained nvidia-driver-580, and nothing complained, because OUT and ROOT are
-# independent and no check compared them. Recovered from git.
-#
-# One guard, where every caller routes through: a non-default ROOT may write
-# anywhere EXCEPT the repo's own evidence directory.
+# Refuse to publish one generation's numbers into another's directory. A
+# leftover MODFS_ROOT in the shell (from `source .../env.sh`) would otherwise
+# write another generation's numbers into this repo's thesis/evidence. A
+# non-default ROOT may write anywhere except the repo's own evidence directory.
 if [ "$ROOT" != "/srv/modfs" ] && [ "$OUT" = "${HERE}/thesis/evidence" ]; then
     die "refusing to write ${ROOT} numbers into ${OUT}
    MODFS_ROOT is ${ROOT}, not the default /srv/modfs -- probably a leftover
@@ -68,9 +62,8 @@ if [ "$ROOT" != "/srv/modfs" ] && [ "$OUT" = "${HERE}/thesis/evidence" ]; then
    --out DIR to publish this generation somewhere of its own."
 fi
 
-# --check must write NOTHING, and a directory is something. The compare loop
-# below treats a path that does not exist as "changed", so there is nothing to
-# create when we are only reporting.
+# --check writes nothing, not even the output directory: the compare loop
+# below treats a missing path as "changed".
 if [ "$CHECK" -eq 0 ]; then
     mkdir -p "$OUT" || die "cannot create ${OUT}"
 fi
@@ -95,9 +88,8 @@ GIT = os.environ.get('MODFS_GIT_COMMIT', 'unknown')
 GITB = os.environ.get('MODFS_GIT_BRANCH', 'unknown')
 GITD = os.environ.get('MODFS_GIT_DIRTY', 'unknown')
 
-# Which chapter each table belongs to. DECLARED HERE, once, so that assembling
-# the chapters later is a matter of collecting files rather than re-deciding
-# where every number goes.
+# Which chapter each table belongs to, declared once here, so assembling the
+# chapters is a matter of collecting files.
 CHAPTER = {
     'tier1':      'Evaluation',
     'tier2':      'Evaluation',
@@ -115,13 +107,9 @@ KIND_BY_PROVOKES = {
     'module-dependency': 'synthetic',
     'dpkg-blindness':    'synthetic',
 }
-# Declared cohort for the storage split. This same set is declared again in
-# 13_storage_ratios.sh, and the two MUST agree: they split the same catalogue
-# into the same cohorts and publish ratios that are compared against each other.
-# Until 2026-09-21 three comments in this file asserted that a "consistency
-# check" kept them in step. There was no such check -- all four mentions of
-# 13_storage_ratios.sh in this file were comments and message text, and the two
-# sets stayed equal by hand. They are now actually compared, below.
+# Declared cohort for the storage split. 13_storage_ratios.sh declares the
+# same set, and the two must agree: they split the same catalogue and publish
+# ratios that are compared against each other. They are compared below.
 LARGE = {'gcc', 'java', 'rust', 'llvm', 'postgres', 'mysql', 'docker',
          'nvidia-driver-535', 'cuda-runtime'}
 
@@ -261,11 +249,9 @@ def table(rows, head, align=None):
     if not rows:
         return '_(no rows)_\n'
     align = align or ['---'] * len(head)
-    # Adding a column and forgetting one of the row builders is how this
-    # project once put every failure label one column to the left and left
-    # `result` empty -- correct summary logic defeated by a data bug beneath
-    # it. Markdown will not complain: it renders a short row as a short row and
-    # a long one by silently dropping the tail. So refuse instead.
+    # Refuse rows whose width differs from the header. Markdown will not
+    # complain: it renders a short row as a short row and silently drops the
+    # tail of a long one.
     if len(align) != len(head):
         raise SystemExit('table(): %d alignment spec(s) for %d column(s): %r'
                          % (len(align), len(head), head))
@@ -291,9 +277,9 @@ def emit(name, text):
 
 def write_csv(name, head, rows):
     import io
-    # Same guard as table(), and it matters more here: these CSVs are what the
-    # thesis \input's, so a row one field short does not look wrong, it looks
-    # like a different number. csv.writer will write any width without a word.
+    # Same guard as table(). The thesis \inputs these CSVs, where a row one
+    # field short looks like a different number, and csv.writer accepts any
+    # width.
     for i, r in enumerate(rows):
         if len(r) != len(head):
             raise SystemExit(
@@ -327,7 +313,7 @@ T1_HEAD = ['combination', 'n', 'modules', 'verdict', 'exit', 'errors',
            'warnings', 'benign_overlap', 'version_skew', 'declared_conflict',
            'file_collision', 'file_collision_suppressed', 'identity_collision',
            'module_relation', 'base_drift', 'not_composable']
-# Class 1 is ACCEPTED and measured, so it is never a rejection reason. These
+# Class 1 is accepted and measured, so it is never a rejection reason. These
 # are the columns that can make a combination REJECT.
 REJ_COLS = [('version_skew', 'class 2 version skew'),
             ('declared_conflict', 'class 3 declared conflict'),
@@ -404,18 +390,11 @@ def build_tier1():
     missing = [m for m in mods_seen if m not in ART]
     absent = [m for m in DELTAS if m not in mods_seen]
 
-    # A SET-SIZE coverage check, not just a module coverage check.
-    #
-    # pick_tier1() takes the NEWEST file carrying the current schema, and the
-    # caption flags a source that covers fewer MODULES than the catalogue. That
-    # pair of guards cannot see the case that matters most here: a later
-    # `--max-n 2` re-run covers every module and every column, and is simply
-    # missing every triple. It wins on mtime, the caption reads clean because
-    # the module set is complete, and 9880 triples leave the thesis in silence
-    # -- taking T1.4, the arithmetic cross-check, with them.
-    #
-    # This is the V7/V2 shape: a coverage check comparing NAME SETS cannot see
-    # that half the measurement is absent. So compare what was MEASURED.
+    # A set-size coverage check, not just a module coverage check.
+    # pick_tier1() takes the newest file with the current schema, so a later
+    # `--max-n 2` re-run that covers every module but no triples would win and
+    # silently drop every triple (and T1.4 with them). So compare the set sizes
+    # each candidate measured.
     ns_best = {int(r['n']) for r in rows if str(r.get('n', '')).isdigit()}
     richer = []
     for cand in cands:
@@ -428,7 +407,7 @@ def build_tier1():
         ons = {int(r['n']) for r in orows if str(r.get('n', '')).isdigit()}
         omods = {m for r in orows for m in r['modules'].split()}
         extra = sorted(ons - ns_best)
-        # Only a candidate covering AT LEAST the same modules is a real
+        # Only a candidate covering at least the same modules is a real
         # alternative; an older, smaller catalogue is already caught by the
         # caption and must not be recommended here.
         if extra and omods >= set(mods_seen):
@@ -638,7 +617,7 @@ def build_tier2():
     have = set(rows[0].keys())
     body = [head]
     # Stage 10 excludes the positive control by design: it is built from a
-    # different snapshot and must be REFUSED, so composing it proves nothing.
+    # different snapshot and must be refused, so composing it proves nothing.
     controls = {n for n in DELTAS if kind(n) == 'control'}
     body.append('_Excluded by design: the positive control%s — built from a '
                 'different snapshot, meant to be rejected at tier 1, so '
@@ -816,14 +795,9 @@ def build_tier3():
         if not res:
             note.append('no result.json — run did not finish')
         # Stale: an artefact in this run has been rebuilt since the run.
-        #
-        # Checked over `mods` and ALWAYS over base, never over `deltas`.
-        # `deltas` exists to count N, which counts module deltas and excludes
-        # base by definition; reusing that same list here silently inherited
-        # its exclusion, and a bundle whose BASE had been rebuilt underneath it
-        # was reported as describing artefacts that still exist unchanged. Base
-        # is the one layer every boot image in every bundle is built on, so it
-        # is included whether or not the run recorded it by name.
+        # Checked over `mods` and always over base, not over `deltas` (which
+        # excludes base, being the count behind N): every boot image is built
+        # on base, whether or not the run recorded it by name.
         watch = set(mods) | {'base'}
         newer = sorted(m for m in watch
                        if m in ART and ART[m]['sqsh_mtime']
@@ -867,7 +841,7 @@ def build_tier3():
                 'overwritten, so this table is the complete boot history, '
                 'including the runs where the harness rather than the system '
                 'under test was the failure._\n\n' % RESULTS_DIR)
-    # The run date here is the NEWEST BUNDLE's, not this script's clock, so
+    # The run date here is the newest bundle's, not this script's clock, so
     # the file is byte-stable when nothing has been measured since -- which is
     # what makes `--check` usable as a drift alarm.
     newest = max((mtime(os.path.join(b, 'run.json')) for b in bundles),
@@ -914,13 +888,10 @@ def build_storage():
         NOTES.append('declared large but not built: %s' % ', '.join(sorted(unknown)))
     sz = lambda n: DELTAS[n]['bytes']
 
-    # The symmetric case: a large module PRESENT but undeclared falls silently
-    # into "small adversarial", because the split is a membership test against
-    # a hardcoded literal. On the noble catalogue the driver is
-    # nvidia-driver-580, and the effect is not cosmetic: adding one 542 MB
-    # artefact to the small cohort moves its ratio from 5.59x to 2.59x. Same
-    # guard as 13_storage_ratios.sh; the two LARGE sets are kept in step by the
-    # consistency check, which is why the guard has to be in step as well.
+    # The symmetric case: a large module that is built but undeclared would
+    # fall silently into "small adversarial", since the split is a membership
+    # test against a literal set (e.g. a driver renamed in another release).
+    # Same guard as 13_storage_ratios.sh, whose LARGE set is compared above.
     _built_large = [n for n in names if n in LARGE]
     if _built_large:
         _floor = min(sz(n) for n in _built_large)
@@ -934,11 +905,8 @@ def build_storage():
                 'state in ARCHITECTURE section 7 why it is small.'
                 % (_floor / W,
                    ', '.join('%s (%.1f MB)' % (n, sz(n) / W) for n in _undecl)))
-            # And REFUSE to publish. The note alone was not enough: on the noble
-            # catalogue it printed, scrolled past in a wall of output, and the
-            # wrong cohort table was written anyway -- small cohort 5.59x ->
-            # 2.49x with a 542 MB driver in it. A warning that does not stop the
-            # wrong output is the same defect as no warning.
+            # And refuse to publish: a note alone scrolls past while the wrong
+            # cohort table is written anyway.
             emit('storage.md', head + unavailable(
                 'a module is larger than the large cohort and is not declared in it',
                 'At or above the large-cohort floor (%.1f MB): %s. Publishing the '
@@ -957,13 +925,8 @@ def build_storage():
         d = sum(sz(n) for n in ns); N = len(ns)
         stored = B + d; model = N * B + d
         if not N:
-            # An EMPTY cohort has no ratio. The old guards (`if stored`,
-            # `if N`) stopped the ZeroDivisionError and then formatted the
-            # fallback zero as a measurement, so a cohort with no members
-            # published `0.00x` -- a claim that the monolithic baseline costs
-            # nothing. Guarding against a crash is not the same as guarding
-            # against a meaningless number, and this script's own header
-            # promises it "never prints a number it cannot name a file for".
+            # An empty cohort has no ratio: print dashes, not a fallback 0.00x
+            # that would read as a measurement.
             EMPTY_COHORTS.append(label)
             return [label, 0, '%.1f' % (B / W), '—', '—', '—']
         return [label, N, '%.1f' % (stored / W), '%.1f' % (model / W),
@@ -992,13 +955,10 @@ def build_storage():
 
     # ---- S2 the model checked against real monolithic builds
     # A monolithic baseline is itself an artefact and can go stale. It is a
-    # like-for-like comparison ONLY if it was built from the same base and the
-    # same delta it is compared against -- that is, only if it is NEWER than
-    # both. Nothing else here would catch it: ART_NEWEST gates the tier-1 and
-    # tier-2 CSVs, and a `-monolithic.sqsh` carries no manifest, so the artefact
-    # inventory never sees it either. Publishing a calibration measured across a
-    # rebuild boundary is the defect STATE_OF_PLAY §5c records as "monolithic
-    # baselines two weeks stale", recurring in the REPORTING layer.
+    # like-for-like comparison only if it is newer than both the base and the
+    # delta it is compared against. Nothing else checks this: a
+    # `-monolithic.sqsh` carries no manifest, so the artefact inventory never
+    # sees it.
     checked = []
     for n in names:
         mono = os.path.join(MOD_DIR, n + '-monolithic.sqsh')
@@ -1122,8 +1082,8 @@ def build_storage():
                'mean_delta_mb'], sens)
 
     # ---- S5 reconcile the figures already published in the documents
-    # Declared here as the LITERAL TEXT of each document, so the comparison
-    # below is against what is printed, not against a remembered value.
+    # Declared as the literal text of each document, so the comparison below
+    # is against what is printed, not against a remembered value.
     PUBLISHED = [
         ('docs/STATE_OF_PLAY_2026-09-18.md', '6', '38 modules, 2026-09-16',
          '5.59x / 1.32x / 2.51x', 'minus-gpu', 1.0),
@@ -1136,9 +1096,8 @@ def build_storage():
         ('docs/REASSESSMENT_2026-09-10.md', '8.2', '37 modules, 2026-09-10',
          '2.47x whole', 'gone', 0.993),
     ]
-    # The two REAL GPU modules, named exactly. Matching on 'nvidia' or
-    # 'cuda' also catches the synthetic fake-nvidia-driver and fake-cuda,
-    # which were in the catalogue long before them and must stay in.
+    # The two real GPU modules, named exactly: matching on 'nvidia' or 'cuda'
+    # would also catch the synthetic fake-nvidia-driver and fake-cuda.
     GPU = {'nvidia-driver-535', 'cuda-runtime'} & set(names)
     recon = []
     for doc, sec, cat, pub, how, cal in PUBLISHED:

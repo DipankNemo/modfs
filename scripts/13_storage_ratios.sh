@@ -5,30 +5,22 @@
 #   ./scripts/13_storage_ratios.sh                 # table to stdout
 #   ./scripts/13_storage_ratios.sh --csv out.csv   # also write a CSV
 #
-# Needs no root: it reads artefact SIZES only.
+# Needs no root: it reads artefact sizes only.
 #
-# WHY THIS EXISTS. The cohort table in ARCHITECTURE section 7 was computed ad
-# hoc on 2026-09-16 and the JOURNAL entry for that day says so outright: "there
-# is no aggregate storage script; the cohort table is computed ad hoc from
-# artefact sizes. If that table is going to be regenerated on every rebuild it
-# should become one." It is regenerated on every rebuild. This is it.
-#
-# THE RATIO, and what it does and does not say:
+# The ratio:
 #
 #     stored      = B + sum(d_i)              one base, N deltas
 #     monolithic  = N*B + sum(d_i)            one whole image per use case
 #     ratio       = monolithic / stored
 #
-# so it tends to N as deltas shrink and to 1 as they grow. The monolithic
-# column is MODELLED as B + d, and that model is checked here against the six
-# real monolithic builds `02_build_delta.sh --compare` produces: measured comes
-# in 0.2-0.9 % BELOW the model, because squashfs compresses one whole tree
-# slightly better than a base and a delta compressed separately. The model
-# therefore mildly OVERSTATES the saving. The bias is small, it has a direction
-# and a cause, and it is printed rather than assumed.
+# It tends to N as deltas shrink and to 1 as they grow. The monolithic size is
+# modelled as B + d and checked against the real monolithic builds that
+# `02_build_delta.sh --compare` produces: squashfs compresses one whole tree
+# slightly better than a base and a delta separately, so the model slightly
+# overstates the saving. The measured error is printed, not assumed.
 #
-# The cohort split is a JUDGEMENT and is declared here, not derived from size,
-# so that it cannot drift silently as modules are added.
+# The cohort split is a judgement, declared below rather than derived from
+# size, so it cannot drift silently as modules are added.
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 source "${HERE}/config.sh"
@@ -51,9 +43,8 @@ mod_dir, csv_out = sys.argv[1], sys.argv[2]
 # workload someone would deploy, not because it happens to exceed a threshold.
 LARGE = {'gcc', 'java', 'rust', 'llvm', 'postgres', 'mysql', 'docker',
          'nvidia-driver-535', 'cuda-runtime'}
-# The two GPU modules joined this cohort on 2026-09-19. They are the largest
-# artefacts in the catalogue and they are real; putting them anywhere else
-# would be flattering the number.
+# The GPU modules are the largest real artefacts in the catalogue; leaving
+# them out of this cohort would flatter its ratio.
 
 def size(name):
     return os.path.getsize(os.path.join(mod_dir, name + '.sqsh'))
@@ -72,19 +63,11 @@ if unknown:
     sys.stderr.write('declared large but not built: %s\n'
                      % ', '.join(sorted(unknown)))
 
-# The symmetric case, which this script was blind to until 2026-09-21.
-#
-# The guard above catches a declared-large module that is ABSENT. Nothing
-# caught a large module that is PRESENT and undeclared: it fell into "small
-# adversarial" silently, because the cohort split is a membership test against
-# a hardcoded literal set. The noble port renames the driver to
-# nvidia-driver-580, so on that catalogue this script would have warned that
-# `nvidia-driver-535` was missing -- on stderr, easy to miss -- and then put a
-# 542 MB driver in the cohort whose mean delta is 7.5 MB.
-#
-# The split stays a JUDGEMENT; size does not decide it. But an undeclared
-# module larger than the smallest declared-large one is a decision nobody has
-# made, so refuse rather than average it into the wrong cohort.
+# The symmetric case: a large module that is built but not declared would
+# fall silently into "small adversarial" (e.g. a driver renamed in another
+# release). Size does not decide the split, but an undeclared module at least
+# as large as the smallest declared-large one is a decision nobody has made,
+# so refuse rather than average it into the wrong cohort.
 built_large = [n for n in names if n in LARGE]
 if built_large:
     floor = min(size(n) for n in built_large)
@@ -109,10 +92,8 @@ for label, cohort in (('small adversarial', [n for n in names if n not in LARGE]
     rows.append((label, N, stored, model, (model / stored) if stored else 0,
                  (d / N / 1000000.0) if N else 0))
 
-# DECIMAL MB (10^6), because that is the unit every published figure in
-# ARCHITECTURE section 7 uses. mksquashfs and the build scripts' human() print
-# BINARY MiB under the label "MB", so the two differ by 4.9 % and an undeclared
-# unit is exactly the kind of thing that turns into a wrong number in a thesis.
+# Decimal MB (10^6), the unit of every published figure. mksquashfs and
+# lib.sh's human() print binary MiB labelled "MB"; the two differ by 4.9 %.
 W = 1000000.0
 print()
 print('=' * 78)

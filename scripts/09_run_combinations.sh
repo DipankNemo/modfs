@@ -8,15 +8,12 @@
 #   ./scripts/09_run_combinations.sh --jobs 8
 #   ./scripts/09_run_combinations.sh --out /tmp/x.csv
 #
-# Needs no root: it reads only module.json manifests, which is the whole point
-# of stage 06. ARCHITECTURE section 6 tier 1 -- ~1 s per combination, so
-# thousands are feasible where composition (tier 2) and boot (tier 3) are not.
+# Needs no root: it reads only the module manifests written by stage 06. This
+# is tier 1 (ARCHITECTURE section 6): cheap enough per combination that
+# thousands are feasible, where composition (tier 2) and boot (tier 3) are not.
+# Each 05_check.sh run is independent, so --jobs parallelises safely.
 #
-# 27 modules is 351 pairs and 2 925 triples. Sequential that is roughly an
-# hour; --jobs 8 brings it to minutes. Each 05_check.sh run is independent,
-# so parallelism is safe.
-#
-# Exit: 0 the sweep completed, 2 the runner broke. A REJECT verdict is DATA,
+# Exit: 0 the sweep completed, 2 the runner broke. A REJECT verdict is data,
 # not a failure of this script, so it never exits 1.
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -46,7 +43,7 @@ if [ "${1:-}" = "--worker" ]; then
     DECL=$(printf   '%s\n' "$OUT" | grep -cE '^ +[^ ]+ (CONFLICTS|BREAKS) ' || true)  # class 3
     DRIFT=$(printf  '%s\n' "$OUT" | grep -c 'base package(s) upgraded' || true)       # class 6
     NOCOMP=$(printf '%s\n' "$OUT" | grep -c 'NOT COMPOSABLE' || true)          # PRE
-    # Anchor on the finding lines' indent: the section HEADER also contains
+    # Anchor on the finding lines' indent: the section header also contains
     # the words "IDENTITY COLLISION", and matching it counts every run.
     IDENT=$(printf  '%s\n' "$OUT" | grep -cE '^    (IDENTITY COLLISION|UNRESOLVED IDENTITY)' || true)  # class 7
     MODREL=$(printf '%s\n' "$OUT" | grep -cE '^    (UNSATISFIED REQUIREMENT|MODULE CONFLICT)' || true)  # section 5
@@ -100,7 +97,7 @@ for m in (doc.get('modules') or []):
 PY
 )
 [ "${#MODULES[@]}" -ge 2 ] || die2 "fewer than 2 built modules found -- run 08_build_catalogue.sh"
-# C1: identifiers reach paths and mount options; validate at the boundary.
+# Module names reach paths and mount options, so validate them here.
 for m in "${MODULES[@]}"; do valid_ident "$m" || die2 "invalid module name in catalogue: '$m'"; done
 
 W="${BUILD_DIR}/combinations"

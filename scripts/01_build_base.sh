@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
 #
-# Build the BASE module: a minimal Ubuntu rootfs from the pinned snapshot.
+# Build the base module: a minimal Ubuntu rootfs from the pinned snapshot.
 # Every other module is a delta on top of this one.
 #
 #   sudo ./scripts/01_build_base.sh [--version V] [extra packages...]
 #
 # Output: $MOD_DIR/base.sqsh   (the artefact)
 #         $MOD_DIR/base.json   (metadata manifest, written by stage 06)
-#         $MOD_DIR/base.dir/   (kept, needed as lowerdir for delta builds)
+#         $MOD_DIR/base.dir/   (kept: holds the build stamp; 03 reads it)
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 source "${HERE}/config.sh"
@@ -16,10 +16,9 @@ need_root
 
 NAME="base"
 
-# --version is forwarded to the metadata extractor. ARCHITECTURE section 5:
-# modules need explicit version numbers rather than implicit (snapshot,
-# parent) identity, otherwise the module-level dependency layer has nothing
-# to constrain. Omitting it is allowed but warns.
+# --version is forwarded to 06_extract_metadata.sh. Module dependencies are
+# declared against explicit versions (ARCHITECTURE section 5), so omitting it
+# is allowed but warns.
 MOD_VERSION=""
 EXTRA_PKGS=()
 while [ $# -gt 0 ]; do
@@ -47,13 +46,11 @@ STAMP="${ROOTFS}/.modfs-complete"
 
 mkdir -p "$MOD_DIR" "$BUILD_DIR" "$LOG_DIR"
 
-# Idempotency via a stamp file written LAST. Checking for /bin is unreliable:
-# debootstrap creates it in the first seconds, so an interrupted run looks
-# complete. That was the source of the half-built chroot problem.
+# The stamp file is written last, so an interrupted build never looks
+# complete. Testing for /bin would not work: debootstrap creates it at once.
 if [ -f "$STAMP" ] && [ -f "$SQSH" ]; then
     log "base already built (remove $ROOTFS to rebuild)"
-    # A base built before stage 06 existed has no manifest. Generate one
-    # rather than forcing a 15-minute rebuild just to get it.
+    # A base without a manifest gets one extracted, not a full rebuild.
     if [ ! -f "${MOD_DIR}/${NAME}.json" ]; then
         log "no manifest yet -- extracting metadata"
         extract_metadata
@@ -83,10 +80,9 @@ echo "modfs-node" > "${ROOTFS}/etc/hostname"
 log "apt update"
 in_chroot "$ROOTFS" apt-get update -qq || die "apt update failed"
 
-# debootstrap installs only from the plain '<suite>' pocket, but every delta
-# build sees <suite> + -updates + -security. That mismatch let deltas pull
-# newer versions of packages base already had (implicit base upgrade).
-# Bringing base up to the same archive view removes the whole class.
+# debootstrap installs only from the release pocket, but delta builds also
+# see -updates and -security. Upgrading base to the same archive view keeps
+# deltas from pulling newer versions of packages base already has.
 log "aligning base with snapshot archive view (release + updates + security)"
 in_chroot "$ROOTFS" dpkg-query -f '${binary:Package} ${Version}\n' -W \
     2>/dev/null | sort > "${BUILD_DIR}/base-preupgrade.pkgs"
@@ -112,14 +108,11 @@ remove_chroot_policy "$ROOTFS"
 unmount_all
 
 # ---- first-boot reset -----------------------------------------------------
-# systemd-machine-id-setup writes a RANDOM /etc/machine-id when systemd is
-# installed. That is wrong for us twice over: it makes base.sqsh
-# unreproducible, and every node flashed from this image would share one
-# identity (journal ids, DHCP client id, systemd instance id).
-# An EMPTY /etc/machine-id is systemd's documented "first boot" signal -- it
-# generates a fresh id on the node's first boot. Emptied, not deleted:
-# systemd handles a missing file differently when /etc is read-only, and an
-# existing empty file is what the image convention expects.
+# systemd writes a random /etc/machine-id at install time. That would make
+# base.sqsh unreproducible and give every node flashed from it one shared
+# identity. An empty file is systemd's first-boot signal to generate a fresh
+# id. It is emptied rather than deleted because systemd treats a missing file
+# differently when /etc is read-only.
 if [ -f "${ROOTFS}/etc/machine-id" ]; then
     : > "${ROOTFS}/etc/machine-id"
     log "machine-id emptied -- regenerated on first boot"

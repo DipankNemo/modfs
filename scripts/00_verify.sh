@@ -32,9 +32,8 @@ for t in debootstrap mksquashfs unsquashfs curl mount umount chroot \
          losetup rsync sgdisk mkfs.ext4 getfattr qemu-img zstd; do
     if command -v "$t" >/dev/null 2>&1; then ok "$t"; else bad "$t missing"; fi
 done
-# PyYAML is stock on Ubuntu but is not part of python3 itself, and the module
-# catalogue in specs/modules.yaml is unreadable without it -- 08 and 09 both
-# fail, and 07 silently skips every probe. Check it like any other tool.
+# specs/modules.yaml needs PyYAML, which is not part of python3 itself;
+# without it 08 and 09 fail and 07 skips every probe.
 if python3 -c 'import yaml' >/dev/null 2>&1; then ok "python3 yaml"
 else bad "python3 yaml missing (apt install python3-yaml)"; fi
 
