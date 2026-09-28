@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# FUNCTIONAL test of a composed module set. Everything up to stage 05 is
+# Functional test of a composed module set. Everything up to stage 05 is
 # static analysis of metadata; this composes the union and asks whether it
 # still works.
 #
@@ -10,7 +10,7 @@
 #
 # Checks:
 #   F1  dpkg --audit             -- no half-installed or half-configured state
-#   F2  apt-get -s install <req> -- every module's REQUESTED packages must
+#   F2  apt-get -s install <req> -- every module's requested packages must
 #                                   already be satisfied, so apt plans no work
 #                                   at all (no "Inst " lines)
 #   F3  ldconfig -p              -- the dynamic linker cache is populated
@@ -18,14 +18,12 @@
 #
 # Exit status, same contract as 05_check.sh:
 #   0  all checks passed
-#   1  a check FAILED -- the composed system is broken
+#   1  a check failed -- the composed system is broken
 #   2  the harness broke -- usage, missing artefact, compose failure
 #
-# Why it reconciles first: a naive overlay lets the topmost module's
-# /var/lib/dpkg/status win outright, so dpkg would report most packages
-# missing and every check below would fail for the wrong reason. The union is
-# built from the MOUNTED ARTEFACTS, not the build trees -- an artefact plus
-# its manifest is meant to be self-sufficient.
+# The union is built from the mounted artefacts, not the build trees (an
+# artefact plus its manifest is meant to be self-sufficient), and is
+# reconciled before any check runs.
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 source "${HERE}/config.sh"
@@ -37,13 +35,12 @@ die2() { printf '\033[1;31m[FAIL]\033[0m %s\n' "$*" >&2; exit 2; }
 [ "$(id -u)" -eq 0 ] || die2 "must run as root (mounts + chroot)"
 [ $# -ge 2 ] || die2 "usage: $0 base <module> [module...]"
 MODULES=("$@")
-# C1: identifiers reach paths and mount options; validate at the boundary.
+# Module names reach paths and mount options, so validate them here.
 for m in "${MODULES[@]}"; do valid_ident "$m" || die2 "invalid module name: '$m'"; done
 
-# The probes ARE the functional test. Without the catalogue this script
-# degenerates into static checks that would still print a pass, which is the
-# most dangerous outcome it could have. Treat a missing catalogue as a broken
-# harness, not as a skip.
+# The probes are the functional test; without the catalogue only static
+# checks would run and still print a pass. So a missing catalogue is a broken
+# harness (exit 2), not a skip.
 SPEC="${SPEC_DIR}/modules.yaml"
 [ -f "$SPEC" ] || die2 "no ${SPEC} -- cannot run functional probes without the catalogue"
 python3 -c 'import yaml' >/dev/null 2>&1 \
@@ -75,19 +72,10 @@ do_mount -t overlay overlay \
 M="${C}/merged"
 mount_chroot_fs "$M"
 
-# RUNTIME DIRECTORIES THE ARTEFACTS EXCLUDE BY DESIGN. SQUASH_EXCLUDES drops
-# tmp, var/tmp and run -- the DIRECTORIES, not merely their contents -- because
-# they are runtime state and not module content. 11_boot_test.sh already creates
-# them before packing an image; this script never did, and nothing noticed
-# because no probe had ever written a file. The moment the probes started doing
-# real work instead of printing version strings, eight of them failed here and
-# passed under systemd:
-#     gcc, git, java, llvm, rsync, rust, socat, zstd  -- all write to /tmp
-#     apache                                          -- mktemp in /var/lock,
-#                                                        which is a symlink to
-#                                                        /run/lock
-# Those were failures of the harness, not of the modules. mount_chroot_fs
-# creates proc/sys/dev/run, which is why /run itself exists; /run/lock does not.
+# SQUASH_EXCLUDES drops tmp, var/tmp and run entirely, since they are runtime
+# state. Probes need them: several write to /tmp, and apache uses /var/lock, a
+# symlink to /run/lock. mount_chroot_fs creates /run but not /run/lock.
+# (11_boot_test.sh creates the same directories before packing an image.)
 mkdir -p "$M/tmp" "$M/var/tmp" "$M/run/lock"
 chmod 1777 "$M/tmp" "$M/var/tmp" "$M/run/lock"
 write_chroot_policy "$M"
@@ -98,14 +86,13 @@ echo " SMOKE TEST: ${MODULES[*]}"
 echo "========================================================================"
 
 # ---- reconcile + gather per-module facts ----------------------------------
-# Reconciliation lives in scripts/reconcile.py and is shared with 04. A naive
-# overlay lets the topmost module's registries win outright, so dpkg would
-# report most packages missing, update-alternatives would see one candidate
-# per link group, and the linker cache would describe only the top module --
-# every check below would then fail, or pass, for the wrong reason.
+# Reconciliation (scripts/reconcile.py, shared with 04) comes first: in a
+# naive overlay the topmost module's registries win outright, so dpkg,
+# update-alternatives and the linker cache would describe only the top module
+# and every check below would fail, or pass, for the wrong reason.
 LAYERS=(); for m in "${MODULES[@]}"; do LAYERS+=("${m}=${C}/ro_${m}"); done
-# NOT "GROUPS": bash owns that name (the caller's group ids), so assigning to
-# it is silently discarded and the variable still expands to a gid.
+# Not GROUPS: bash owns that name (the caller's group IDs) and silently
+# ignores assignments to it.
 ALT_GROUPS="${C}/alt.groups"
 python3 "${HERE}/scripts/reconcile.py" --merged "$M" --groups-out "$ALT_GROUPS" \
         "${LAYERS[@]}" || die2 "reconciliation failed"
@@ -125,7 +112,7 @@ import json, os, sys
 mod_dir, spec, meta_path = sys.argv[1:4]
 modules = sys.argv[4:]
 
-# A probe describes the module's INTENT, so it comes from the hand-written
+# A probe describes the module's intent, so it comes from the hand-written
 # catalogue, not from the built artefact.
 probes = {}
 try:
@@ -188,12 +175,8 @@ LDN=$(printf '%s\n' "$LDOUT" | sed -n 's/^\([0-9][0-9]*\) libs found.*/\1/p' | h
 [ -n "$LDN" ] || LDN=0
 if [ "$LDN" -gt 10 ]; then
     ok "linker cache lists ${LDN} libraries"
-    # This used to be a weak assertion: /etc/ld.so.cache is a class-5
-    # last-wins file, so the composed cache was the TOP module's and omitted
-    # every library the others added -- measured at base 96, webserver 131,
-    # pytools 107, composed 107. The cache is now REGENERATED by ldconfig
-    # during reconciliation above, so the count should exceed every
-    # individual layer rather than match the topmost one.
+    # /etc/ld.so.cache is regenerated by ldconfig above rather than taken
+    # last-wins from the top module, so it covers every layer's libraries.
 else
     no "ldconfig -p reported ${LDN} libraries -- cache empty or unreadable"
 fi
