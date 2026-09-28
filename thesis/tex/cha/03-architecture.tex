@@ -1,7 +1,7 @@
 \chapter{Architecture}
 \label{ch:architecture}
 
-The design begins with a constrained composition problem: one exact base, independently installed siblings, and an explicitly selected set. We chose this topology to make each module's parent assumptions checkable and to keep ordinary Ubuntu package paths. The implementation then separates admission, semantic assembly, and execution. Those operations answer different questions, so their success conditions remain distinct. \Cref{app:implementation} maps each mechanism in this chapter to the scripts that implement it and the tests that check it.
+The design begins with a constrained composition problem: one exact base, independently installed siblings, and an explicitly selected set. We chose this topology to make each module's parent assumptions checkable and to keep ordinary Ubuntu package paths. The implementation then separates admission, semantic assembly, and execution. Those operations answer different questions, so their success conditions remain distinct. \Cref{app:implementation} maps each mechanism in this chapter to the scripts that implement it.
 
 \section{Pinned sibling model and invariants}
 \label{sec:arch:siblings}
